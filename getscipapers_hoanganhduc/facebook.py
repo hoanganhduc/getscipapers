@@ -105,17 +105,17 @@ class FacebookScraper:
             print(f"[DEBUG] {message}")
         
     def initialize_driver(self):
-        """Initialize the Edge webdriver with custom options"""
-        self.log("Initializing Edge webdriver...")
-        options = webdriver.EdgeOptions()
+        """Initialize the Chrome webdriver with custom options"""
+        self.log("Initializing Chrome webdriver...")
+        options = webdriver.ChromeOptions()
         
         # Add headless mode if enabled
         if self.headless:
-            options.add_argument("--headless")
+            options.add_argument("--headless=new")
             self.log("Running in headless mode")
         else:
             self.log("Running in graphic mode")
-            
+        
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option("useAutomationExtension", False)
@@ -134,7 +134,7 @@ class FacebookScraper:
             "profile.default_content_setting_values.geolocation": 2
         })
         
-        self.driver = webdriver.Edge(options=options)
+        self.driver = webdriver.Chrome(options=options)
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         self.log("Webdriver initialized successfully")
         
