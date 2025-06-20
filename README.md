@@ -17,6 +17,7 @@ A Python package to get and request scientific papers from various sources. This
   ```bash
   ipfs --version
   ```
+  You can also interact with the Nexus Telegram bot directly. Create a Telegram account and get API ID and API hash from [my.telegram.org](https://my.telegram.org/) to use the Nexus Telegram bot for requesting papers.
 * (Optional) Get free API keys from [Elsevier](https://dev.elsevier.com/), [Wiley](https://onlinelibrary.wiley.com/library-info/resources/text-and-datamining), [IEEE](https://developer.ieee.org/getting_started) (not yet implemented).
 * (Optional) Create accounts at [Sci-Net](https://sci-net.xyz), [AbleSci](https://ablesci.com), and [Science Hub Mutual Aid](https://www.pidantuan.com/) (not yet implemented), [Facebook](https://www.facebook.com/) to request papers. (For Facebook, after having an account, you need to request to join the group that you want to post your request to first.)
 * Install [Python](https://www.python.org) (version 3.10 or later).
