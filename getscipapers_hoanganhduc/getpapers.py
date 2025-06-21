@@ -2109,11 +2109,19 @@ async def main():
     argparser = argparse.ArgumentParser(
         description="Search for and download scientific papers by DOI or keyword. "
                    "Supports downloading from multiple sources including Unpaywall, Sci-Hub, Anna's Archive.",
-        epilog="Examples:\n"
-               "  %(prog)s --search \"machine learning\"\n"
-               "  %(prog)s --doi 10.1038/nature12373\n"
-               "  %(prog)s --doi-file papers.txt\n"
-               "  %(prog)s --doi 10.1016/j.cell.2019.05.031 --db unpaywall",
+        epilog=(
+            "Examples:\n"
+            "  %(prog)s --search \"machine learning\"\n"
+            "  %(prog)s --doi 10.1038/nature12373\n"
+            "  %(prog)s --doi-file papers.txt\n"
+            "  %(prog)s --doi 10.1016/j.cell.2019.05.031 --db unpaywall\n"
+            "  %(prog)s --search \"deep learning\" --limit 10\n"
+            "  %(prog)s --doi 10.1016/j.cell.2019.05.031 --no-download\n"
+            "  %(prog)s --doi 10.1016/j.cell.2019.05.031 --download-folder ./pdfs\n"
+            "  %(prog)s --doi-file mylist.txt --db scihub\n"
+            "  %(prog)s --search \"climate change\" --verbose\n"
+            "  %(prog)s --doi 10.1002/anie.201915678 --config myconfig.json\n"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         prog=program_name
     )
