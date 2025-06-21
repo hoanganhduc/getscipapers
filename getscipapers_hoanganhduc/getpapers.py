@@ -23,6 +23,9 @@ import PyPDF2
 import signal
 import threading
 import queue
+import shutil
+
+from . import nexus  # Import Nexus bot functions from .nexus module
 
 DEFAULT_LIMIT = 5
 
@@ -39,7 +42,7 @@ def vprint(*args, **kwargs):
         print(*args, **kwargs)
 
 # Global variable for default config file location
-CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".config", "get-papers", "config.json") if platform.system() != "Windows" else os.path.join(os.path.expanduser("~"), "AppData", "Local", "get-papers", "config.json")
+CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".config", "getpapers", "config.json") if platform.system() != "Windows" else os.path.join(os.path.expanduser("~"), "AppData", "Local", "getpapers", "config.json")
 
 def save_credentials(email: str = None, elsevier_api_key: str = None, 
                     wiley_tdm_token: str = None, ieee_api_key: str = None, 
@@ -639,77 +642,391 @@ def extract_dois_from_file(input_file: str):
         print(f"Failed to write DOIs to output file: {e}")
 
 async def search_documents(query: str, limit: int = 1):
-    vprint(f"Initializing StcGeck client for query: {query}, limit: {limit}")
+    """
+    Search for documents using StcGeck, Nexus bot, and Crossref in order.
+    Build a StcGeck-style document with all fields empty, and iteratively fill fields
+    by searching each source in order. Return up to the requested limit of results.
+    Always tries all sources before returning results.
+    """
+    vprint(f"Searching for: {query} (limit={limit})")
+
+    # Helper: create empty stcgeck-style doc
+    def empty_doc():
+        return {
+            'id': None,
+            'title': None,
+            'authors': [],
+            'metadata': {},
+            'uris': [],
+            'issued_at': None,
+            'oa_status': None
+        }
+
+    # Helper: merge fields from src into dst (only fill empty fields)
+    def merge_doc(dst, src):
+        if not src:
+            return
+        if dst['id'] is None and src.get('id'):
+            dst['id'] = src.get('id')
+        if (not dst['title'] or dst['title'] == 'N/A') and src.get('title'):
+            dst['title'] = src.get('title')
+        if not dst['authors'] and src.get('authors'):
+            dst['authors'] = src.get('authors')
+        if src.get('metadata'):
+            for k, v in src['metadata'].items():
+                if k not in dst['metadata'] or not dst['metadata'][k]:
+                    dst['metadata'][k] = v
+        if not dst['uris'] and src.get('uris'):
+            dst['uris'] = src.get('uris')
+        if not dst['issued_at'] and src.get('issued_at'):
+            dst['issued_at'] = src.get('issued_at')
+        if dst['oa_status'] is None and src.get('oa_status') is not None:
+            dst['oa_status'] = src.get('oa_status')
+
+    # Try each source, collect up to limit unique DOIs
+    collected = {}
+
+    # 1. StcGeck
     try:
+        vprint("Trying StcGeck search...")
         geck = StcGeck(
             ipfs_http_base_url="http://127.0.0.1:8080",
             timeout=300,
         )
-        await geck.start()
-        summa_client = geck.get_summa_client()
+        try:
+            await geck.start()
+            summa_client = geck.get_summa_client()
+            if query.lower().startswith("10."):
+                search_query = {"term": {"field": "uris", "value": f"doi:{query}"}}
+                vprint(f"StcGeck: Searching by DOI: {query}")
+            else:
+                search_query = {"match": {"value": f"{query}"}}
+                vprint(f"StcGeck: Searching by keyword: {query}")
 
-        # If query looks like a DOI, search by DOI, else search by keyword in title/abstract
-        if query.lower().startswith("10."):
-            search_query = {"term": {"field": "uris", "value": f"doi:{query}"}}
-            vprint(f"Searching by DOI: {query}")
-        else:
-            search_query = {
-                "match": {
-                    "value": f"{query}"
+            search_response = await summa_client.search(
+                {
+                    "index_alias": "stc",
+                    "query": search_query,
+                    "collectors": [{"top_docs": {"limit": limit}}],
+                    "is_fieldnorms_scoring_enabled": False,
                 }
-            }
-            vprint(f"Searching by keyword: {query}")
+            )
+            stc_results = search_response.collector_outputs[0].documents.scored_documents
+            for scored in stc_results:
+                doc = json.loads(scored.document)
+                # Use DOI as key if present, else fallback to id or title
+                doi = None
+                for uri in doc.get('uris', []):
+                    if uri.startswith('doi:'):
+                        doi = uri[4:]
+                        break
+                key = doi or doc.get('id') or doc.get('title')
+                if key and key not in collected:
+                    base = empty_doc()
+                    merge_doc(base, doc)
+                    collected[key] = base
+            vprint(f"StcGeck returned {len(stc_results)} results.")
+        finally:
+            await geck.stop()
+    except Exception as e:
+        vprint(f"StcGeck failed: {e}")
 
-        search_response = await summa_client.search(
-            {
-                "index_alias": "stc",
-                "query": search_query,
-                "collectors": [{"top_docs": {"limit": limit}}],
-                "is_fieldnorms_scoring_enabled": False,
-            }
-        )
-
-        results = search_response.collector_outputs[0].documents.scored_documents
-        vprint(f"Found {len(results)} results for query: {query}")
-        await geck.stop()
-
-        # If no results found, fall back to Crossref
-        if not results:
-            vprint("No results found in StcGeck, falling back to Crossref API")
-            return await search_with_crossref(query, limit)
-
-        # Try to enrich each result with Crossref info if possible
-        enriched_results = []
-        for scored_document in results:
-            doc = json.loads(scored_document.document)
+    # 2. Nexus bot
+    try:
+        vprint("Trying Nexus bot search...")
+        nexus_results = await search_with_nexus_bot(query, limit)
+        for scored in nexus_results:
+            doc = json.loads(scored.document)
             doi = None
-            for uri in doc.get("uris", []):
-                if uri.startswith("doi:"):
+            for uri in doc.get('uris', []):
+                if uri.startswith('doi:'):
                     doi = uri[4:]
                     break
-
-            # Try to get extra info from Crossref if DOI is present
-            if doi:
-                crossref_results = await search_with_crossref(doi, 1)
-                if crossref_results:
-                    crossref_doc = json.loads(crossref_results[0].document)
-                    # Merge fields from Crossref into doc if missing
-                    for key in ["title", "authors", "metadata", "issued_at", "oa_status"]:
-                        if (not doc.get(key) or doc.get(key) == "N/A") and crossref_doc.get(key):
-                            doc[key] = crossref_doc[key]
-                    # Optionally, merge more fields as needed
-
-            # Wrap back in the same type as scored_document
-            enriched_results.append(
-                type(scored_document)(
-                    **{**scored_document.__dict__, "document": json.dumps(doc)}
-                )
-            )
-        return enriched_results
+            key = doi or doc.get('id') or doc.get('title')
+            if key in collected:
+                merge_doc(collected[key], doc)
+            elif key:
+                base = empty_doc()
+                merge_doc(base, doc)
+                collected[key] = base
+        vprint(f"Nexus bot returned {len(nexus_results)} results.")
     except Exception as e:
-        vprint(f"StcGeck failed to start or search: {e}")
-        vprint("Falling back to Crossref API")
-        return await search_with_crossref(query, limit)
+        vprint(f"Nexus bot failed: {e}")
+
+    # 3. Crossref
+    try:
+        vprint("Trying Crossref search...")
+        crossref_results = await search_with_crossref(query, limit)
+        for scored in crossref_results:
+            doc = json.loads(scored.document)
+            doi = None
+            for uri in doc.get('uris', []):
+                if uri.startswith('doi:'):
+                    doi = uri[4:]
+                    break
+            key = doi or doc.get('id') or doc.get('title')
+            if key in collected:
+                merge_doc(collected[key], doc)
+            elif key:
+                base = empty_doc()
+                merge_doc(base, doc)
+                collected[key] = base
+        vprint(f"Crossref returned {len(crossref_results)} results.")
+    except Exception as e:
+        vprint(f"Crossref failed: {e}")
+
+    if not collected:
+        vprint("No results found from any source.")
+        return []
+
+    # Wrap as ScoredDocument-like objects
+    return [type('ScoredDocument', (), {'document': json.dumps(doc)})() for doc in list(collected.values())[:limit]]
+
+async def search_with_nexus_bot(query: str, limit: int = 1):
+    """
+    Search for documents using the Nexus bot (functions imported from .nexus).
+    Returns a list of ScoredDocument-like objects with a .document JSON string.
+    Tries first without proxy, then with proxy if it fails.
+    """
+    try:
+        TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME = await nexus.load_credentials_from_file(nexus.CREDENTIALS_FILE)
+        proxies = [None, nexus.DEFAULT_PROXY_FILE]
+        for proxy in proxies:
+            try:
+                results = await nexus.send_message_to_bot(
+                    api_id=TG_API_ID,
+                    api_hash=TG_API_HASH,
+                    phone_number=PHONE,
+                    bot_username=BOT_USERNAME,
+                    message=query,
+                    session_file=nexus.SESSION_FILE,
+                    proxy=proxy,
+                    limit=limit
+                )
+                # If results is a list of dicts, convert each to stc format
+                docs = []
+                if isinstance(results, list):
+                    for item in results:
+                        docs.extend(convert_nexus_to_stc_format(item))
+                elif isinstance(results, dict):
+                    docs = convert_nexus_to_stc_format(results)
+                else:
+                    docs = []
+                # Wrap as ScoredDocument-like objects
+                return [type('ScoredDocument', (), {'document': json.dumps(doc)})() for doc in docs]
+            except Exception as e:
+                vprint(f"Nexus bot search failed with proxy={proxy}: {e}")
+                # Try next proxy if available
+                continue
+        return []
+    except Exception as e:
+        vprint(f"Nexus bot search failed: {e}")
+        return []
+
+def convert_nexus_to_stc_format(nexus_item):
+    """
+    Convert a Nexus bot result (raw dict) to a list of StcGeck compatible documents.
+    Handles both search (multiple results) and DOI (single result) formats.
+    Returns a list of dicts (one per result).
+    """
+    # If this is a raw result, extract the 'bot_reply'->'text'
+    if "bot_reply" in nexus_item and "text" in nexus_item["bot_reply"]:
+        text = nexus_item["bot_reply"]["text"]
+    elif "text" in nexus_item:
+        text = nexus_item["text"]
+    else:
+        return []
+
+    # If this is a DOI query, the text starts with a marker emoji and contains "**DOI:**" or "**DOI:** [doi](...)"
+    if "**DOI:**" in text:
+        # Try to extract fields
+        title = None
+        authors = []
+        journal = None
+        volume = None
+        issue = None
+        first_page = None
+        last_page = None
+        doi = None
+        year = None
+        issued_at = None
+        nexus_id = None
+
+        # Title: after marker emoji + "**", before "**"
+        title_match = re.search(r"(?:\[\d+\]\s*)?([🔬🔖📚])\s*\*\*(.*?)\*\*", text)
+        if title_match:
+            title = title_match.group(2).strip()
+        # Authors: after title, before "in __" or "\n"
+        authors_match = re.search(r"\*\*.*\*\*\s*\n([^\n_]+)", text)
+        if authors_match:
+            authors_str = authors_match.group(1).strip()
+            # Remove "et al"
+            authors_str = authors_str.replace("et al", "")
+            # Remove "in ..." if present
+            authors_str = re.sub(r"\s+in\s+.*", "", authors_str)
+            # Split by ";" or "," or " and "
+            for a in re.split(r";|,| and ", authors_str):
+                name = a.strip()
+                if name:
+                    names = name.split()
+                    if len(names) > 1:
+                        authors.append({'given': ' '.join(names[:-1]), 'family': names[-1]})
+                    else:
+                        authors.append({'given': '', 'family': name})
+        # Journal: in __...__
+        journal_match = re.search(r"in __([^_]+)__", text)
+        if journal_match:
+            journal = journal_match.group(1).strip()
+        # DOI: after "**DOI:** [" or "**DOI:** "
+        doi_match = re.search(r"\*\*DOI:\*\*\s*(?:\[)?([^\s\]\n]+)", text)
+        if doi_match:
+            doi = doi_match.group(1).strip()
+        # Year: look for (YYYY-MM) or (YYYY) after title, or at end after "|"
+        year_match = re.search(r"\((\d{4})(?:-\d{2})?\)", text)
+        if not year_match:
+            year_match = re.search(r"\|\s*(\d{4})(?:-\d{2})?\s*$", text)
+        if not year_match:
+            year_match = re.search(r"\b(19|20)\d{2}\b", text)
+        if year_match:
+            year = year_match.group(1)
+            try:
+                issued_at = int(datetime(int(year), 1, 1).timestamp())
+            except Exception:
+                issued_at = None
+        # Compose metadata
+        metadata = {}
+        if journal:
+            metadata['container_title'] = journal
+        # Publisher: after "**Publisher:** [name]"
+        publisher_match = re.search(r"\*\*Publisher:\*\*\s*\[([^\]]+)\]", text)
+        if publisher_match:
+            metadata['publisher'] = publisher_match.group(1).strip()
+        # Extract Nexus ID from LibSTC.cc link: after nid: and before )
+        nexus_id_match = re.search(r"LibSTC\.cc\]\([^)]+nid:([a-z0-9]+)\)", text, re.IGNORECASE)
+        if nexus_id_match:
+            nexus_id = nexus_id_match.group(1)
+        # Compose doc
+        doc = {
+            'id': nexus_id,
+            'title': title or "N/A",
+            'authors': authors,
+            'metadata': metadata,
+            'uris': [f"doi:{doi}"] if doi else [],
+            'issued_at': issued_at,
+            'oa_status': None
+        }
+        return [doc]
+
+    # Otherwise, treat as search results (multiple entries)
+    # Split into entries by the marker emojis, possibly preceded by [number]
+    marker_pattern = r"(?:\[\d+\]\s*)?[🔬🔖📚]"
+    # Find all marker positions
+    marker_matches = list(re.finditer(marker_pattern, text))
+    docs = []
+    if not marker_matches:
+        return docs
+    for idx, match in enumerate(marker_matches):
+        start = match.start()
+        end = marker_matches[idx + 1].start() if idx + 1 < len(marker_matches) else len(text)
+        entry = text[start:end].strip()
+        if not entry:
+            continue
+        # Title: after "**<P>" or "**", before "**"
+        title_match = re.search(r"\*\*(?:<P>)?\s*(.*?)\*\*", entry)
+        title = title_match.group(1).strip() if title_match else "N/A"
+
+        # Authors: after title, before "__" or "\n"
+        authors = []
+        authors_match = re.search(r"\*\*.*\*\*\s*\n([^\n_]+)", entry)
+        if authors_match:
+            # Try to split by "et al", "and", or comma
+            authors_str = authors_match.group(1).strip()
+            # Remove "in ..." if present
+            authors_str = re.sub(r"\s+in\s+.*", "", authors_str)
+            # Remove "et al"
+            authors_str = authors_str.replace("et al", "")
+            # Split by "and" or ","
+            for a in re.split(r",| and ", authors_str):
+                name = a.strip()
+                if name:
+                    names = name.split()
+                    if len(names) > 1:
+                        authors.append({'given': ' '.join(names[:-1]), 'family': names[-1]})
+                    else:
+                        authors.append({'given': '', 'family': name})
+
+        # Journal/metadata: look for "in __...__"
+        journal = None
+        journal_match = re.search(r"in __([^_]+)__", entry)
+        if journal_match:
+            journal = journal_match.group(1).strip()
+
+        # Volume/issue/pages: look for "__vol. X__ __(Y)__ pp. Z"
+        volume = None
+        issue = None
+        first_page = None
+        last_page = None
+        volume_match = re.search(r"__vol\. ([^_]+)__", entry)
+        if volume_match:
+            volume = volume_match.group(1).strip()
+        issue_match = re.search(r"__\(([^)]+)\)__", entry)
+        if issue_match:
+            issue = issue_match.group(1).strip()
+        pages_match = re.search(r"pp\. ([\d\-]+)", entry)
+        if pages_match:
+            pages = pages_match.group(1).strip()
+            if '-' in pages:
+                first_page, last_page = pages.split('-', 1)
+            else:
+                first_page = pages
+
+        # DOI: look for "doi.org" link
+        doi = None
+        doi_match = re.search(r"https?://doi\.org/([^\s|)]+)", entry)
+        if doi_match:
+            doi = doi_match.group(1).strip()
+
+        # Year: look for 4-digit year at end or after "|"
+        year = None
+        year_match = re.search(r"\|\s*(\d{4})(?:-\d{2})?\s*$", entry)
+        if not year_match:
+            year_match = re.search(r"\b(19|20)\d{2}\b", entry)
+        if year_match:
+            year = year_match.group(1)
+
+        # Compose metadata
+        metadata = {}
+        if journal:
+            metadata['container_title'] = journal
+        if volume:
+            metadata['volume'] = volume
+        if issue:
+            metadata['issue'] = issue
+        if first_page:
+            metadata['first_page'] = first_page
+        if last_page:
+            metadata['last_page'] = last_page
+
+        # issued_at: try to build from year
+        issued_at = None
+        try:
+            if year:
+                issued_at = int(datetime(int(year), 1, 1).timestamp())
+        except Exception:
+            pass
+
+        # OA status: not available from Nexus, set None
+        doc = {
+            'id': None,
+            'title': title,
+            'authors': authors,
+            'metadata': metadata,
+            'uris': [f"doi:{doi}"] if doi else [],
+            'issued_at': issued_at,
+            'oa_status': None
+        }
+        docs.append(doc)
+    return docs
 
 async def search_with_crossref(query: str, limit: int = 1):
     try:
@@ -1442,6 +1759,53 @@ async def download_from_nexus(id: str, doi: str, download_folder: str = "."):
     
     return False
 
+async def download_from_nexus_bot(doi: str, download_folder: str = "."):
+    """
+    Download a PDF by DOI using the Nexus bot (via .nexus module).
+    Returns True if successful, else False.
+    Tries first without proxy, then with proxy if it fails.
+    """
+    safe_doi = doi.replace('/', '_')
+    filename = f"{safe_doi}_nexusbot.pdf"
+    filepath = os.path.join(download_folder, filename)
+    try:
+        TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME = await nexus.load_credentials_from_file(nexus.CREDENTIALS_FILE)
+        # Try without proxy first
+        for proxy in [None, nexus.DEFAULT_PROXY_FILE]:
+            try:
+                pdf_bytes = await nexus.check_doi_availability_on_nexus(
+                    api_id=TG_API_ID,
+                    api_hash=TG_API_HASH,
+                    phone_number=PHONE,
+                    bot_username=BOT_USERNAME,
+                    doi=doi,
+                    session_file=nexus.SESSION_FILE,
+                    proxy=proxy,
+                    download=True
+                )
+                download_result = pdf_bytes.get('download_result', {})
+                if download_result.get("success"):
+                    nexus_bot_download_file = download_result.get('file_path')
+                    if nexus_bot_download_file and os.path.exists(nexus_bot_download_file):
+                        shutil.move(nexus_bot_download_file, filepath)
+                        print(f"Downloaded PDF from Nexus bot: {filepath}")
+                        return True
+                    else:
+                        print(f"Downloaded file not found at {nexus_bot_download_file}.")
+                        return False
+                else:
+                    # Only print this message on the last attempt
+                    if proxy == nexus.DEFAULT_PROXY_FILE:
+                        print(f"PDF file is not available from Nexus bot for DOI: {doi}.")
+            except Exception as e:
+                if proxy == nexus.DEFAULT_PROXY_FILE:
+                    print(f"Error downloading PDF from Nexus bot for DOI {doi}: {e}")
+                # Try next proxy (with proxy) if this was the first attempt
+                continue
+    except Exception as e:
+        print(f"Error downloading PDF from Nexus bot for DOI {doi}: {e}")
+    return False
+
 async def download_from_scihub(doi: str, download_folder: str = "."):
     safe_doi = doi.replace('/', '_')
     filename = f"{safe_doi}_scihub.pdf"
@@ -1595,6 +1959,14 @@ async def download_by_doi(doi: str, download_folder: str = ".", db: str = "all",
             print(f"  ✓ {doi} [{oa_status_text}]")
             return True
         print(f"PDF file is not available on the Nexus server for DOI: {doi}.")
+        # Try Nexus bot as fallback
+        print(f"Trying Nexus bot for DOI: {doi}...")
+        if await download_from_nexus_bot(doi, download_folder):
+            print(f"\nDownload Summary:")
+            print(f"Successfully downloaded: 1 PDF")
+            print(f"  ✓ {doi} [{oa_status_text}]")
+            return True
+        print(f"PDF file is not available from Nexus bot for DOI: {doi}.")
 
     if db in ["all", "scihub"]:
         tried = True
@@ -1728,11 +2100,11 @@ async def main():
     parent_package = __name__.split('.')[0] if '.' in __name__ else None
 
     if parent_package is None:
-        program_name = 'get-papers'
+        program_name = 'getpapers'
     elif '_' in parent_package:
         # If the parent package has an underscore, strip it
         parent_package = parent_package[:parent_package.index('_')]
-        program_name = f"{parent_package} get-papers"
+        program_name = f"{parent_package} getpapers"
 
     argparser = argparse.ArgumentParser(
         description="Search for and download scientific papers by DOI or keyword. "

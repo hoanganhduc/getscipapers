@@ -26,6 +26,10 @@ import readline
 import signal
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import shutil
+from datetime import timedelta
+import datetime as dt  # Add this import at the top if not already present
+import itertools
+
 
 if platform.system() == 'Windows':
     import msvcrt
@@ -1282,8 +1286,11 @@ async def click_callback_button(api_id, api_hash, phone_number, bot_username, me
         if bot_reply is None:
             debug_print("No immediate response, checking recent messages...")
             await asyncio.sleep(2)
+            
             async for message in client.iter_messages(bot_entity, limit=3):
-                if message.date > datetime.now().timestamp() - 35:  # Messages from last 35 seconds
+                # Ensure both datetimes are timezone-aware for comparison
+                now = dt.datetime.now(message.date.tzinfo) if message.date.tzinfo else dt.datetime.now()
+                if message.date > now - timedelta(seconds=35):  # Messages from last 35 seconds
                     debug_print(f"Found recent message: {message.text[:50]}...")
                     buttons = []
                     
@@ -1328,32 +1335,50 @@ async def click_callback_button(api_id, api_hash, phone_number, bot_username, me
         debug_print("Disconnecting client after button click...")
         await client.disconnect()
 
-async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, message, session_file='telegram_session', proxy=None):
+async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, message, session_file='telegram_session', proxy=None, limit=None):
     """
-    Send a message from your user account to a bot and wait for reply
-    
+    Send a message from your user account to a Telegram bot and wait for its reply.
+
     Args:
         api_id: Your Telegram API ID (get from my.telegram.org)
         api_hash: Your Telegram API hash
         phone_number: Your phone number
         bot_username: Bot's username (e.g., 'your_bot_name')
-        message: Message text to send
+        message: Message text to send (search query or DOI)
         session_file: Name of the session file to save/load
-        proxy: Proxy configuration dict with keys: type, addr, port, username, password
-               Example: {'type': 'http', 'addr': '127.0.0.1', 'port': 8080}
-               or {'type': 'socks5', 'addr': '127.0.0.1', 'port': 1080, 'username': 'user', 'password': 'pass'}
-               or string path to JSON file containing proxy configuration
+        proxy: Proxy configuration dict or file path (see create_telegram_client)
+        limit: Maximum number of search results to fetch (default: 1 for DOI, 5 for search; can be set by user)
+
+    Returns:
+        dict: {
+            "ok": True if successful, False or "error" key otherwise,
+            "sent_message": {
+                "message_id": int,
+                "date": float (timestamp),
+                "text": str
+            },
+            "bot_reply": {
+                "message_id": int,
+                "date": float (timestamp),
+                "text": str,  # reply text, possibly concatenated for search
+                "buttons": list of dicts with button info (text, type, callback_data/url)
+            }
+        }
+        If an error occurs, returns {"error": "..."}.
     """
     debug_print(f"Initializing TelegramClient with session file: {session_file}")
-    
+
     # Load proxy configuration
     proxy_config = load_proxy_config(proxy)
     if proxy and proxy_config is None:
         return {"error": f"Error loading proxy configuration"}
-    
+
     # Create client
     client = create_telegram_client(session_file, api_id, api_hash, proxy_config)
-    
+
+    # Define all result markers
+    result_markers = ["🔬 **", "🔖 **", "📚 **"]
+
     try:
         # Check if session file exists
         session_path = f"{session_file}.session"
@@ -1363,43 +1388,38 @@ async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, mess
             info_print("You need to create a session first by running this script interactively once.")
             info_print("After that, the session will be saved and you can run without manual input.")
             return {"error": "Session file not found. Run script interactively first to create session."}
-        
+
         info_print("Using cached session...")
         if proxy_config:
             info_print(f"Connecting through proxy: {proxy_config['type']}://{proxy_config['addr']}:{proxy_config['port']}")
-        
+
         debug_print("Starting Telegram client...")
         await client.start()
         debug_print("Client started successfully")
-        
+
         # Verify we're connected
         debug_print("Checking user authorization...")
         if not await client.is_user_authorized():
             error_print("Session expired or not authorized")
             return {"error": "Session expired. Please delete the session file and run interactively to re-authenticate."}
-        
+
         debug_print("User authorized successfully")
-        
+
         # Get the bot entity
         debug_print(f"Getting bot entity for: {bot_username}")
         bot_entity = await client.get_entity(bot_username)
         debug_print(f"Bot entity retrieved: {bot_entity.id}")
-        
+
         # Create message handler
-        handler, get_bot_reply = create_message_handler(bot_entity)
-        set_bot_reply = lambda value: None  # For resetting bot_reply in search handling
-        
-        # Set up handler closure for setting bot_reply
+        # Set up handler closure for getting and setting bot_reply
         def create_setter():
-            nonlocal handler, get_bot_reply
             bot_reply_value = [None]
-            
+
             async def new_handler(event):
-                nonlocal bot_reply_value
                 debug_print(f"Received message from bot: ID={event.message.id}, Text={event.message.text[:100]}...")
-                
+
                 buttons = extract_button_info(event.message.reply_markup)
-                
+
                 bot_reply_value[0] = {
                     "message_id": event.message.id,
                     "date": event.message.date.timestamp(),
@@ -1407,18 +1427,26 @@ async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, mess
                     "buttons": buttons
                 }
                 debug_print(f"Bot reply captured: {len(buttons)} buttons found")
-            
+
             def get_reply():
                 return bot_reply_value[0]
-                
+
             def set_reply(value):
                 bot_reply_value[0] = value
-                
+
             return new_handler, get_reply, set_reply
-        
+
         handler, get_bot_reply, set_bot_reply = create_setter()
         client.on(events.NewMessage(from_users=bot_entity))(handler)
-        
+
+        # Determine if message is a DOI
+        is_doi = bool(re.match(r'^10\.\d+/.+', message.strip()))
+        # Use user-specified limit if provided, else default logic
+        if limit is not None:
+            reply_limit = int(limit)
+        else:
+            reply_limit = 1 if is_doi else 5
+
         # Send message to the bot
         debug_print(f"Sending message to bot: '{message}'")
         result = await client.send_message(bot_username, message)
@@ -1426,31 +1454,213 @@ async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, mess
 
         # Wait for bot reply
         bot_reply = await wait_for_reply(get_bot_reply, timeout=30)
-        
-        # Handle search message
         bot_reply = await handle_search_message(get_bot_reply, set_bot_reply)
-        
-        # If still no reply, fetch recent messages
         if bot_reply is None:
             bot_reply = await fetch_recent_messages(client, bot_entity, result)
-        
-        debug_print("Preparing response data...")
-        response = {
-            "ok": True,
-            "sent_message": {
-                "message_id": result.id,
-                "date": result.date.timestamp(),
-                "text": result.text
-            },
-            "bot_reply": bot_reply
-        }
-        debug_print(f"Response prepared successfully. Bot reply: {'Yes' if bot_reply else 'No'}")
-        return response
-        
-    except Exception as e:
-        error_print(f"Error sending message: {str(e)}")
-        debug_print(f"Exception details: {type(e).__name__}: {str(e)}")
-        return {"error": f"Error sending message: {str(e)}"}
+
+        if is_doi:
+            # Handle DOI: just return the first reply
+            if bot_reply:
+                response = {
+                    "ok": True,
+                    "sent_message": {
+                        "message_id": result.id,
+                        "date": result.date.timestamp(),
+                        "text": result.text
+                    },
+                    "bot_reply": bot_reply
+                }
+                debug_print(f"DOI response prepared. Bot reply: {bot_reply.get('text', 'No text')[:50]}")
+                return response
+            else:
+                return {"error": "No reply received from bot for DOI."}
+        else:
+            # Handle search (not DOI)
+            bot_replies = []
+            if bot_reply:
+                bot_replies.append(bot_reply)
+            else:
+                return {"error": "No reply received from bot for search."}
+
+            # --- Extract total number of results from Nexus reply ---
+            total_results = None
+            if bot_reply and isinstance(bot_reply, dict):
+                text = bot_reply.get("text", "")
+                match = re.search(r"__([\d,]+)\s+results__", text)
+                if match:
+                    total_results_str = match.group(1).replace(",", "")
+                    try:
+                        total_results = int(total_results_str)
+                        info_print(f"Total results found in Nexus: {total_results:,}")
+                    except Exception:
+                        info_print(f"Total results found in Nexus: {match.group(1)}")
+                else:
+                    debug_print("Could not extract total results from bot reply text.")
+
+            # Try to determine the number of current results from the text
+            n_results = sum(bot_reply.get("text", "").count(marker) for marker in result_markers)
+            debug_print(f"Detected {n_results} search results in bot reply text using markers {result_markers}")
+
+            # If the number of results already exceeds the limit, stop here
+            if n_results >= reply_limit:
+                # Split by all markers, keep only the first <limit> results, then join back
+                text = bot_reply.get("text", "")
+                marker_positions = []
+                for marker in result_markers:
+                    idx = 0
+                    while True:
+                        idx = text.find(marker, idx)
+                        if idx == -1:
+                            break
+                        marker_positions.append((idx, marker))
+                        idx += len(marker)
+                marker_positions.sort()
+                if len(marker_positions) > reply_limit:
+                    cut_idx = marker_positions[reply_limit][0]
+                    concatenated_text = text[:cut_idx]
+                else:
+                    concatenated_text = text
+                bot_reply_final = dict(bot_reply)
+                bot_reply_final["text"] = concatenated_text
+                response = {
+                    "ok": True,
+                    "sent_message": {
+                        "message_id": result.id,
+                        "date": result.date.timestamp(),
+                        "text": result.text
+                    },
+                    "bot_reply": bot_reply_final
+                }
+                debug_print(f"Response prepared early due to enough results. Bot reply count: {len(bot_replies)}")
+                return response
+
+            # Try to fetch more results if limit not reached
+            seen_search_callbacks = set()
+            all_texts = [bot_reply["text"]] if bot_reply and "text" in bot_reply else []
+
+            def count_all_markers(texts):
+                return sum(sum(t.count(marker) for marker in result_markers) for t in texts)
+
+            current_count = count_all_markers(all_texts)
+            while current_count < reply_limit:
+                last_reply = bot_replies[-1] if bot_replies else None
+                if not last_reply or not last_reply.get("buttons"):
+                    break
+
+                # Find all callback buttons whose text contains ">" and callback_data like "/search_<number>"
+                search_buttons = []
+                for btn in last_reply["buttons"]:
+                    btn_text = btn.get("text", "")
+                    cb_data = btn.get("callback_data") or btn.get("data")
+                    if cb_data and ">" in btn_text:
+                        if isinstance(cb_data, bytes):
+                            cb_data_str = cb_data.decode(errors="ignore")
+                        else:
+                            cb_data_str = str(cb_data)
+                        if re.match(r"^/search_\d+$", cb_data_str):
+                            search_buttons.append((btn, cb_data_str))
+
+                found = False
+                for btn, cb_data_str in search_buttons:
+                    if cb_data_str not in seen_search_callbacks:
+                        seen_search_callbacks.add(cb_data_str)
+                        cb_data = btn.get("callback_data") or btn.get("data")
+                        info_print(f"Clicking search button (text contains '>') to fetch more results: {btn.get('text', '')}")
+                        try:
+                            await client.disconnect()
+                            click_result = await click_callback_button(
+                                api_id, api_hash, phone_number, bot_username,
+                                last_reply["message_id"], cb_data, session_file, proxy
+                            )
+                            await client.start()
+                            debug_print(f"Search button {btn.get('text', '')} clicked successfully. Result: {click_result}")
+                            info_print("Fetching new results...")
+                            new_reply = await fetch_recent_messages(client, bot_entity, result)
+                            debug_print(f"New reply fetched: {new_reply.get('text', 'No text')[:50]}...")
+                            if new_reply and new_reply.get("text"):
+                                all_texts.append(new_reply["text"])
+                                bot_replies.append(new_reply)
+                                found = True
+                        except Exception as e:
+                            error_print(f"Error clicking search button: {str(e)}")
+                        break  # Only click one button per loop
+                if not found:
+                    break
+
+                concatenated_text = "\n".join(all_texts) if all_texts else ""
+                current_count = sum(concatenated_text.count(marker) for marker in result_markers)
+                debug_print(f"Current total marker count: {current_count}, reply_limit: {reply_limit}")
+                if current_count >= reply_limit:
+                    break
+
+            # Concatenate all texts for final bot_reply
+            concatenated_text = "\n".join(all_texts) if all_texts else ""
+
+            # If the result contains more results than the <limit>, only fetch the first <limit> number of results
+            if reply_limit > 0:
+                marker_positions = []
+                for marker in result_markers:
+                    idx = 0
+                    while True:
+                        idx = concatenated_text.find(marker, idx)
+                        if idx == -1:
+                            break
+                        marker_positions.append((idx, marker))
+                        idx += len(marker)
+                marker_positions.sort()
+                if len(marker_positions) > reply_limit:
+                    cut_idx = marker_positions[reply_limit][0]
+                    concatenated_text = concatenated_text[:cut_idx]
+                    debug_print(f"Trimmed search results to first {reply_limit} entries.")
+
+                # Remove "__<number> results__" from the text
+                concatenated_text = re.sub(r"__[\d,]+\s+results__\s*", "", concatenated_text)
+
+                # Remove advertising or footer lines starting with an emoji (not our result markers)
+                lines = concatenated_text.splitlines()
+                filtered_lines = []
+                result_counter = 1
+                for line in lines:
+                    stripped = line.strip()
+                    if any(stripped.startswith(marker[:-3]) for marker in result_markers):
+                        filtered_lines.append(f"[{result_counter}] {line}")
+                        result_counter += 1
+                    elif re.match(r"^[^\w\s]", stripped):
+                        continue
+                    else:
+                        filtered_lines.append(line)
+                concatenated_text = "\n".join(filtered_lines)
+
+                concatenated_text = f"The first {reply_limit} results among {total_results} results found:\n\n" + concatenated_text
+
+                bot_reply_final = dict(bot_replies[0])
+                bot_reply_final["text"] = concatenated_text
+
+                response = {
+                    "ok": True,
+                    "sent_message": {
+                        "message_id": result.id,
+                        "date": result.date.timestamp(),
+                        "text": result.text
+                    },
+                    "bot_reply": bot_reply_final
+                }
+                debug_print(f"Response prepared successfully. Bot reply count: {len(bot_replies)}")
+                info_print(response)
+                return response
+
+            # Fallback: just return the first reply if nothing else
+            response = {
+                "ok": True,
+                "sent_message": {
+                    "message_id": result.id,
+                    "date": result.date.timestamp(),
+                    "text": result.text
+                },
+                "bot_reply": bot_replies[0]
+            }
+            return response
+
     finally:
         debug_print("Disconnecting client...")
         await client.disconnect()
@@ -1964,12 +2174,12 @@ async def load_credentials_from_file(credentials_path):
             except Exception as e:
                 debug_print(f"Warning: Could not update credentials to default location: {e}")
         
-        return True
+        return [TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME]
         
     except (json.JSONDecodeError, KeyError) as e:
         error_print(f"Error loading credentials file: {e}")
         debug_print(f"Credentials loading error: {type(e).__name__}: {str(e)}")
-        return False
+        return None
 
 async def setup_proxy_configuration(proxy_arg):
     """Setup proxy configuration - load existing or find new working proxy"""
@@ -2352,10 +2562,12 @@ async def process_callback_buttons(bot_reply, proxy_to_use):
     
     # Determine if this is a request or download button
     has_request = "request" in button_text.lower()
-    
+    # Check if the button text contains a download symbol (e.g., "⬇️" or "↓" or "download")
+    has_download = any(sym in button_text.lower() for sym in ["⬇️", "↓", "download"])
+
     if has_request:
         await handle_request_button(button_text, callback_data, message_id, proxy_to_use)
-    else:
+    elif has_download:
         await handle_download_button(button_text, callback_data, message_id, proxy_to_use)
     
     info_print(f"\n--- Completed processing all {len(callback_buttons)} buttons ---")
@@ -4958,6 +5170,8 @@ Examples:
     parser.add_argument('--search', type=str,
                        default="",
                        help='Search query to send to the bot')
+    parser.add_argument('--search-limit', type=int, default=None,
+                       help='Limit the number of search results returned when using --search')
     parser.add_argument('--bot', type=str,
                        help='Bot username to interact with (overrides default)')
     parser.add_argument('--verbose', action='store_true',
@@ -5352,8 +5566,12 @@ Examples:
         info_print(f"Connecting via proxy: {proxy_to_use}")
     else:
         info_print("Connecting directly (no proxy)")
-    
-    send_result = await send_message_to_bot(TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME, message_to_send, SESSION_FILE, proxy_to_use)
+
+    # Pass search-limit to send_message_to_bot if specified
+    search_limit = args.search_limit if args.search_limit is not None else None
+    send_result = await send_message_to_bot(
+        TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME, message_to_send, SESSION_FILE, proxy_to_use, limit=search_limit
+    )
     debug_print("Message sending process completed")
     
     format_result(send_result)
