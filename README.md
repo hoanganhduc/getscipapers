@@ -67,6 +67,27 @@ In another terminal, use the `getscipapers` command to search for and request sc
 getscipapers --help
 ```
 
+### Running Locally with Docker
+
+You can run **getscipapers** locally using Docker without installing Python or dependencies on your system.
+
+1. Ensure Docker is installed.
+2. Pull the latest image:
+
+  ```bash
+  docker pull ghcr.io/hoanganhduc/getscipapers:latest
+  ```
+
+3. Run the container, mounting a local directory for downloads or configuration:
+
+  ```bash
+  docker run --rm -it -v /path/to/local/dir:/data ghcr.io/hoanganhduc/getscipapers:latest --output /data
+  ```
+
+  Replace `/path/to/local/dir` with your preferred local directory.
+
+This setup allows you to use **getscipapers** in an isolated environment, keeping your files accessible on your host machine.
+
 ## Remarks
 
 * This package is under active development and may not function as expected.
