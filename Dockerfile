@@ -36,8 +36,8 @@ RUN git clone https://github.com/hoanganhduc/getscipapers.git . \
 	&& find . -type f -name "*.pyc" -delete
 
 # Create startup script
-RUN echo '#!/bin/bash\nipfs daemon --init &\nexec "$@"' > /entrypoint.sh \
+RUN echo '#!/bin/bash\nipfs daemon --init &\nexec "$@"\n' > /entrypoint.sh \
 	&& chmod +x /entrypoint.sh
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["bash", "/entrypoint.sh"]
 CMD [ "getscipapers", "--help" ]
