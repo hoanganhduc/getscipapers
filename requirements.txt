@@ -1,0 +1,18 @@
+aiohttp==3.11.13
+aiohttp_socks==0.10.1
+aiosumma==2.47.0
+argcomplete==3.5.2
+beautifulsoup4==4.13.4
+crossrefapi @ git+https://github.com/fabiobatalha/crossrefapi.git@master
+izihawa-utils==1.2.3
+libstc_geck==2.1.7
+numpy==2.2.6
+pandas==2.3.0
+pikepdf==7.2.0
+protobuf==5.29.0
+PyPDF2==3.0.1
+PySocks==1.7.1
+Requests==2.32.4
+selenium==4.33.0
+Telethon==1.40.0
+unpywall==0.2.3

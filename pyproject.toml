@@ -1,0 +1,45 @@
+[project]
+name = "getscipapers_hoanganhduc"
+version = "0.1.0"
+authors = [
+  { name="Duc A. Hoang (hoanganhduc)", email="anhduc.hoang1990@gmail.com" },
+]
+description = "A Python package to get and request scientific papers from various sources"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = {"text" = "GPL-3.0-or-later"}
+dependencies = [
+  "aiohttp==3.11.13",
+  "aiohttp_socks==0.10.1",
+  "aiosumma==2.47.0",
+  "argcomplete==3.5.2",
+  "beautifulsoup4==4.13.4",
+  "crossrefapi @ git+https://github.com/fabiobatalha/crossrefapi.git@master",
+  "izihawa-utils==1.2.3",
+  "libstc_geck==2.1.7",
+  "numpy==2.2.6",
+  "pandas==2.3.0",
+  "pikepdf==7.2.0",
+  "protobuf==5.29.0",
+  "PyPDF2==3.0.1",
+  "PySocks==1.7.1",
+  "Requests==2.32.4",
+  "selenium==4.33.0",
+  "Telethon==1.40.0",
+  "unpywall==0.2.3"
+]
+
+[project.scripts]
+getscipapers = "getscipapers_hoanganhduc:main"
+
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project.urls]
+Homepage = "https://github.com/hoanganhduc/getscipapers"
+Issues = "https://github.com/hoanganhduc/getscipapers/issues"
