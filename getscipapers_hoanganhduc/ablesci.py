@@ -16,6 +16,7 @@ import readline
 import getpass
 import glob
 import platform
+from .getpapers import extract_dois_from_text, extract_dois_from_file
 
 USERNAME = "" # Replace with your actual username/email
 PASSWORD = "" # Replace with your actual password
@@ -552,35 +553,13 @@ def is_valid_doi(doi):
     debug_print(f"DOI validation for '{doi}': {is_valid}")
     return is_valid
 
-def read_dois_from_file(filepath):
-    """Read DOIs from a text file, one per line, skipping empty lines and stripping whitespace.
-    If any line is not a valid DOI, report error and quit.
-    """
-    debug_print(f"Reading DOIs from file: {filepath}")
-    with open(filepath, 'r', encoding='utf-8') as f:
-        lines = [line.strip() for line in f if line.strip()]
-    debug_print(f"Found {len(lines)} non-empty lines")
-    
-    invalid_lines = [line for line in lines if not is_valid_doi(line)]
-    if invalid_lines:
-        print("Error: The following lines are not valid DOIs:")
-        for line in invalid_lines:
-            print(f"  {line}")
-        exit(1)
-    debug_print(f"All {len(lines)} DOIs are valid")
-    return lines
-
 def parse_dois_input(doi_input):
     """Parse input which can be a file path or a space/comma separated list of DOIs."""
     debug_print(f"Parsing DOI input: {doi_input}")
     if os.path.isfile(doi_input):
         debug_print("Input is a file path")
-        return read_dois_from_file(doi_input)
-    # Split by whitespace or comma
-    debug_print("Input is a DOI string")
-    dois = [doi.strip() for doi in re.split(r'[,\s]+', doi_input) if doi.strip()]
-    debug_print(f"Parsed {len(dois)} DOIs from string")
-    return dois
+        return extract_dois_from_file(doi_input)
+    return extract_dois_from_text(doi_input)
 
 def request_multiple_dois(dois, headless=True):
     debug_print(f"Starting batch request for {len(dois)} DOIs")

@@ -29,6 +29,7 @@ import shutil
 from datetime import timedelta
 import datetime as dt  # Add this import at the top if not already present
 import itertools
+from .getpapers import extract_dois_from_text, extract_dois_from_file
 
 
 if platform.system() == 'Windows':
@@ -1447,6 +1448,9 @@ async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, mess
         else:
             reply_limit = 1 if is_doi else 5
 
+        # Check if message is a command (starts with / and is not a DOI)
+        is_command = message.strip().startswith("/") and not is_doi
+
         # Send message to the bot
         debug_print(f"Sending message to bot: '{message}'")
         result = await client.send_message(bot_username, message)
@@ -1457,6 +1461,23 @@ async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, mess
         bot_reply = await handle_search_message(get_bot_reply, set_bot_reply)
         if bot_reply is None:
             bot_reply = await fetch_recent_messages(client, bot_entity, result)
+
+        # If message is a command, just return the reply as is
+        if is_command:
+            if bot_reply:
+                response = {
+                    "ok": True,
+                    "sent_message": {
+                        "message_id": result.id,
+                        "date": result.date.timestamp(),
+                        "text": result.text
+                    },
+                    "bot_reply": bot_reply
+                }
+                debug_print(f"Command response prepared. Bot reply: {bot_reply.get('text', 'No text')[:50]}")
+                return response
+            else:
+                return {"error": "No reply received from bot for command."}
 
         if is_doi:
             # Handle DOI: just return the first reply
@@ -1631,6 +1652,7 @@ async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, mess
                         filtered_lines.append(line)
                 concatenated_text = "\n".join(filtered_lines)
 
+                # Only prepend this line if the original message is not "/profile"
                 concatenated_text = f"The first {reply_limit} results among {total_results} results found:\n\n" + concatenated_text
 
                 bot_reply_final = dict(bot_replies[0])
@@ -5268,8 +5290,14 @@ Examples:
   %(prog)s --check-doi 10.1038/nature12373 --download
     Check DOI availability and auto-download if available
   
-  %(prog)s --batch-check-doi dois.txt --download
+  %(prog)s --check-doi dois.txt --download
     Check multiple DOIs from file and download available papers
+
+  %(prog)s --check-doi "10.1038/nature12373,10.1126/science.abc123"
+    Check multiple DOIs by comma-separated list
+
+  %(prog)s --check-doi "10.1038/nature12373 10.1126/science.abc123"
+    Check multiple DOIs by space-separated list
   
   %(prog)s --user-info
     Get your Nexus user profile information
@@ -5345,14 +5373,13 @@ Examples:
                        help='Optional message to send with the uploaded file (use with --upload-to-nexus-aaron)')
     parser.add_argument('--solve-requests', type=int, nargs='?', const=10, metavar='LIMIT',
                        help='Reply to research requests from @nexus_aaron bot (default: 10, max: 50)')
-    parser.add_argument('--check-doi', type=str, metavar='DOI',
-                       help='Check if a paper with the specified DOI is available on Nexus (e.g., 10.1038/nature12373)')
-    parser.add_argument('--batch-check-doi', type=str, metavar='FILE_PATH',
-                       help='Check availability of multiple DOIs from a text file (one DOI per line)')
+    parser.add_argument('--check-doi', type=str, metavar='DOI_OR_LIST_OR_FILE',
+                       help='Check if a paper with the specified DOI(s) is available on Nexus. '
+                            'Accepts a single DOI, a comma/space separated list, or a file path (one DOI per line).')
     parser.add_argument('--batch-delay', type=float, default=2.0, metavar='SECONDS',
                        help='Delay between batch DOI checks to avoid rate limiting (default: 2.0 seconds)')
     parser.add_argument('--download', action='store_true',
-                       help='Automatically download papers if available (use with --check-doi or --batch-check-doi)')
+                       help='Automatically download papers if available (use with --check-doi)')
     parser.add_argument('--request-doi', type=str, metavar='DOI_OR_LIST_OR_FILE',
                        help='Request a paper by DOI, a comma/space separated list of DOIs, or a file containing DOIs (one per line)')
     
@@ -5453,7 +5480,6 @@ Examples:
     # Handle test-connection command
     if args.test_connection:
         info_print("Testing connection to Telegram servers...")
-        
         await test_telegram_connection(TG_API_ID, TG_API_HASH, PHONE, SESSION_FILE, proxy_to_use)
         return
 
@@ -5466,29 +5492,18 @@ Examples:
         if os.path.isfile(input_value):
             info_print(f"Reading DOIs from file: {input_value}")
             try:
-                with open(input_value, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line or line.startswith('#'):
-                            continue
-                        if re.match(r'^10\.\d+/.+', line):
-                            doi_list.append(line)
-                        else:
-                            info_print(f"Skipping invalid DOI in file: {line}")
+                doi_list = extract_dois_from_file(input_value)
+                if not doi_list:
+                    info_print(f"No valid DOIs found in file: {input_value}")
             except Exception as e:
-                error_print(f"Failed to read DOI file: {e}")
+                error_print(f"Failed to extract DOIs from file: {e}")
                 return
         else:
-            # Try to split by comma or whitespace
-            if ',' in input_value:
-                parts = [d.strip() for d in input_value.split(',')]
-            else:
-                parts = input_value.split()
-            for part in parts:
-                if re.match(r'^10\.\d+/.+', part):
-                    doi_list.append(part)
-                else:
-                    info_print(f"Skipping invalid DOI: {part}")
+            # Use extract_dois_from_text for comma/space separated input
+            info_print(f"Extracting DOIs from input: {input_value}")
+            doi_list = extract_dois_from_text(input_value)
+            if not doi_list:
+                info_print(f"No valid DOIs found in input: {input_value}")
 
         if not doi_list:
             error_print("No valid DOIs provided for --request-doi")
@@ -5525,88 +5540,69 @@ Examples:
                     print(f"  ✗ Error: {doi} - {res.get('error', res.get('details', 'Unknown error'))}")
         return
 
-    # Handle check-doi command
+    # Handle check-doi command (now supports single DOI, list, or file)
     if args.check_doi:
-        info_print(f"Checking DOI availability: {args.check_doi}")
-        
-        # Check if download option is enabled
-        download_enabled = args.download
-        if download_enabled:
-            info_print("Auto-download enabled - will download paper if available")
-        
-        debug_print(f"DOI to check: {args.check_doi}")
-        debug_print(f"Download enabled: {download_enabled}")
-        
-        availability_result = await check_doi_availability_on_nexus(
-            TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME, args.check_doi, SESSION_FILE, proxy_to_use, download=download_enabled
-        )
-        
-        format_doi_availability_result(availability_result)
-        
-        if "error" not in availability_result:
-            status = availability_result.get("status", "unknown")
-            if status == "available":
-                info_print("✓ DOI check completed - Paper is available on Nexus")
-                if download_enabled:
-                    download_result = availability_result.get("download_result")
-                    if download_result and download_result.get("success"):
-                        info_print("✓ Paper downloaded successfully")
-                    elif download_result and not download_result.get("success"):
-                        error_print(f"✗ Download failed: {download_result.get('error', 'Unknown error')}")
-                    elif download_enabled:
-                        info_print("ℹ️ Download was requested but no download occurred")
-            elif status == "not_available_requestable":
-                info_print("✓ DOI check completed - Paper can be requested from Nexus")
-            elif status == "not_found":
-                info_print("✓ DOI check completed - Paper not found in Nexus database")
-            else:
-                info_print(f"✓ DOI check completed - Status: {status}")
-        else:
-            error_print(f"✗ DOI check failed: {availability_result.get('error', 'Unknown error')}")
-        
-        return
-    
-    # Handle batch-check-doi command
-    if args.batch_check_doi:
-        info_print(f"Batch checking DOIs from file: {args.batch_check_doi}")
-        
-        # Check if download option is enabled
-        download_enabled = args.download
-        if download_enabled:
-            info_print("Auto-download enabled - will download available papers")
-        
-        # Validate file exists
-        if not os.path.exists(args.batch_check_doi):
-            error_print(f"DOI file not found: {args.batch_check_doi}")
+        input_value = args.check_doi.strip()
+        doi_list = []
+
+        # Check if input is a file path
+        if os.path.isfile(input_value):
+            info_print(f"Reading DOIs from file: {input_value}")
+            try:
+                doi_list = extract_dois_from_file(input_value)
+                if not doi_list:
+                    info_print(f"No valid DOIs found in file: {input_value}")
+            except Exception as e:
+                error_print(f"Failed to extract DOIs from file: {e}")
             return
-        
-        # Read DOIs from file
-        try:
-            with open(args.batch_check_doi, 'r', encoding='utf-8') as f:
-                doi_lines = f.readlines()
-            
-            # Process DOIs - clean and filter
-            doi_list = []
-            for line_num, line in enumerate(doi_lines, 1):
-                line = line.strip()
-                # Skip empty lines and comments
-                if not line or line.startswith('#'):
-                    continue
-                
-                # Basic DOI validation
-                if re.match(r'^10\.\d+/.+', line):
-                    doi_list.append(line)
-                    debug_print(f"Added DOI from line {line_num}: {line}")
-                else:
-                    info_print(f"Skipping invalid DOI on line {line_num}: {line}")
-            
+        else:
+            # Use extract_dois_from_text for comma/space separated input
+            info_print(f"Extracting DOIs from input: {input_value}")
+            doi_list = extract_dois_from_text(input_value)
             if not doi_list:
-                error_print("No valid DOIs found in the file")
-                return
-            
-            info_print(f"Found {len(doi_list)} valid DOIs to check")
-            
-            # Validate batch delay
+                info_print(f"No valid DOIs found in input: {input_value}")
+
+        if not doi_list:
+            error_print("No valid DOIs provided for --check-doi")
+            return
+
+        download_enabled = args.download
+        if download_enabled:
+            info_print("Auto-download enabled - will download paper(s) if available")
+
+        # If only one DOI, do single check
+        if len(doi_list) == 1:
+            info_print(f"Checking DOI availability: {doi_list[0]}")
+            debug_print(f"DOI to check: {doi_list[0]}")
+            debug_print(f"Download enabled: {download_enabled}")
+            availability_result = await check_doi_availability_on_nexus(
+                TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME, doi_list[0], SESSION_FILE, proxy_to_use, download=download_enabled
+            )
+            format_doi_availability_result(availability_result)
+            if "error" not in availability_result:
+                status = availability_result.get("status", "unknown")
+                if status == "available":
+                    info_print("✓ DOI check completed - Paper is available on Nexus")
+                    if download_enabled:
+                        download_result = availability_result.get("download_result")
+                        if download_result and download_result.get("success"):
+                            info_print("✓ Paper downloaded successfully")
+                        elif download_result and not download_result.get("success"):
+                            error_print(f"✗ Download failed: {download_result.get('error', 'Unknown error')}")
+                        elif download_enabled:
+                            info_print("ℹ️ Download was requested but no download occurred")
+                elif status == "not_available_requestable":
+                    info_print("✓ DOI check completed - Paper can be requested from Nexus")
+                elif status == "not_found":
+                    info_print("✓ DOI check completed - Paper not found in Nexus database")
+                else:
+                    info_print(f"✓ DOI check completed - Status: {status}")
+            else:
+                error_print(f"✗ DOI check failed: {availability_result.get('error', 'Unknown error')}")
+            return
+        else:
+            # Batch check
+            info_print(f"Batch checking {len(doi_list)} DOIs...")
             batch_delay = args.batch_delay
             if batch_delay < 0.5:
                 batch_delay = 0.5
@@ -5614,48 +5610,33 @@ Examples:
             elif batch_delay > 10:
                 batch_delay = 10
                 info_print("Batch delay adjusted to maximum of 10 seconds")
-            
             info_print(f"Using batch delay of {batch_delay} seconds between requests")
             debug_print(f"Download enabled for batch: {download_enabled}")
-            
-            # Perform batch check with download option
             batch_result = await batch_check_doi_availability(
-                TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME, doi_list, 
+                TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME, doi_list,
                 SESSION_FILE, proxy_to_use, batch_delay, download=download_enabled
             )
-            
-            # Display results
             format_batch_doi_results(batch_result)
-            
             if "error" not in batch_result:
                 summary = batch_result.get("summary", {})
                 available_count = batch_result.get("available", 0)
                 total_dois = batch_result.get("total_dois", 0)
-                
                 info_print(f"✓ Batch DOI check completed: {available_count}/{total_dois} papers available on Nexus")
                 info_print(f"Success rate: {summary.get('success_rate', 0):.1f}%")
-                
-                # Show download statistics if download was enabled
                 if download_enabled:
                     downloaded_count = batch_result.get("downloaded", 0)
                     download_errors = batch_result.get("download_errors", 0)
                     info_print(f"Download results: {downloaded_count} successful, {download_errors} failed")
-                    
                     if downloaded_count > 0:
                         total_downloaded_mb = summary.get("total_downloaded_mb", 0)
                         info_print(f"Total downloaded: {total_downloaded_mb:.2f} MB")
             else:
                 error_print(f"✗ Batch DOI check failed: {batch_result.get('error', 'Unknown error')}")
-            
-        except Exception as e:
-            error_print(f"Error reading DOI file: {str(e)}")
-            debug_print(f"File reading exception: {type(e).__name__}: {str(e)}")
-        
-        return
-    
+            return
+
     # Validate --download flag usage
     if args.download:
-        info_print("⚠️ Warning: --download flag is only effective when used with --check-doi or --batch-check-doi")
+        info_print("⚠️ Warning: --download flag is only effective when used with --check-doi")
         debug_print("Download flag specified but no compatible command found")
     
     # Handle fetch-nexus-aaron command

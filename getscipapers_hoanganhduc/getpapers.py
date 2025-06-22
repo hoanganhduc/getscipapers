@@ -1582,13 +1582,13 @@ async def download_from_unpaywall(
     # Try Elsevier API first if DOI is Elsevier
     if is_elsevier_doi(doi):
         print(f"DOI {doi} appears to be an Elsevier article. Attempting Elsevier Full-Text API download before Unpaywall...")
-        if await download_elsevier_pdf_by_doi(doi=doi, download_folder=download_folder):
+        if await download_elsevier_pdf_by_doi(doi=doi, download_folder=download_folder, api_key=ELSEVIER_API_KEY):
             return True
 
     # Try Wiley API first if DOI is Wiley
     if is_wiley_doi(doi):
         print(f"DOI {doi} appears to be a Wiley article. Attempting Wiley TDM API download before Unpaywall...")
-        if await download_wiley_pdf_by_doi(doi, download_folder):
+        if await download_wiley_pdf_by_doi(doi, download_folder, tdm_token=WILEY_TDM_TOKEN):
             return True
 
     try:
@@ -2001,7 +2001,7 @@ async def download_by_doi(doi: str, download_folder: str = ".", db: str = "all",
     # Special handling for Elsevier and Wiley DOIs
     if is_elsevier_doi(doi):
         print(f"DOI {doi} appears to be an Elsevier article. Attempting Elsevier Full-Text API download...")
-        if await download_elsevier_pdf_by_doi(doi=doi, download_folder=download_folder):
+        if await download_elsevier_pdf_by_doi(doi=doi, download_folder=download_folder, api_key=ELSEVIER_API_KEY):
             print(f"\nDownload Summary:")
             print(f"Successfully downloaded: 1 PDF")
             print(f"  ✓ {doi} [{oa_status_text}]")
@@ -2010,7 +2010,7 @@ async def download_by_doi(doi: str, download_folder: str = ".", db: str = "all",
 
     if is_wiley_doi(doi):
         print(f"DOI {doi} appears to be a Wiley article. Attempting Wiley TDM API download...")
-        if await download_wiley_pdf_by_doi(doi, download_folder):
+        if await download_wiley_pdf_by_doi(doi, download_folder, tdm_token=WILEY_TDM_TOKEN):
             print(f"\nDownload Summary:")
             print(f"Successfully downloaded: 1 PDF")
             print(f"  ✓ {doi} [{oa_status_text}]")
