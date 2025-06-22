@@ -13,9 +13,20 @@ RUN apt-get update && apt-get install -y \
 	git \
 	curl \
 	wget \
+	procps \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Install IPFS Kubo
+# Expose default IPFS ports
+EXPOSE 4001 4001/udp 5001 8080
+
+# Create a non-root user and group
+RUN adduser --system --group --home /home/getscipaper --uid 1000 getscipaper
+
+# Ensure /home/getscipaper and /home/getscipaper/.ipfs are owned by getscipaper
+RUN mkdir -p /home/getscipaper/.ipfs && chown -R getscipaper:getscipaper /home/getscipaper
+
+# Download and install IPFS Kubo
 RUN wget https://dist.ipfs.tech/kubo/v0.35.0/kubo_v0.35.0_linux-amd64.tar.gz \
 	&& tar -xvzf kubo_v0.35.0_linux-amd64.tar.gz \
 	&& cd kubo \
@@ -35,9 +46,17 @@ RUN git clone https://github.com/hoanganhduc/getscipapers.git . \
 	&& find . -type d -name __pycache__ -exec rm -rf {} + \
 	&& find . -type f -name "*.pyc" -delete
 
-# Create startup script
-RUN echo '#!/bin/bash\nipfs daemon --init &\nexec "$@"\n' > /entrypoint.sh \
-	&& chmod +x /entrypoint.sh
+# Copy custom entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-ENTRYPOINT ["bash", "/entrypoint.sh"]
-CMD [ "getscipapers", "--help" ]
+# Switch to non-root user for initialization
+USER getscipaper
+WORKDIR /home/getscipaper
+
+# Set IPFS_PATH environment variable
+ENV IPFS_PATH /home/getscipaper/.ipfs
+
+# Entrypoint and default command
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["bash"]
