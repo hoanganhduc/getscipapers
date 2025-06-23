@@ -17,6 +17,9 @@ RUN apt-get update && \
 	  procps && \
 	rm -rf /var/lib/apt/lists/*
 
+# Create a non-root user and group
+RUN adduser --system --group --home /home/getscipaper --uid 1000 getscipaper
+
 # Clone and install getscipapers
 WORKDIR /app
 RUN git clone https://github.com/hoanganhduc/getscipapers.git . && \
@@ -28,6 +31,10 @@ RUN git clone https://github.com/hoanganhduc/getscipapers.git . && \
 	rm -rf build/ dist/ *.egg-info/ && \
 	find . -type d -name __pycache__ -exec rm -rf {} + && \
 	find . -type f -name "*.pyc" -delete
+
+# Switch to non-root user for initialization
+USER getscipaper
+WORKDIR /home/getscipaper
 
 # Keep the container running
 CMD ["tail", "-f", "/dev/null"]
