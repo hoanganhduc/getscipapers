@@ -17,19 +17,6 @@ RUN apt-get update && \
 	  procps && \
 	rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user and group
-RUN adduser --system --group --home /home/getscipaper --uid 1000 getscipaper
-
-# Ensure /home/getscipaper and /home/getscipaper/.ipfs are owned by getscipaper
-RUN mkdir -p /home/getscipaper/.ipfs && \
-	chown -R getscipaper:getscipaper /home/getscipaper
-
-# Download and install IPFS Kubo
-RUN wget -q https://dist.ipfs.tech/kubo/v0.35.0/kubo_v0.35.0_linux-amd64.tar.gz && \
-	tar -xzf kubo_v0.35.0_linux-amd64.tar.gz && \
-	cd kubo && ./install.sh && cd .. && \
-	rm -rf kubo kubo_v0.35.0_linux-amd64.tar.gz
-
 # Clone and install getscipapers
 WORKDIR /app
 RUN git clone https://github.com/hoanganhduc/getscipapers.git . && \
@@ -41,12 +28,5 @@ RUN git clone https://github.com/hoanganhduc/getscipapers.git . && \
 	rm -rf build/ dist/ *.egg-info/ && \
 	find . -type d -name __pycache__ -exec rm -rf {} + && \
 	find . -type f -name "*.pyc" -delete
-
-# Switch to non-root user for initialization
-USER getscipaper
-WORKDIR /home/getscipaper
-
-# Set IPFS_PATH environment variable
-ENV IPFS_PATH=/home/getscipaper/.ipfs
 
 CMD [ "bash" ]
