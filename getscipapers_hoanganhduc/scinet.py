@@ -6306,6 +6306,27 @@ def validate_arguments(args, parser):
     if getattr(args, "print_default", False):
         return
 
+    # Allow --credentials to be used alone
+    if getattr(args, "credentials", None) and sum([
+        bool(args.pdf), 
+        bool(args.request_doi), 
+        args.get_active_requests is not None, 
+        bool(args.get_fulfilled_requests),
+        bool(args.accept_fulfilled_requests),
+        bool(args.reject_fulfilled_requests),
+        bool(args.accept_fulfilled_doi),
+        bool(args.reject_fulfilled_doi),
+        args.solve_active_requests is not None,
+        args.cancel_waiting_requests is not None,
+        args.get_unsolved_requests is not None,
+        args.cancel_unsolved_requests is not None,
+        bool(args.cancel_unsolved_doi),
+        bool(args.solve_doi),
+        args.get_uploaded_files is not None,
+        bool(getattr(args, "user_info", False))
+    ]) == 0:
+        return
+
     if bool(args.solve_doi) != bool(args.solve_pdf):
         parser.error("--solve-doi and --solve-pdf must be used together")
     
@@ -6329,10 +6350,10 @@ def validate_arguments(args, parser):
     ]
     
     if not any(valid_options):
-        parser.error("One of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), --get-uploaded-files, --user-info, or --print-default must be specified")
+        parser.error("One of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), --get-uploaded-files, --user-info, --credentials, or --print-default must be specified")
     
     if sum(valid_options) > 1:
-        parser.error("Only one of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), --get-uploaded-files, --user-info, or --print-default can be specified at a time")
+        parser.error("Only one of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), --get-uploaded-files, --user-info, --credentials, or --print-default can be specified at a time")
 
 def main():
     # Get the parent package name from the module's __name__

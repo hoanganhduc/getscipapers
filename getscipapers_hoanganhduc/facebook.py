@@ -2150,6 +2150,12 @@ Examples:
         if args.credentials:
             if not scraper.load_credentials(args.credentials):
                 print_and_log("⚠️ Could not load credentials from specified file")
+            else:
+                print_and_log("✅ Credentials loaded successfully")
+                # If only --credentials (and maybe --verbose) are specified, exit after loading
+                other_args = [a for a in vars(args) if getattr(args, a) and a not in ("credentials", "verbose", "log", "no_headless", "print_default", "clear_cache")]
+                if not other_args:
+                    return
         
         # Setup and login
         scraper.initialize_driver()

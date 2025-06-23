@@ -2203,6 +2203,19 @@ async def load_credentials_from_file(credentials_path):
         # Validate credentials
         # Try testing credentials without proxy first
         test_result = await test_credentials(TG_API_ID, TG_API_HASH, PHONE)
+        if not os.path.exists(DEFAULT_PROXY_FILE):
+            info_print(f"Proxy file not found: {DEFAULT_PROXY_FILE}")
+            info_print("Attempting to find a suitable free proxy...")
+            working_proxy = await test_and_select_working_proxy()
+            if working_proxy:
+                info_print("✓ Found and configured a working proxy")
+            else:
+                error_print("Could not find a working proxy for Telegram")
+                error_print("You can either:")
+                error_print("1. Try running again (will test different proxies)")
+                error_print("2. Run with --no-proxy to connect directly")
+                error_print("3. Provide a custom proxy configuration file")
+                return None
         if not test_result.get("ok") and os.path.exists(DEFAULT_PROXY_FILE):
             info_print("Credential test failed without proxy, retrying with proxy...")
             test_result = await test_credentials(TG_API_ID, TG_API_HASH, PHONE, proxy=DEFAULT_PROXY_FILE)
@@ -5539,45 +5552,51 @@ Examples:
         print_default_paths()
         sys.exit(0)
     
-    # Handle clear-proxy command
-    if args.clear_proxy:
-        info_print("Clearing proxy configuration files...")
-        proxy_files_to_clear = [
-            DEFAULT_PROXY_FILE,
-            DEFAULT_PROXY_FILE.replace('.json', '_list.json')
+    # Handle clear-proxy and clear-credentials commands
+    if args.clear_proxy or args.clear_credentials:
+        # Only allow these options if no other actionable arguments are specified
+        actionable_args = [
+            args.create_session, args.search, args.user_info, args.check_doi, args.request_doi,
+            args.fetch_nexus_aaron, args.upload_to_nexus_aaron, args.solve_requests,
+            args.test_connection
         ]
-        
-        cleared_count = 0
-        for proxy_file in proxy_files_to_clear:
-            if os.path.exists(proxy_file):
-                try:
-                    os.remove(proxy_file)
-                    info_print(f"✓ Removed proxy file: {proxy_file}")
-                    cleared_count += 1
-                except Exception as e:
-                    error_print(f"✗ Failed to remove proxy file {proxy_file}: {e}")
+        if any(actionable_args):
+            error_print("--clear-proxy and --clear-credentials can only be used alone or together, not with other options.")
+            return
+
+        if args.clear_proxy:
+            info_print("Clearing proxy configuration files...")
+            proxy_files_to_clear = [
+                DEFAULT_PROXY_FILE,
+                DEFAULT_PROXY_FILE.replace('.json', '_list.json')
+            ]
+            cleared_count = 0
+            for proxy_file in proxy_files_to_clear:
+                if os.path.exists(proxy_file):
+                    try:
+                        os.remove(proxy_file)
+                        info_print(f"✓ Removed proxy file: {proxy_file}")
+                        cleared_count += 1
+                    except Exception as e:
+                        error_print(f"✗ Failed to remove proxy file {proxy_file}: {e}")
+                else:
+                    debug_print(f"Proxy file does not exist: {proxy_file}")
+            if cleared_count > 0:
+                info_print(f"Successfully cleared {cleared_count} proxy configuration files")
             else:
-                debug_print(f"Proxy file does not exist: {proxy_file}")
-        
-        if cleared_count > 0:
-            info_print(f"Successfully cleared {cleared_count} proxy configuration files")
-        else:
-            info_print("No proxy configuration files found to clear")
-        return
-    
-    # Handle clear-credentials command
-    if args.clear_credentials:
-        info_print("Clearing credentials configuration file...")
-        
-        if os.path.exists(CREDENTIALS_FILE):
-            try:
-                os.remove(CREDENTIALS_FILE)
-                info_print(f"✓ Removed credentials file: {CREDENTIALS_FILE}")
-                info_print("Credentials cleared successfully")
-            except Exception as e:
-                error_print(f"✗ Failed to remove credentials file: {e}")
-        else:
-            info_print("No credentials file found to clear")
+                info_print("No proxy configuration files found to clear")
+
+        if args.clear_credentials:
+            info_print("Clearing credentials configuration file...")
+            if os.path.exists(CREDENTIALS_FILE):
+                try:
+                    os.remove(CREDENTIALS_FILE)
+                    info_print(f"✓ Removed credentials file: {CREDENTIALS_FILE}")
+                    info_print("Credentials cleared successfully")
+                except Exception as e:
+                    error_print(f"✗ Failed to remove credentials file: {e}")
+            else:
+                info_print("No credentials file found to clear")
         return
     
     # Load credentials if specified, otherwise try default location
