@@ -2203,6 +2203,19 @@ async def load_credentials_from_file(credentials_path):
         # Validate credentials
         # Try testing credentials without proxy first
         test_result = await test_credentials(TG_API_ID, TG_API_HASH, PHONE)
+        if not os.path.exists(DEFAULT_PROXY_FILE):
+            info_print(f"Proxy file not found: {DEFAULT_PROXY_FILE}")
+            info_print("Attempting to find a suitable free proxy...")
+            working_proxy = await test_and_select_working_proxy()
+            if working_proxy:
+                info_print("✓ Found and configured a working proxy")
+            else:
+                error_print("Could not find a working proxy for Telegram")
+                error_print("You can either:")
+                error_print("1. Try running again (will test different proxies)")
+                error_print("2. Run with --no-proxy to connect directly")
+                error_print("3. Provide a custom proxy configuration file")
+                return None
         if not test_result.get("ok") and os.path.exists(DEFAULT_PROXY_FILE):
             info_print("Credential test failed without proxy, retrying with proxy...")
             test_result = await test_credentials(TG_API_ID, TG_API_HASH, PHONE, proxy=DEFAULT_PROXY_FILE)

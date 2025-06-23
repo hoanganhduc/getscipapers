@@ -2222,12 +2222,16 @@ async def main():
     global VERBOSE
     VERBOSE = args.verbose
 
-    # Override GETPAPERS_CONFIG_FILE if custom config is specified
-    if args.config:
-        GETPAPERS_CONFIG_FILE = os.path.abspath(args.config)
+    # Config file
+    config_file = args.config if args.config else GETPAPERS_CONFIG_FILE
 
     # Load credentials from config file
-    load_credentials()
+    load_credentials(config_file)
+
+    # If only --config is specified, exit after loading credentials
+    if args.config and not (args.doi or args.doi_file or args.search):
+        print(f"Loaded credentials from config file: {config_file}")
+        sys.exit(0)
 
     if args.doi:
         await download_by_doi(args.doi, download_folder=args.download_folder, db=args.db, no_download=args.no_download)
