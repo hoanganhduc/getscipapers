@@ -6,7 +6,7 @@ if [ ! -d "$IPFS_PATH/config" ]; then
 fi
 
 # Start IPFS daemon quietly in the background
-ipfs daemon --init > /dev/null 2>&1 &
+ipfs daemon > /dev/null 2>&1 &
 # Wait briefly to ensure daemon starts
 sleep 2
 
