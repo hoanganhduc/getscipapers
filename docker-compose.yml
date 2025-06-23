@@ -1,0 +1,16 @@
+services:
+  getscipapers:
+    image: ghcr.io/hoanganhduc/getscipapers:latest
+    container_name: getscipapers
+    volumes:
+      # Mount the root folder that contains .git
+      - .:/workspace
+    command: ["sleep", "infinity"]
+
+  ipfskubo:
+    image: ipfs/kubo:latest
+    container_name: ipfskubo
+    volumes:
+      # Mount the root folder that contains .git
+      - .:/workspace
+    command: ["sleep", "infinity"]
