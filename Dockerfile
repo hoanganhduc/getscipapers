@@ -59,4 +59,3 @@ ENV IPFS_PATH /home/getscipaper/.ipfs
 
 # Entrypoint and default command
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["bash"]

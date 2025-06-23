@@ -15,6 +15,3 @@ if ! ps aux | grep -v grep | grep "ipfs daemon" > /dev/null; then
     echo "Error: IPFS daemon failed to start"
     exit 1
 fi
-
-# Execute the provided command (e.g., bash or getscipapers)
-exec "$@"
