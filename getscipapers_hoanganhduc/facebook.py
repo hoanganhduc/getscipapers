@@ -27,6 +27,9 @@ import asyncio
 import json
 import datetime
 import os
+import shutil
+import sys
+import getpass
 
 USERNAME = "" # Replace with your Facebook username
 PASSWORD = "" # Replace with your Facebook password
@@ -38,16 +41,16 @@ def get_app_directories():
     
     if system == "Windows":
         # Use AppData/Local directory on Windows
-        cache_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'FacebookScraper')
-        download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', 'FacebookScraper')
+        cache_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'getscipapers', 'facebook')
+        download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', 'getscipapers', 'facebook')
     elif system == "Darwin":  # macOS
         # Use ~/Library/Caches directory on macOS for cache, Downloads for downloads
-        cache_dir = os.path.join(os.path.expanduser('~'), 'Library', 'Caches', 'FacebookScraper')
-        download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', 'FacebookScraper')
+        cache_dir = os.path.join(os.path.expanduser('~'), 'Library', 'Caches', 'getscipapers', 'facebook')
+        download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', 'getscipapers', 'facebook')
     else:  # Linux and other Unix-like systems
-        # Use ~/.cache directory on Linux for cache, Downloads for downloads
-        cache_dir = os.path.join(os.environ.get('XDG_CACHE_HOME', os.path.expanduser('~/.cache')), 'FacebookScraper')
-        download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', 'FacebookScraper')
+        # Use ~/.config directory on Linux for cache, Downloads for downloads
+        cache_dir = os.path.join(os.path.expanduser('~'), '.config', 'getscipapers', 'facebook')
+        download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', 'getscipapers', 'facebook')
     
     # Create the directories if they don't exist
     os.makedirs(cache_dir, exist_ok=True)
@@ -253,6 +256,68 @@ class FacebookScraper:
         self.log("Performing fresh login...")
         self.log("Navigating to Facebook login page...")
         self.driver.get("https://www.facebook.com/login")
+
+        # Prompt for email and password if not provided
+        if not self.email or not self.password:
+            def get_input_with_timeout(prompt, timeout=30):
+                if platform.system() == "Windows":
+                    print(prompt, end='', flush=True)
+                    start_time = time.time()
+                    input_chars = []
+                    while True:
+                        if msvcrt.kbhit():
+                            char = msvcrt.getch()
+                            if char == b'\r':
+                                print()
+                                return ''.join(input_chars)
+                            elif char == b'\x08':
+                                if input_chars:
+                                    input_chars.pop()
+                                    print('\b \b', end='', flush=True)
+                            else:
+                                try:
+                                    decoded_char = char.decode('utf-8')
+                                    input_chars.append(decoded_char)
+                                    print(decoded_char, end='', flush=True)
+                                except UnicodeDecodeError:
+                                    pass
+                        if time.time() - start_time > timeout:
+                            print(f"\n⏰ Timeout: No response received within {timeout} seconds.")
+                            return None
+                        time.sleep(0.1)
+                else:
+                    def alarm_handler(signum, frame):
+                        raise TimeoutError()
+                    try:
+                        signal.signal(signal.SIGALRM, alarm_handler)
+                        signal.alarm(timeout)
+                        result = input(prompt)
+                        signal.alarm(0)
+                        return result
+                    except (TimeoutError, KeyboardInterrupt):
+                        signal.alarm(0)
+                        print(f"\n⏰ Timeout: No response received within {timeout} seconds.")
+                        return None
+
+            if not self.email:
+                self.email = get_input_with_timeout("Enter your Facebook email/username: ")
+                if not self.email:
+                    self.log("❌ Login failed: No email provided (timeout or empty input)")
+                    print("❌ Login failed: No email provided (timeout or empty input)")
+                    raise Exception("Login failed: No email provided")
+            if not self.password:
+                if platform.system() == "Windows":
+                    # getpass does not support timeout, so use fallback
+                    self.password = get_input_with_timeout("Enter your Facebook password: ")
+                else:
+                    try:
+                        self.password = getpass.getpass("Enter your Facebook password: ")
+                    except Exception:
+                        self.password = get_input_with_timeout("Enter your Facebook password: ")
+                if not self.password:
+                    self.log("❌ Login failed: No password provided (timeout or empty input)")
+                    print("❌ Login failed: No password provided (timeout or empty input)")
+                    raise Exception("Login failed: No password provided")
         
         # Enter email
         self.log("Looking for email input field...")
@@ -1788,6 +1853,13 @@ class FacebookScraper:
         else:
             self.log(f"❌ Failed to post help request for DOIs to group {group_id}")
         return [(doi, success) for doi in dois]
+    
+    def print_default_paths():
+        """Print all default cache and download directory paths."""
+        print("Default Facebook Scraper Paths:")
+        print(f"  Cache directory: {_CACHE_DIR}")
+        print(f"  Download folder: {_DOWNLOAD_DIR}")
+        print(f"  Cache file: {CACHE_FILE}")
 
     def close(self):
         """Close the browser"""
@@ -1795,7 +1867,6 @@ class FacebookScraper:
         if self.driver:
             self.driver.quit()
             self.log("Browser closed successfully")
-
 
 def main():
     """Main function to handle command line arguments and execute Facebook scraper operations"""
@@ -1943,8 +2014,29 @@ Examples:
                        help='Request help for DOI(s): provide a DOI, comma-separated DOIs, or a file containing DOIs (one per line)')
     parser.add_argument('--request-in-group', '-rg', nargs='?', const='188053074599163', type=str, 
                        help='Group ID to post DOI help requests in (default: 188053074599163)')
+    parser.add_argument('--clear-cache', action='store_true',
+                       help='Delete the default cache directory and exit')
+    parser.add_argument('--print-default', action='store_true',
+                       help='Print default cache and download directory paths and exit')
     args = parser.parse_args()
     
+    # Handle --print-default before anything else
+    if args.print_default:
+        FacebookScraper.print_default_paths()
+        return
+
+    # Handle --clear-cache before anything else
+    if args.clear_cache:
+        try:
+            if os.path.exists(_CACHE_DIR):
+                shutil.rmtree(_CACHE_DIR)
+                print(f"✅ Cache directory deleted: {_CACHE_DIR}")
+            else:
+                print(f"ℹ️ Cache directory does not exist: {_CACHE_DIR}")
+        except Exception as e:
+            print(f"❌ Error deleting cache directory: {e}")
+        return
+
     # Setup logging file if specified
     log_file = None
     if args.log:
@@ -2239,7 +2331,5 @@ Examples:
             except Exception as e:
                 print(f"❌ Error closing log file: {e}")
 
-
-# Example usage
 if __name__ == "__main__":
     main()

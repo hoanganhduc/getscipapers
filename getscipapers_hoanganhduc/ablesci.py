@@ -26,14 +26,14 @@ def get_cache_directory():
     """Get the appropriate directory for storing cache based on the operating system."""
     system = platform.system()
     if system == "Windows":
-        # Use %APPDATA% on Windows
-        return os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'ablesci')
+        # Use %APPDATA%\getscipapers\ablesci on Windows
+        return os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'getscipapers', 'ablesci')
     elif system == "Darwin":  # macOS
-        # Use ~/Library/Application Support on macOS
-        return os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', 'ablesci')
+        # Use ~/Library/Application Support/getscipapers/ablesci on macOS
+        return os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', 'getscipapers', 'ablesci')
     else:  # Linux and other Unix-like systems
-        # Use ~/.config on Linux
-        return os.path.join(os.path.expanduser('~'), '.config', 'ablesci')
+        # Use ~/.config/getscipapers/ablesci on Linux
+        return os.path.join(os.path.expanduser('~'), '.config', 'getscipapers', 'ablesci')
 
 # Create the cache directory if it doesn't exist
 cache_dir = get_cache_directory()
@@ -2389,6 +2389,12 @@ def interactive_upload_to_active_requests(headless=True):
     else:
         print("Failed to upload file.")
 
+def print_default_paths():
+    print("Default paths and settings:")
+    print(f"  Cache directory: {cache_dir}")
+    print(f"  Cache file: {CACHE_FILE}")
+    print(f"  Credentials file: {CREDENTIALS_FILE}")
+
 def main():
     global verbose
     # Get the parent package name from the module's __name__
@@ -2416,7 +2422,12 @@ def main():
     parser.add_argument('--no-headless', action='store_true', help='Run browser in graphic mode')
     parser.add_argument('--request-doi', type=str, metavar='DOI|FILE', help='Specify a DOI, a space/comma separated list of DOIs, or a path to a txt file containing DOIs (one per line)')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose debug output')
-    parser.add_argument('--credentials', type=str, metavar='FILE', help='Path to JSON file containing login credentials')
+    parser.add_argument(
+        '--credentials',
+        type=str,
+        metavar='FILE',
+        help='Path to JSON file containing login credentials (format: {"ablesci_username": "...", "ablesci_password": "..."})'
+    )
     parser.add_argument('--get-waiting-requests', action='store_true', help='Fetch all waiting requests which you made and not yet fulfilled')
     parser.add_argument('--get-fulfilled-requests', action='store_true', help='Fetch all fulfilled requests which you made and fulfilled by others')
     parser.add_argument('--cancel-waiting-requests', action='store_true', help='Interactively cancel waiting requests which you made')
@@ -2428,6 +2439,7 @@ def main():
     parser.add_argument('--solve-active-request', type=str, metavar='URL', help='Upload a file to solve a single active request by specifying its detail URL')
     parser.add_argument('--solve-active-requests', type=int, nargs='?', const=10, metavar='LIMIT', help='Interactively select and solve active requests by uploading files (optional limit, default: 10)')
     parser.add_argument('--clear-cache', action='store_true', help='Clear cache before running')
+    parser.add_argument('--print-default', action='store_true', help='Print default paths and settings')
     args = parser.parse_args()
 
     # Validate argument conflicts
@@ -2439,6 +2451,11 @@ def main():
 
     debug_print(f"Verbose mode: {verbose}")
     debug_print(f"Headless mode: {headless}")
+
+    # Print default paths and settings if requested
+    if args.print_default:
+        print_default_paths()
+        return
 
     # Clear cache if requested
     if args.clear_cache:

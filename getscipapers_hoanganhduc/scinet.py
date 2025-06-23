@@ -25,36 +25,55 @@ import sys
 USERNAME = ""  # Replace with your actual username/email
 PASSWORD = ""  # Replace with your actual password
 
-# Cache configuration
+# Cache and download configuration
 def get_cache_directory():
-    """Get the appropriate cache directory for the current platform"""
+    """Get the appropriate cache directory for the current platform, using getscipapers/scinet subfolder"""
     system = platform.system()
-    
+    subfolder = os.path.join('getscipapers', 'scinet')
+
     if system == "Windows":
         # Use %APPDATA% on Windows
         appdata = os.environ.get('APPDATA')
         if appdata:
-            cache_dir = os.path.join(appdata, 'scinet')
+            cache_dir = os.path.join(appdata, subfolder)
         else:
             # Fallback to user home directory
-            cache_dir = os.path.join(os.path.expanduser('~'), 'AppData', 'Roaming', 'scinet')
+            cache_dir = os.path.join(os.path.expanduser('~'), 'AppData', 'Roaming', subfolder)
     elif system == "Darwin":  # macOS
         # Use ~/Library/Caches on macOS
-        cache_dir = os.path.join(os.path.expanduser('~'), 'Library', 'Caches', 'scinet')
+        cache_dir = os.path.join(os.path.expanduser('~'), 'Library', 'Caches', subfolder)
     else:  # Linux and other Unix-like systems
-        # Use XDG_CACHE_HOME or ~/.cache on Linux
-        xdg_cache = os.environ.get('XDG_CACHE_HOME')
-        if xdg_cache:
-            cache_dir = os.path.join(xdg_cache, 'scinet')
-        else:
-            cache_dir = os.path.join(os.path.expanduser('~'), '.cache', 'scinet')
-    
+        # Use ~/.config on Linux
+        cache_dir = os.path.join(os.path.expanduser('~'), '.config', subfolder)
     # Create cache directory if it doesn't exist
     os.makedirs(cache_dir, exist_ok=True)
     return cache_dir
 
+def get_download_directory():
+    """Get the default download directory for the current platform, using getscipapers/scinet_downloads subfolder"""
+    system = platform.system()
+    subfolder = os.path.join('getscipapers', 'scinet')
+
+    if system == "Windows":
+        # Use %USERPROFILE%\Downloads on Windows
+        userprofile = os.environ.get('USERPROFILE')
+        if userprofile:
+            download_dir = os.path.join(userprofile, 'Downloads', subfolder)
+        else:
+            download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', subfolder)
+    elif system == "Darwin":  # macOS
+        # Use ~/Downloads on macOS
+        download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', subfolder)
+    else:  # Linux and other Unix-like systems
+        # Use ~/Downloads on Linux
+        download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', subfolder)
+    # Create download directory if it doesn't exist
+    os.makedirs(download_dir, exist_ok=True)
+    return download_dir
+
 CACHE_FILE = os.path.join(get_cache_directory(), "scinet_cache.pkl")
 CACHE_DURATION_HOURS = 24  # Cache validity in hours
+DEFAULT_DOWNLOAD_DIR = get_download_directory()
 
 # Log configuration
 LOG_FILE = "scinet.log"
@@ -192,32 +211,17 @@ def get_pdf_files_from_directory(directory_path, recursive=False):
     return pdf_files
 
 def save_login_cache(driver, username):
-    """Save browser cookies and session data to cache file for all users"""
+    """Save browser cookies and session data to cache file for the single user (no multi-user support)"""
     try:
-        # Load existing cache data if it exists
-        cache_data_all = {}
-        if os.path.exists(CACHE_FILE):
-            try:
-                with open(CACHE_FILE, 'rb') as f:
-                    cache_data_all = pickle.load(f)
-            except Exception as e:
-                debug_print(f"Failed to load existing cache: {str(e)}")
-                cache_data_all = {}
-        
-        # Create or update cache data for this username
-        cache_data_all[username] = {
+        cache_data = {
             'cookies': driver.get_cookies(),
             'timestamp': datetime.now(),
-            'user_agent': driver.execute_script("return navigator.userAgent;")
+            'user_agent': driver.execute_script("return navigator.userAgent;"),
+            'username': username
         }
-        
-        # Save updated cache data
         with open(CACHE_FILE, 'wb') as f:
-            pickle.dump(cache_data_all, f)
-        
-        # Set file permissions to be readable/writable only by owner (600)
+            pickle.dump(cache_data, f)
         os.chmod(CACHE_FILE, stat.S_IRUSR | stat.S_IWUSR)
-        
         debug_print(f"Login cache saved successfully for user: {username}")
         return True
     except Exception as e:
@@ -225,94 +229,33 @@ def save_login_cache(driver, username):
         return False
 
 def load_login_cache():
-    """Load cached login data for current user if valid"""
-    global USERNAME
-    
+    """Load cached login data for the single user (no multi-user support)"""
     try:
         if not os.path.exists(CACHE_FILE):
             debug_print("No login cache file found")
             return None
-        
+
         with open(CACHE_FILE, 'rb') as f:
-            cache_data_all = pickle.load(f)
-        
-        # If USERNAME is not set, ask user for username
-        if not USERNAME or USERNAME.strip() == "":
-            def timeout_handler(signum, frame):
-                print("\nTimeout: No username entered within 30 seconds. Login by cache fails.")
-                raise TimeoutError("Username input timeout")
-            
-            try:
-                print("Username not set. Please enter your username for cache lookup:")
-                
-                # Set up timeout signal (only on Unix-like systems)
-                if hasattr(signal, 'SIGALRM'):
-                    signal.signal(signal.SIGALRM, timeout_handler)
-                    signal.alarm(30)  # 30 second timeout
-                
-                USERNAME = input("Username: ").strip()
-                
-                # Cancel the alarm (only on Unix-like systems)
-                if hasattr(signal, 'alarm'):
-                    signal.alarm(0)
-                
-                if not USERNAME:
-                    print("No username provided. Login by cache fails.")
-                    return None
-                    
-            except (KeyboardInterrupt, TimeoutError):
-                if hasattr(signal, 'alarm'):
-                    signal.alarm(0)  # Cancel alarm
-                print("Login by cache fails.")
-                return None
-            except Exception as input_error:
-                if hasattr(signal, 'alarm'):
-                    signal.alarm(0)  # Cancel alarm
-                print(f"Error getting username: {str(input_error)}. Login by cache fails.")
-                return None
-            finally:
-                # Make sure alarm is always cancelled (only on Unix-like systems)
-                if hasattr(signal, 'alarm'):
-                    signal.alarm(0)
-        
-        # Handle new format (dict with multiple users)
-        if isinstance(cache_data_all, dict) and USERNAME in cache_data_all:
-            cache_data = cache_data_all[USERNAME]
-            
-            # Check if user cache has required fields
-            if 'timestamp' not in cache_data:
-                debug_print(f"Cache for user {USERNAME} has invalid format, removing...")
-                # Remove this user's cache
-                del cache_data_all[USERNAME]
-                if cache_data_all:
-                    with open(CACHE_FILE, 'wb') as f:
-                        pickle.dump(cache_data_all, f)
-                else:
-                    os.remove(CACHE_FILE)
-                return None
-            
-            # Check if cache is still valid
-            cache_age = datetime.now() - cache_data['timestamp']
-            if cache_age > timedelta(hours=CACHE_DURATION_HOURS):
-                debug_print(f"Login cache expired for user {USERNAME} (age: {cache_age})")
-                # Remove this user's expired cache
-                del cache_data_all[USERNAME]
-                if cache_data_all:
-                    with open(CACHE_FILE, 'wb') as f:
-                        pickle.dump(cache_data_all, f)
-                else:
-                    os.remove(CACHE_FILE)
-                return None
-            
-            debug_print(f"Valid login cache found for user {USERNAME} (age: {cache_age})")
-            return cache_data
-        else:
-            debug_print(f"No cache found for user {USERNAME}")
+            cache_data = pickle.load(f)
+
+        # Expect cache_data to be a dict with required fields
+        if not isinstance(cache_data, dict) or 'timestamp' not in cache_data:
+            debug_print("Cache file format invalid, removing...")
+            os.remove(CACHE_FILE)
             return None
-            
+
+        # Check if cache is still valid
+        cache_age = datetime.now() - cache_data['timestamp']
+        if cache_age > timedelta(hours=CACHE_DURATION_HOURS):
+            debug_print(f"Login cache expired (age: {cache_age})")
+            os.remove(CACHE_FILE)
+            return None
+
+        debug_print(f"Valid login cache found (age: {cache_age})")
+        return cache_data
+
     except Exception as e:
         debug_print(f"Failed to load login cache: {str(e)}")
-        # Remove corrupted cache file
         try:
             os.remove(CACHE_FILE)
         except:
@@ -320,36 +263,31 @@ def load_login_cache():
         return None
 
 def apply_login_cache(driver, cache_data):
-    """Apply cached cookies to current session"""
+    """Apply cached cookies to current session (single-user cache)"""
     try:
         # Navigate to the site first
         driver.get("https://sci-net.xyz")
-        
-        # Wait for the page to load
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.TAG_NAME, "body"))
         )
-        
-        # Add each cookie
-        for cookie in cache_data['cookies']:
+
+        # Add each cookie from the cache_data (single user dict)
+        cookies = cache_data.get('cookies', [])
+        for cookie in cookies:
             try:
                 # Ensure cookie domain is compatible
                 if 'domain' in cookie and not cookie['domain'].endswith('sci-net.xyz'):
                     cookie['domain'] = '.sci-net.xyz'
-                
                 driver.add_cookie(cookie)
                 debug_print(f"Added cookie: {cookie.get('name', 'unknown')}")
             except Exception as e:
                 debug_print(f"Failed to add cookie {cookie.get('name', 'unknown')}: {str(e)}")
-        
+
         # Refresh to apply cookies
         driver.refresh()
-        
-        # Wait for page to reload after refresh
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.TAG_NAME, "body"))
         )
-        
         debug_print("Login cache applied successfully")
         return True
     except Exception as e:
@@ -395,11 +333,7 @@ def is_logged_in(driver):
 def perform_login(driver, username, password):
     """Perform actual login process"""
     try:
-        # Check if username is provided
-        if not username or username.strip() == "":
-            print("Login failed: No username specified.")
-            return False
-        
+        # Navigate to the login page
         print("Navigating to sci-net.xyz for login...")
         driver.get("https://sci-net.xyz")
         
@@ -1976,8 +1910,8 @@ def login_and_check_fulfilled_requests(username, password, headless=False):
         if result and result.get('has_fulfilled_requests') and result.get('solved_papers'):
             print("\nDownloading PDFs for fulfilled requests...")
             
-            # Use current directory as download directory
-            downloads_dir = os.getcwd()
+            # Use the default download directory
+            downloads_dir = DEFAULT_DOWNLOAD_DIR
             print(f"Download directory: {downloads_dir}")
             
             for i, paper in enumerate(result['solved_papers'], 1):
@@ -5463,79 +5397,19 @@ def login_and_cancel_unsolved_requests(username, password, headless=False, limit
         print("Cancel unsolved requests process completed, closing browser.")
         driver.quit()
 
-def handle_credentials(args, parser):
-    """Handle credential loading and validation"""
-    global USERNAME, PASSWORD
-    
-    if args.credentials:
-        credentials = load_credentials_from_json(args.credentials)
-        if not credentials:
-            print("Failed to load credentials from JSON file")
+def get_username_with_timeout():
+        """Get username from user with timeout"""
+        def timeout_handler(signum, frame):
+            print("\nTimeout: No username entered within 30 seconds. Exiting.")
             exit(1)
-        USERNAME = credentials['scinet_username']
-        PASSWORD = credentials['scinet_password']
-        print(f"Using credentials from file: {args.credentials}")
-        print(f"Username: {USERNAME}")
-    else:
-        if not USERNAME:
-            print("Error: No username specified by either setting USERNAME in the script or using --credentials option.")
-            def get_username_with_timeout():
-                """Get username from user with timeout"""
-                def timeout_handler(signum, frame):
-                    print("\nTimeout: No username entered within 30 seconds. Exiting.")
-                    exit(1)
-                
-                # Only set up timeout on Unix-like systems
-                if hasattr(signal, 'SIGALRM'):
-                    signal.signal(signal.SIGALRM, timeout_handler)
-                    signal.alarm(30)
-                
-                try:
-                    username = input("Username: ").strip()
-                    if hasattr(signal, 'alarm'):
-                        signal.alarm(0)
-                    return username
-                except KeyboardInterrupt:
-                    if hasattr(signal, 'alarm'):
-                        signal.alarm(0)
-                    print("\nOperation cancelled by user.")
-                    exit(1)
-                except Exception as e:
-                    if hasattr(signal, 'alarm'):
-                        signal.alarm(0)
-                    print(f"Error getting username: {str(e)}")
-                    exit(1)
-                finally:
-                    # Make sure alarm is always cancelled (only on Unix-like systems)
-                    if hasattr(signal, 'alarm'):
-                        signal.alarm(0)
-
-            print("Username not set. Please enter your username:")
-            USERNAME = get_username_with_timeout()
-            if not USERNAME:
-                print("Error: No username provided")
-                exit(1)
-            
-        PASSWORD = get_password_for_username(USERNAME)
-
-def get_password_for_username(username):
-    """Get password for username, using cache if available"""
-    def timeout_handler(signum, frame):
-        print("\nTimeout: No password entered within 30 seconds. Exiting.")
-        exit(1)
-    
-    def get_password_with_timeout():
-        """Get password from user with timeout"""
-        # Only set up timeout on Unix-like systems
         if hasattr(signal, 'SIGALRM'):
             signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(30)
-        
         try:
-            password = getpass.getpass("Password: ")
+            username = input("Username: ").strip()
             if hasattr(signal, 'alarm'):
                 signal.alarm(0)
-            return password
+            return username
         except KeyboardInterrupt:
             if hasattr(signal, 'alarm'):
                 signal.alarm(0)
@@ -5544,68 +5418,91 @@ def get_password_for_username(username):
         except Exception as e:
             if hasattr(signal, 'alarm'):
                 signal.alarm(0)
-            print(f"Error getting password: {str(e)}")
+            print(f"Error getting username: {str(e)}")
             exit(1)
         finally:
-            # Make sure alarm is always cancelled (only on Unix-like systems)
             if hasattr(signal, 'alarm'):
                 signal.alarm(0)
-    
-    # Check if we have a valid cache for this username
-    cache_data = None
+
+def get_password_with_timeout():
+    """Get password from user with timeout"""
+    def timeout_handler(signum, frame):
+        print("\nTimeout: No password entered within 30 seconds. Exiting.")
+        exit(1)
+    if hasattr(signal, 'SIGALRM'):
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(30)
     try:
-        if os.path.exists(CACHE_FILE):
-            with open(CACHE_FILE, 'rb') as f:
-                cache_data_all = pickle.load(f)
-            
-            if isinstance(cache_data_all, dict) and username in cache_data_all:
-                user_cache = cache_data_all[username]
-                if 'timestamp' in user_cache:
-                    cache_age = datetime.now() - user_cache['timestamp']
+        password = getpass.getpass("Password: ")
+        if hasattr(signal, 'alarm'):
+            signal.alarm(0)
+        return password
+    except KeyboardInterrupt:
+        if hasattr(signal, 'alarm'):
+            signal.alarm(0)
+        print("\nOperation cancelled by user.")
+        exit(1)
+    except Exception as e:
+        if hasattr(signal, 'alarm'):
+            signal.alarm(0)
+        print(f"Error getting password: {str(e)}")
+        exit(1)
+    finally:
+        if hasattr(signal, 'alarm'):
+            signal.alarm(0)
+
+def handle_credentials(args, parser):
+    """Handle credential loading and validation"""
+    global USERNAME, PASSWORD
+
+    if args.credentials:
+        credentials = load_credentials_from_json(args.credentials)
+        if not credentials:
+            print("Failed to load credentials from JSON file.")
+            # Prompt user for username and password manually
+            print("Please enter your username and password manually.")
+            USERNAME = get_username_with_timeout()
+            if not USERNAME:
+                print("Error: No username provided")
+                exit(1)
+            PASSWORD = get_password_with_timeout()
+            if not PASSWORD:
+                print("Error: No password provided")
+                exit(1)
+        else:
+            USERNAME = credentials['scinet_username']
+            PASSWORD = credentials['scinet_password']
+            print(f"Using credentials from file: {args.credentials}")
+            print(f"Username: {USERNAME}")
+
+def get_password_for_username(username):
+    """Get password for username, using cache if available"""
+    def timeout_handler(signum, frame):
+        print("\nTimeout: No password entered within 30 seconds. Exiting.")
+        exit(1)
+        # Use the get_password_with_timeout function defined above
+
+        # Check if we have a valid cache for this username (single-user cache)
+        cache_data = None
+        try:
+            if os.path.exists(CACHE_FILE):
+                with open(CACHE_FILE, 'rb') as f:
+                    cache_data = pickle.load(f)
+                # cache_data should be a dict with 'timestamp' and possibly 'cookies'
+                if isinstance(cache_data, dict) and 'timestamp' in cache_data:
+                    cache_age = datetime.now() - cache_data['timestamp']
                     if cache_age <= timedelta(hours=CACHE_DURATION_HOURS):
-                        cache_data = user_cache
-    except:
-        pass
-    
-    if cache_data:
-        print(f"Using cached login for {username}")
-        return "cached"
-    else:
+                        print(f"Using cached login for {username}")
+                        return "cached"
+        except Exception:
+            pass
+
         print(f"No valid login cache found for {username}.")
         password = get_password_with_timeout()
         if not password:
             print("Error: No password provided")
             exit(1)
         return password
-
-def validate_arguments(args, parser):
-    """Validate command line arguments"""
-    if bool(args.solve_doi) != bool(args.solve_pdf):
-        parser.error("--solve-doi and --solve-pdf must be used together")
-    
-    valid_options = [
-        bool(args.pdf), 
-        bool(args.request_doi), 
-        args.get_active_requests is not None, 
-        bool(args.get_fulfilled_requests),
-        bool(args.accept_fulfilled_requests),
-        bool(args.reject_fulfilled_requests),
-        bool(args.accept_fulfilled_doi),
-        bool(args.reject_fulfilled_doi),
-        args.solve_active_requests is not None,
-        args.cancel_waiting_requests is not None,
-        args.get_unsolved_requests is not None,
-        args.cancel_unsolved_requests is not None,
-        bool(args.cancel_unsolved_doi),
-        bool(args.solve_doi),
-        args.get_uploaded_files is not None
-    ]
-    
-    if not any(valid_options):
-        parser.error("One of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), or --get-uploaded-files must be specified")
-    
-    if sum(valid_options) > 1:
-        parser.error("Only one of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), or --get-uploaded-files can be specified at a time")
 
 def handle_pdf_upload(args, headless_mode):
     """Handle PDF upload functionality"""
@@ -5995,8 +5892,343 @@ def login_and_get_uploaded_files(username, password, headless=False, limit=None)
         print("Uploaded files retrieval completed, closing browser.")
         driver.quit()
 
+def get_user_info_logged_in(username, password, headless=False):
+    """
+    Login and get user info by parsing the https://sci-net.xyz/@<username> page.
+
+    Args:
+        username: Username string
+        password: Password string
+        headless: Whether to run browser in headless mode
+
+    Returns:
+        dict: User info dictionary (fields: username, display_name, avatar_url, bio, stats, etc.)
+    """
+    driver = login_to_scinet(username, password, headless)
+    if not driver:
+        return None
+    try:
+        user_info = get_user_info(driver, username)
+        return user_info
+    finally:
+        driver.quit()
+
+def fetch_papers_category(driver, category, max_items=100):
+    """
+    Helper to fetch papers from a category page (requests, solutions, uploads).
+    Returns a list of dicts with title, doi, year, link.
+    """
+    # If category is None or empty, fetch from /papers (all articles)
+    if not category:
+        url = "https://sci-net.xyz/papers"
+    else:
+        url = f"https://sci-net.xyz/papers/{category}"
+    driver.get(url)
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.TAG_NAME, "body"))
+    )
+    items = []
+    scroll_attempts = 0
+    last_count = 0
+    max_scroll_attempts = 10
+    while True:
+        links = driver.find_elements(By.CSS_SELECTOR, "a[href*='/10.']")
+        for link in links[len(items):]:
+            try:
+                article_div = link.find_element(By.CSS_SELECTOR, "div.article")
+                title = ""
+                try:
+                    title = article_div.find_element(By.CSS_SELECTOR, "div.title").text.strip()
+                except Exception:
+                    pass
+                doi = ""
+                href = link.get_attribute("href")
+                if href and '/10.' in href:
+                    doi_start = href.find('/10.')
+                    if doi_start != -1:
+                        doi = href[doi_start + 1:]
+                year = ""
+                try:
+                    year = article_div.find_element(By.CSS_SELECTOR, "div.year").text.strip()
+                except Exception:
+                    pass
+                items.append({
+                    "title": title,
+                    "doi": doi,
+                    "year": year,
+                    "link": href,
+                })
+                if len(items) >= max_items:
+                    break
+            except Exception:
+                continue
+        if len(items) >= max_items:
+            break
+        if len(links) == last_count:
+            scroll_attempts += 1
+            if scroll_attempts >= max_scroll_attempts:
+                break
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(1)
+        else:
+            scroll_attempts = 0
+            last_count = len(links)
+    return items
+
+def get_user_info(driver, username):
+    """
+    Get user info by parsing the https://sci-net.xyz/@<username> page and extracting variables from JavaScript.
+    Also fetches number and list of requests, solutions, and uploads from /papers/<category> pages.
+
+    Args:
+        driver: Selenium WebDriver instance
+        username: Username string
+
+    Returns:
+        dict: User info dictionary (fields: username, display_name, avatar_url, bio, stats, balance, unsolved, etc.)
+    """
+    user_info = {
+        'username': username,
+        'display_name': '',
+        'avatar_url': '',
+        'bio': '',
+        'stats': {},
+        'profile_url': f"https://sci-net.xyz/@{username}",
+        'balance': None,
+        'unsolved': None,
+        'uid': None,
+        'registered': '',
+        'last_seen': '',
+        'requests_count': None,
+        'uploads_count': None,
+        'solutions_count': None,
+        'requests_list': [],
+        'solutions_list': [],
+        'uploads_list': [],
+        'total_articles_count': None,  # Added field for total number of articles
+        'total_articles_list': [],     # Added field for all articles
+    }
+    try:
+        profile_url = f"https://sci-net.xyz/@{username}"
+        driver.get(profile_url)
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "body"))
+        )
+
+        # Avatar
+        try:
+            avatar_img = driver.find_element(By.CSS_SELECTOR, ".avatar img")
+            user_info['avatar_url'] = avatar_img.get_attribute("src")
+        except Exception:
+            pass
+
+        # Display name (may be in .name or .display-name)
+        try:
+            display_name_elem = driver.find_element(By.CSS_SELECTOR, ".name, .display-name")
+            user_info['display_name'] = display_name_elem.text.strip()
+        except Exception:
+            user_info['display_name'] = username
+
+        # Bio/about section
+        try:
+            bio_elem = driver.find_element(By.CSS_SELECTOR, ".bio, .about, .description")
+            user_info['bio'] = bio_elem.text.strip()
+        except Exception:
+            pass
+
+        # Stats (tokens, uploads, requests, etc.)
+        try:
+            stats = {}
+            stat_elems = driver.find_elements(By.CSS_SELECTOR, ".stats .stat, .stat")
+            for elem in stat_elems:
+                try:
+                    label = elem.find_element(By.CSS_SELECTOR, ".label").text.strip(': ')
+                    value = elem.find_element(By.CSS_SELECTOR, ".value").text.strip()
+                    stats[label.lower()] = value
+                except Exception:
+                    # Try alternative: text in format "Label: Value"
+                    parts = elem.text.split(':', 1)
+                    if len(parts) == 2:
+                        stats[parts[0].strip().lower()] = parts[1].strip()
+            user_info['stats'] = stats
+        except Exception:
+            pass
+
+        # Optionally, parse other info (joined date, etc.)
+        try:
+            joined_elem = driver.find_element(By.XPATH, "//*[contains(text(),'Joined')]")
+            user_info['joined'] = joined_elem.text.strip()
+        except Exception:
+            pass
+
+        # Extract user info from JavaScript variables if available
+        try:
+            js_vars = driver.execute_script("""
+                let result = {};
+                try { result.uid = typeof uid !== 'undefined' ? uid : null; } catch(e) { result.uid = null; }
+                try { result.uname = typeof uname !== 'undefined' ? uname : null; } catch(e) { result.uname = null; }
+                try { result.balance = typeof balance !== 'undefined' ? balance : null; } catch(e) { result.balance = null; }
+                try { result.unsolved = typeof unsolved !== 'undefined' ? unsolved : null; } catch(e) { result.unsolved = null; }
+                return result;
+            """)
+            if js_vars:
+                user_info['uid'] = js_vars.get('uid')
+                user_info['balance'] = js_vars.get('balance')
+                user_info['unsolved'] = js_vars.get('unsolved')
+                if js_vars.get('uname'):
+                    user_info['display_name'] = js_vars['uname']
+        except Exception as e:
+            debug_print(f"Error extracting JS variables: {str(e)}")
+
+        # Parse additional info from .info section if present
+        try:
+            info_div = driver.find_element(By.CSS_SELECTOR, ".info")
+            # Name (may already be set)
+            try:
+                name_div = info_div.find_element(By.CSS_SELECTOR, ".name")
+                user_info['display_name'] = name_div.text.strip()
+            except Exception:
+                pass
+            # Times: registered and last seen
+            try:
+                times_div = info_div.find_element(By.CSS_SELECTOR, ".times")
+                times_text = times_div.get_attribute("innerHTML").replace('<br>', '\n')
+                lines = [line.strip() for line in times_text.split('\n') if line.strip()]
+                if lines:
+                    user_info['registered'] = lines[0]
+                if len(lines) > 1:
+                    user_info['last_seen'] = lines[1]
+            except Exception:
+                pass
+            # Numbers: requests and uploads
+            try:
+                numbers_div = info_div.find_element(By.CSS_SELECTOR, ".numbers")
+                numbers_text = numbers_div.text
+                req_match = re.search(r'requests\s+(\d+)', numbers_text)
+                up_match = re.search(r'uploads\s+(\d+)', numbers_text)
+                if req_match:
+                    user_info['requests_count'] = int(req_match.group(1))
+                if up_match:
+                    user_info['uploads_count'] = int(up_match.group(1))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+        # Requests
+        try:
+            reqs = fetch_papers_category(driver, "requests", max_items=100)
+            user_info['requests_list'] = reqs
+            user_info['requests_count'] = len(reqs)
+        except Exception as e:
+            debug_print(f"Error fetching requests: {str(e)}")
+        # Solutions
+        try:
+            sols = fetch_papers_category(driver, "solutions", max_items=100)
+            user_info['solutions_list'] = sols
+            user_info['solutions_count'] = len(sols)
+        except Exception as e:
+            debug_print(f"Error fetching solutions: {str(e)}")
+        # Uploads
+        try:
+            ups = fetch_papers_category(driver, "uploads", max_items=100)
+            user_info['uploads_list'] = ups
+            user_info['uploads_count'] = len(ups)
+        except Exception as e:
+            debug_print(f"Error fetching uploads: {str(e)}")
+
+        # Fetch total number of articles (all categories)
+        try:
+            all_articles = fetch_papers_category(driver, "", max_items=1000)
+            user_info['total_articles_list'] = all_articles
+            user_info['total_articles_count'] = len(all_articles)
+        except Exception as e:
+            debug_print(f"Error fetching all articles: {str(e)}")
+
+    except Exception as e:
+        debug_print(f"Error in get_user_info: {str(e)}")
+    return user_info
+
+def handle_user_info(args, headless_mode, details=False):
+    """Handle user info/profile display after login
+
+    Args:
+        args: argparse.Namespace
+        headless_mode: bool
+        details: bool, if True print lists of requests, uploads, solutions
+    """
+    info = get_user_info_logged_in(USERNAME, PASSWORD, headless=headless_mode)
+    if info:
+        print("\nUser Info:")
+        print(f"  Username: {info.get('username')}")
+        print(f"  Display Name: {info.get('display_name')}")
+        print(f"  Profile URL: {info.get('profile_url')}")
+        print(f"  Avatar: {info.get('avatar_url')}")
+        print(f"  Bio: {info.get('bio')}")
+        if info.get('balance') is not None:
+            print(f"  Balance: {info.get('balance')}")
+        if info.get('unsolved') is not None:
+            print(f"  Unsolved: {info.get('unsolved')}")
+        if info.get('requests_count') is not None:
+            print(f"  Requests: {info.get('requests_count')}")
+        if info.get('uploads_count') is not None:
+            print(f"  Uploads: {info.get('uploads_count')}")
+        if info.get('solutions_count') is not None:
+            print(f"  Solutions: {info.get('solutions_count')}")
+        if info.get('total_articles_count') is not None:
+            print(f"  Total Articles: {info.get('total_articles_count')}")
+        if info.get('stats'):
+            print("  Stats:")
+            for k, v in info['stats'].items():
+                print(f"    {k.title()}: {v}")
+        if info.get('registered'):
+            print(f"  Registered: {info.get('registered')}")
+        if info.get('last_seen'):
+            print(f"  Last Seen: {info.get('last_seen')}")
+        if details:
+            # Print requests list
+            if info.get('requests_list'):
+                print("\nRequests:")
+                for i, req in enumerate(info['requests_list'], 1):
+                    print(f"  [{i}] {req.get('title', '')} ({req.get('year', '')}) DOI: {req.get('doi', '')} Link: {req.get('link', '')}")
+            # Print uploads list
+            if info.get('uploads_list'):
+                print("\nUploads:")
+                for i, up in enumerate(info['uploads_list'], 1):
+                    print(f"  [{i}] {up.get('title', '')} ({up.get('year', '')}) DOI: {up.get('doi', '')} Link: {up.get('link', '')}")
+            # Print solutions list
+            if info.get('solutions_list'):
+                print("\nSolutions:")
+                for i, sol in enumerate(info['solutions_list'], 1):
+                    print(f"  [{i}] {sol.get('title', '')} ({sol.get('year', '')}) DOI: {sol.get('doi', '')} Link: {sol.get('link', '')}")
+            # Print all articles list
+            if info.get('total_articles_list'):
+                print("\nAll Articles:")
+                for i, art in enumerate(info['total_articles_list'], 1):
+                    print(f"  [{i}] {art.get('title', '')} ({art.get('year', '')}) DOI: {art.get('doi', '')} Link: {art.get('link', '')}")
+    else:
+        print("Failed to retrieve user info.")
+
+def print_default_paths():
+    """
+    Print all default paths and configuration values used by scinet.py
+    """
+    print("Default configuration paths and values:")
+    print(f"  Cache directory: {get_cache_directory()}")
+    print(f"  Download directory: {get_download_directory()}")
+    print(f"  Cache file: {CACHE_FILE}")
+    print(f"  Cache duration (hours): {CACHE_DURATION_HOURS}")
+    print(f"  Log file: {LOG_FILE}")
+    print(f"  Default download dir: {DEFAULT_DOWNLOAD_DIR}")
+
 def execute_action(args, headless_mode):
     """Execute the appropriate action based on arguments"""
+    if getattr(args, "print_default", False):
+        print_default_paths()
+        return
+    if getattr(args, "user_info", False):
+        handle_user_info(args, headless_mode)
+        return
     if args.pdf:
         handle_pdf_upload(args, headless_mode)
     elif args.request_doi:
@@ -6067,7 +6299,41 @@ def execute_action(args, headless_mode):
                     print(f"  Error: {result['error']}")
         else:
             print("\nFailed to solve request by DOI")
-             
+
+def validate_arguments(args, parser):
+    """Validate command line arguments"""
+    # Allow --print-default to be used alone
+    if getattr(args, "print_default", False):
+        return
+
+    if bool(args.solve_doi) != bool(args.solve_pdf):
+        parser.error("--solve-doi and --solve-pdf must be used together")
+    
+    valid_options = [
+        bool(args.pdf), 
+        bool(args.request_doi), 
+        args.get_active_requests is not None, 
+        bool(args.get_fulfilled_requests),
+        bool(args.accept_fulfilled_requests),
+        bool(args.reject_fulfilled_requests),
+        bool(args.accept_fulfilled_doi),
+        bool(args.reject_fulfilled_doi),
+        args.solve_active_requests is not None,
+        args.cancel_waiting_requests is not None,
+        args.get_unsolved_requests is not None,
+        args.cancel_unsolved_requests is not None,
+        bool(args.cancel_unsolved_doi),
+        bool(args.solve_doi),
+        args.get_uploaded_files is not None,
+        bool(getattr(args, "user_info", False))
+    ]
+    
+    if not any(valid_options):
+        parser.error("One of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), --get-uploaded-files, --user-info, or --print-default must be specified")
+    
+    if sum(valid_options) > 1:
+        parser.error("Only one of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), --get-uploaded-files, --user-info, or --print-default can be specified at a time")
+
 def main():
     # Get the parent package name from the module's __name__
     parent_package = __name__.split('.')[0] if '.' in __name__ else None
@@ -6149,7 +6415,9 @@ def main():
     parser.add_argument('--no-headless', action='store_true', help='Disable headless mode and show browser window')
     parser.add_argument('--noconfirm', action='store_true', help='Automatically proceed with default options without user confirmation')
     parser.add_argument('--credentials', help='Path to JSON file containing login credentials (format: {"scinet_username": "user", "scinet_password": "pass"})')
-    
+    parser.add_argument('--user-info', action='store_true', help='Show user info/profile (tokens, stats, etc) after login')
+    parser.add_argument('--print-default', action='store_true', help='Print default configuration paths and values used by scinet.py')
+
     # Show installation hint if argcomplete is not available
     if not autocomplete_available and VERBOSE:
         print("Info: Install 'argcomplete' package for command-line autocompletion: pip install argcomplete")
@@ -6173,7 +6441,7 @@ def main():
     if args.clear_cache and os.path.exists(CACHE_FILE):
         os.remove(CACHE_FILE)
         print("Login cache cleared")
-    
+
     # Execute the appropriate action
     execute_action(args, headless_mode)
 

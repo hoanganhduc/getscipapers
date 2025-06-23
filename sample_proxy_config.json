@@ -1,0 +1,14 @@
+[
+    {
+        "type": "http",
+        "addr": "127.0.0.1",
+        "port": 8080
+    },
+    {
+        "type": "socks5",
+        "addr": "127.0.0.1",
+        "port": 1080,
+        "username": "user",
+        "password": "pass"
+    }
+]

@@ -42,7 +42,7 @@ def vprint(*args, **kwargs):
         print(*args, **kwargs)
 
 # Global variable for default config file location
-CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".config", "getpapers", "config.json") if platform.system() != "Windows" else os.path.join(os.path.expanduser("~"), "AppData", "Local", "getpapers", "config.json")
+GETPAPERS_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".config", "getscipapers", "getpapers", "config.json") if platform.system() != "Windows" else os.path.join(os.path.expanduser("~"), "AppData", "Local", "getscipapers", "getpapers", "config.json")
 
 def save_credentials(email: str = None, elsevier_api_key: str = None, 
                     wiley_tdm_token: str = None, ieee_api_key: str = None, 
@@ -52,7 +52,7 @@ def save_credentials(email: str = None, elsevier_api_key: str = None,
     Only updates provided values, preserving existing ones.
     """
     if config_file is None:
-        config_file = CONFIG_FILE
+        config_file = GETPAPERS_CONFIG_FILE
     
     # Load existing config or create new one
     existing_config = {}
@@ -92,7 +92,7 @@ def load_credentials(config_file: str = None):
     global EMAIL, ELSEVIER_API_KEY, WILEY_TDM_TOKEN, IEEE_API_KEY
     
     if config_file is None:
-        config_file = CONFIG_FILE
+        config_file = GETPAPERS_CONFIG_FILE
     
     default_config = {
         "email": "",
@@ -128,6 +128,11 @@ def load_credentials(config_file: str = None):
         else:
             vprint(f"Configuration file not found: {config_file}")
         print("Please enter credentials:")
+        print("You will be asked for the following information:")
+        print("  - Email address (required, for Unpaywall and polite API usage)")
+        print("  - Elsevier API Key (optional, for Elsevier Full-Text API)")
+        print("  - Wiley TDM Token (optional, for Wiley TDM API)")
+        print("  - IEEE API Key (optional, for IEEE Xplore API)")
         
         # Prompt for input with timeout
         try:
@@ -137,7 +142,7 @@ def load_credentials(config_file: str = None):
                     raise TimeoutError("Input timeout")
                 
                 signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(30)  # 30 second timeout
+                signal.alarm(60)  # 30 second timeout
                 
                 try:
                     current_email = existing_config.get("email", "")
@@ -2095,6 +2100,18 @@ async def download_by_doi_list(doi_file: str, download_folder: str = ".", db: st
                 oa_status_text = "Open Access" if oa_status else "Closed Access"
                 print(f"  ✗ {doi} [{oa_status_text}]")
 
+def print_default_paths():
+    """
+    Print all default paths and configuration file locations used by the script.
+    """
+    print("Default configuration and data paths:")
+    print(f"  GETPAPERS_CONFIG_FILE: {GETPAPERS_CONFIG_FILE}")
+    print(f"  Default download folder: .")
+    print(f"  Platform: {platform.system()}")
+    print(f"  Nexus credentials file: {getattr(nexus, 'CREDENTIALS_FILE', 'N/A')}")
+    print(f"  Nexus session file: {getattr(nexus, 'SESSION_FILE', 'N/A')}")
+    print(f"  Nexus default proxy file: {getattr(nexus, 'DEFAULT_PROXY_FILE', 'N/A')}")
+
 async def main():
     # Get the parent package name from the module's __name__
     parent_package = __name__.split('.')[0] if '.' in __name__ else None
@@ -2121,6 +2138,8 @@ async def main():
             "  %(prog)s --doi-file mylist.txt --db scihub\n"
             "  %(prog)s --search \"climate change\" --verbose\n"
             "  %(prog)s --doi 10.1002/anie.201915678 --config myconfig.json\n"
+            "  %(prog)s --clear-config\n"
+            "  %(prog)s --print-default\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         prog=program_name
@@ -2152,7 +2171,35 @@ async def main():
         type=str,
         help="Path to custom JSON configuration file (format: {\"email\": \"your@email.com\", \"elsevier_api_key\": \"key\", \"wiley_tdm_token\": \"token\", \"ieee_api_key\": \"key\"})"
     )
+    argparser.add_argument(
+        "--clear-config",
+        action="store_true",
+        help="Delete the default configuration directory and all its contents"
+    )
+    argparser.add_argument(
+        "--print-default",
+        action="store_true",
+        help="Print all default paths and configuration file locations used by the script"
+    )
     args = argparser.parse_args()
+
+    # Handle --print-default before anything else
+    if args.print_default:
+        print_default_paths()
+        sys.exit(0)
+
+    # Handle --clear-config before anything else
+    if args.clear_config:
+        config_dir = os.path.dirname(GETPAPERS_CONFIG_FILE)
+        if os.path.exists(config_dir):
+            try:
+                shutil.rmtree(config_dir)
+                print(f"Deleted configuration directory: {config_dir}")
+            except Exception as e:
+                print(f"Failed to delete configuration directory {config_dir}: {e}")
+        else:
+            print(f"Configuration directory does not exist: {config_dir}")
+        sys.exit(0)
 
     # Check that mutually exclusive options are not specified together
     exclusive_options = [args.doi, args.doi_file, args.search]
@@ -2164,10 +2211,9 @@ async def main():
     global VERBOSE
     VERBOSE = args.verbose
 
-    # Override CONFIG_FILE if custom config is specified
-    global CONFIG_FILE
+    # Override GETPAPERS_CONFIG_FILE if custom config is specified
     if args.config:
-        CONFIG_FILE = os.path.abspath(args.config)
+        GETPAPERS_CONFIG_FILE = os.path.abspath(args.config)
 
     # Load credentials from config file
     load_credentials()
