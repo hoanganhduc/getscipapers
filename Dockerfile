@@ -56,7 +56,6 @@ WORKDIR /home/getscipaper
 
 # Set IPFS_PATH environment variable
 ENV IPFS_PATH /home/getscipaper/.ipfs
-RUN ipfs init
 
 # Entrypoint and default command
 ENTRYPOINT ["/entrypoint.sh"]
