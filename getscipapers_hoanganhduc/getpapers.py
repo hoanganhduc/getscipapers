@@ -50,10 +50,21 @@ def save_credentials(email: str = None, elsevier_api_key: str = None,
     """
     Save credentials and API keys to a JSON configuration file.
     Only updates provided values, preserving existing ones.
+    If the config file's parent directory does not exist, create it.
     """
     if config_file is None:
         config_file = GETPAPERS_CONFIG_FILE
-    
+
+    # Ensure the parent directory exists
+    config_dir = os.path.dirname(config_file)
+    if not os.path.exists(config_dir):
+        try:
+            os.makedirs(config_dir, exist_ok=True)
+            vprint(f"Created config directory: {config_dir}")
+        except Exception as e:
+            vprint(f"Error creating config directory {config_dir}: {e}")
+            return False
+
     # Load existing config or create new one
     existing_config = {}
     if os.path.exists(config_file):
@@ -62,7 +73,7 @@ def save_credentials(email: str = None, elsevier_api_key: str = None,
                 existing_config = json.load(f)
         except Exception as e:
             vprint(f"Warning: Could not read existing config file {config_file}: {e}")
-    
+
     # Update with new values if provided
     if email is not None:
         existing_config["email"] = email
@@ -72,7 +83,7 @@ def save_credentials(email: str = None, elsevier_api_key: str = None,
         existing_config["wiley_tdm_token"] = wiley_tdm_token
     if ieee_api_key is not None:
         existing_config["ieee_api_key"] = ieee_api_key
-    
+
     try:
         with open(config_file, 'w', encoding='utf-8') as f:
             json.dump(existing_config, f, indent=2)
