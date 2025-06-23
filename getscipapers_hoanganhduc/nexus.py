@@ -110,24 +110,24 @@ def get_file_paths():
     if system == "Windows":
         # Windows: Use AppData\Local directory
         app_data = os.path.expandvars("%LOCALAPPDATA%")
-        base_dir = os.path.join(app_data, "TelegramSession")
-        log_dir = os.path.join(app_data, "TelegramSession", "logs")
+        base_dir = os.path.join(app_data, "getscipapers", "nexus")
+        log_dir = os.path.join(app_data, "getscipapers", "nexus", "logs")
         config_dir = base_dir
-        download_dir = os.path.join(os.path.expanduser("~"), "Downloads", "TelegramFiles")
+        download_dir = os.path.join(os.path.expanduser("~"), "Downloads", "getscipapers", "nexus")
     elif system == "Darwin":  # macOS
         # macOS: Use ~/Library/Application Support directory
         home = os.path.expanduser("~")
-        base_dir = os.path.join(home, "Library", "Application Support", "TelegramSession")
-        log_dir = os.path.join(base_dir, "logs")
+        base_dir = os.path.join(home, "Library", "Application Support", "getscipapers", "nexus")
+        log_dir = os.path.join(base_dir, "getscipapers", "nexus", "logs")
         config_dir = base_dir
-        download_dir = os.path.join(home, "Downloads", "TelegramFiles")
+        download_dir = os.path.join(home, "Downloads", "getscipapers", "nexus")
     else:  # Linux and other Unix-like systems
-        # Linux: Use ~/.local/share directory for session, ~/.config for credentials
+        # Linux: Use ~/.config for credentials and session files
         home = os.path.expanduser("~")
-        base_dir = os.path.join(home, ".local", "share", "TelegramSession")
-        log_dir = os.path.join(home, ".local", "share", "TelegramSession", "logs")
-        config_dir = os.path.join(home, ".config", "TelegramSession")
-        download_dir = os.path.join(home, "Downloads", "TelegramFiles")
+        base_dir = os.path.join(home, ".config", "getscipapers", "nexus")
+        log_dir = os.path.join(home, ".config", "getscipapers", "nexus", "logs")
+        config_dir = os.path.join(home, ".config", "getscipapers", "nexus")
+        download_dir = os.path.join(home, "Downloads", "getscipapers", "nexus")
     
     # Create directories if they don't exist
     os.makedirs(base_dir, exist_ok=True)

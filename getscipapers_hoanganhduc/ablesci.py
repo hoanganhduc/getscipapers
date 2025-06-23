@@ -26,14 +26,14 @@ def get_cache_directory():
     """Get the appropriate directory for storing cache based on the operating system."""
     system = platform.system()
     if system == "Windows":
-        # Use %APPDATA% on Windows
-        return os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'ablesci')
+        # Use %APPDATA%\getscipapers\ablesci on Windows
+        return os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'getscipapers', 'ablesci')
     elif system == "Darwin":  # macOS
-        # Use ~/Library/Application Support on macOS
-        return os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', 'ablesci')
+        # Use ~/Library/Application Support/getscipapers/ablesci on macOS
+        return os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', 'getscipapers', 'ablesci')
     else:  # Linux and other Unix-like systems
-        # Use ~/.config on Linux
-        return os.path.join(os.path.expanduser('~'), '.config', 'ablesci')
+        # Use ~/.config/getscipapers/ablesci on Linux
+        return os.path.join(os.path.expanduser('~'), '.config', 'getscipapers', 'ablesci')
 
 # Create the cache directory if it doesn't exist
 cache_dir = get_cache_directory()

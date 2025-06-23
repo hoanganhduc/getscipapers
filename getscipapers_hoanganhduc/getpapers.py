@@ -42,7 +42,7 @@ def vprint(*args, **kwargs):
         print(*args, **kwargs)
 
 # Global variable for default config file location
-CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".config", "getpapers", "config.json") if platform.system() != "Windows" else os.path.join(os.path.expanduser("~"), "AppData", "Local", "getpapers", "config.json")
+CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".config", "getscipapers", "getpapers", "config.json") if platform.system() != "Windows" else os.path.join(os.path.expanduser("~"), "AppData", "Local", "getscipapers", "getpapers", "config.json")
 
 def save_credentials(email: str = None, elsevier_api_key: str = None, 
                     wiley_tdm_token: str = None, ieee_api_key: str = None, 
@@ -2121,6 +2121,7 @@ async def main():
             "  %(prog)s --doi-file mylist.txt --db scihub\n"
             "  %(prog)s --search \"climate change\" --verbose\n"
             "  %(prog)s --doi 10.1002/anie.201915678 --config myconfig.json\n"
+            "  %(prog)s --clear-config\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         prog=program_name
@@ -2152,7 +2153,25 @@ async def main():
         type=str,
         help="Path to custom JSON configuration file (format: {\"email\": \"your@email.com\", \"elsevier_api_key\": \"key\", \"wiley_tdm_token\": \"token\", \"ieee_api_key\": \"key\"})"
     )
+    argparser.add_argument(
+        "--clear-config",
+        action="store_true",
+        help="Delete the default configuration directory and all its contents"
+    )
     args = argparser.parse_args()
+
+    # Handle --clear-config before anything else
+    if args.clear_config:
+        config_dir = os.path.dirname(CONFIG_FILE)
+        if os.path.exists(config_dir):
+            try:
+                shutil.rmtree(config_dir)
+                print(f"Deleted configuration directory: {config_dir}")
+            except Exception as e:
+                print(f"Failed to delete configuration directory {config_dir}: {e}")
+        else:
+            print(f"Configuration directory does not exist: {config_dir}")
+        sys.exit(0)
 
     # Check that mutually exclusive options are not specified together
     exclusive_options = [args.doi, args.doi_file, args.search]

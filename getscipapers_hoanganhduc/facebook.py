@@ -27,6 +27,7 @@ import asyncio
 import json
 import datetime
 import os
+import shutil
 
 USERNAME = "" # Replace with your Facebook username
 PASSWORD = "" # Replace with your Facebook password
@@ -38,16 +39,16 @@ def get_app_directories():
     
     if system == "Windows":
         # Use AppData/Local directory on Windows
-        cache_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'FacebookScraper')
-        download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', 'FacebookScraper')
+        cache_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'getscipapers', 'facebook')
+        download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', 'getscipapers', 'facebook')
     elif system == "Darwin":  # macOS
         # Use ~/Library/Caches directory on macOS for cache, Downloads for downloads
-        cache_dir = os.path.join(os.path.expanduser('~'), 'Library', 'Caches', 'FacebookScraper')
-        download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', 'FacebookScraper')
+        cache_dir = os.path.join(os.path.expanduser('~'), 'Library', 'Caches', 'getscipapers', 'facebook')
+        download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', 'getscipapers', 'facebook')
     else:  # Linux and other Unix-like systems
-        # Use ~/.cache directory on Linux for cache, Downloads for downloads
-        cache_dir = os.path.join(os.environ.get('XDG_CACHE_HOME', os.path.expanduser('~/.cache')), 'FacebookScraper')
-        download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', 'FacebookScraper')
+        # Use ~/.config directory on Linux for cache, Downloads for downloads
+        cache_dir = os.path.join(os.path.expanduser('~'), '.config', 'getscipapers', 'facebook')
+        download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', 'getscipapers', 'facebook')
     
     # Create the directories if they don't exist
     os.makedirs(cache_dir, exist_ok=True)
@@ -1943,8 +1944,22 @@ Examples:
                        help='Request help for DOI(s): provide a DOI, comma-separated DOIs, or a file containing DOIs (one per line)')
     parser.add_argument('--request-in-group', '-rg', nargs='?', const='188053074599163', type=str, 
                        help='Group ID to post DOI help requests in (default: 188053074599163)')
+    parser.add_argument('--clear-cache', action='store_true',
+                       help='Delete the default cache directory and exit')
     args = parser.parse_args()
     
+    # Handle --clear-cache before anything else
+    if args.clear_cache:
+        try:
+            if os.path.exists(_CACHE_DIR):
+                shutil.rmtree(_CACHE_DIR)
+                print(f"✅ Cache directory deleted: {_CACHE_DIR}")
+            else:
+                print(f"ℹ️ Cache directory does not exist: {_CACHE_DIR}")
+        except Exception as e:
+            print(f"❌ Error deleting cache directory: {e}")
+        return
+
     # Setup logging file if specified
     log_file = None
     if args.log:
