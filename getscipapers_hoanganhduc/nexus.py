@@ -5442,12 +5442,31 @@ Examples:
     if args.credentials:
         if not await load_credentials_from_file(args.credentials):
             return
+        # Quit after loading credentials if no other actionable argument is specified
+        actionable_args = [
+            args.create_session, args.search, args.user_info, args.check_doi, args.request_doi,
+            args.fetch_nexus_aaron, args.upload_to_nexus_aaron, args.solve_requests,
+            args.test_connection, args.clear_proxy, args.clear_credentials
+        ]
+        if not any(actionable_args):
+            info_print("Credentials loaded successfully.")
+            return
     else:
         # Try to load from default location
         if os.path.exists(CREDENTIALS_FILE):
-            info_print(f"No credentials file specified, trying default location: {CREDENTIALS_FILE}")
+            info_print(f"No credentials file for `nexus` module specified, trying default location: {CREDENTIALS_FILE}")
             if not await load_credentials_from_file(CREDENTIALS_FILE):
                 debug_print("Failed to load credentials from default location")
+            else:
+                # Quit after loading credentials if no other actionable argument is specified
+                actionable_args = [
+                    args.create_session, args.search, args.user_info, args.check_doi, args.request_doi,
+                    args.fetch_nexus_aaron, args.upload_to_nexus_aaron, args.solve_requests,
+                    args.test_connection, args.clear_proxy, args.clear_credentials
+                ]
+                if not any(actionable_args):
+                    info_print("Credentials loaded successfully.")
+                    return
         else:
             debug_print(f"No credentials file found at default location: {CREDENTIALS_FILE}")
 

@@ -2416,7 +2416,12 @@ def main():
     parser.add_argument('--no-headless', action='store_true', help='Run browser in graphic mode')
     parser.add_argument('--request-doi', type=str, metavar='DOI|FILE', help='Specify a DOI, a space/comma separated list of DOIs, or a path to a txt file containing DOIs (one per line)')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose debug output')
-    parser.add_argument('--credentials', type=str, metavar='FILE', help='Path to JSON file containing login credentials')
+    parser.add_argument(
+        '--credentials',
+        type=str,
+        metavar='FILE',
+        help='Path to JSON file containing login credentials (format: {"ablesci_username": "...", "ablesci_password": "..."})'
+    )
     parser.add_argument('--get-waiting-requests', action='store_true', help='Fetch all waiting requests which you made and not yet fulfilled')
     parser.add_argument('--get-fulfilled-requests', action='store_true', help='Fetch all fulfilled requests which you made and fulfilled by others')
     parser.add_argument('--cancel-waiting-requests', action='store_true', help='Interactively cancel waiting requests which you made')

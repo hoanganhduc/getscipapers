@@ -42,7 +42,7 @@ def vprint(*args, **kwargs):
         print(*args, **kwargs)
 
 # Global variable for default config file location
-CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".config", "getscipapers", "getpapers", "config.json") if platform.system() != "Windows" else os.path.join(os.path.expanduser("~"), "AppData", "Local", "getscipapers", "getpapers", "config.json")
+GETPAPERS_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".config", "getscipapers", "getpapers", "config.json") if platform.system() != "Windows" else os.path.join(os.path.expanduser("~"), "AppData", "Local", "getscipapers", "getpapers", "config.json")
 
 def save_credentials(email: str = None, elsevier_api_key: str = None, 
                     wiley_tdm_token: str = None, ieee_api_key: str = None, 
@@ -52,7 +52,7 @@ def save_credentials(email: str = None, elsevier_api_key: str = None,
     Only updates provided values, preserving existing ones.
     """
     if config_file is None:
-        config_file = CONFIG_FILE
+        config_file = GETPAPERS_CONFIG_FILE
     
     # Load existing config or create new one
     existing_config = {}
@@ -92,7 +92,7 @@ def load_credentials(config_file: str = None):
     global EMAIL, ELSEVIER_API_KEY, WILEY_TDM_TOKEN, IEEE_API_KEY
     
     if config_file is None:
-        config_file = CONFIG_FILE
+        config_file = GETPAPERS_CONFIG_FILE
     
     default_config = {
         "email": "",
@@ -2162,7 +2162,7 @@ async def main():
 
     # Handle --clear-config before anything else
     if args.clear_config:
-        config_dir = os.path.dirname(CONFIG_FILE)
+        config_dir = os.path.dirname(GETPAPERS_CONFIG_FILE)
         if os.path.exists(config_dir):
             try:
                 shutil.rmtree(config_dir)
@@ -2183,10 +2183,9 @@ async def main():
     global VERBOSE
     VERBOSE = args.verbose
 
-    # Override CONFIG_FILE if custom config is specified
-    global CONFIG_FILE
+    # Override GETPAPERS_CONFIG_FILE if custom config is specified
     if args.config:
-        CONFIG_FILE = os.path.abspath(args.config)
+        GETPAPERS_CONFIG_FILE = os.path.abspath(args.config)
 
     # Load credentials from config file
     load_credentials()
