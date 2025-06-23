@@ -45,10 +45,6 @@ RUN git clone https://github.com/hoanganhduc/getscipapers.git . && \
 	find . -type d -name __pycache__ -exec rm -rf {} + && \
 	find . -type f -name "*.pyc" -delete
 
-# Copy custom entrypoint script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
 # Switch to non-root user for initialization
 USER getscipaper
 WORKDIR /home/getscipaper
