@@ -1,20 +1,22 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/ubuntu
 {
-	"name": "getscipapers",
+	"name": "Docker in Docker",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-	// "image": "ghcr.io/hoanganhduc/getscipapers:latest",
+	"image": "mcr.microsoft.com/devcontainers/base:bullseye",
 
+	"features": {
+		"ghcr.io/devcontainers/features/docker-in-docker:2": {
+			"version": "${templateOption:dockerVersion}",
+			"enableNonRootDocker": "${templateOption:enableNonRootDocker}",
+			"moby": "${templateOption:moby}"
+		}
+	},
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
-
-	"dockerComposeFile": ["../../docker-compose.yml"],
-	"service": "getscipapers",
-	"shutdownAction": "none",
-	"workspaceFolder": "/workspace",
 
 	// Use 'updateContentCommand' to run commands when creating the container.
 	"updateContentCommand": "",
