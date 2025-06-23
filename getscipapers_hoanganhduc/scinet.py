@@ -5504,36 +5504,6 @@ def get_password_for_username(username):
             exit(1)
         return password
 
-def validate_arguments(args, parser):
-    """Validate command line arguments"""
-    if bool(args.solve_doi) != bool(args.solve_pdf):
-        parser.error("--solve-doi and --solve-pdf must be used together")
-    
-    valid_options = [
-        bool(args.pdf), 
-        bool(args.request_doi), 
-        args.get_active_requests is not None, 
-        bool(args.get_fulfilled_requests),
-        bool(args.accept_fulfilled_requests),
-        bool(args.reject_fulfilled_requests),
-        bool(args.accept_fulfilled_doi),
-        bool(args.reject_fulfilled_doi),
-        args.solve_active_requests is not None,
-        args.cancel_waiting_requests is not None,
-        args.get_unsolved_requests is not None,
-        args.cancel_unsolved_requests is not None,
-        bool(args.cancel_unsolved_doi),
-        bool(args.solve_doi),
-        args.get_uploaded_files is not None,
-        bool(getattr(args, "user_info", False))
-    ]
-    
-    if not any(valid_options):
-        parser.error("One of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), --get-uploaded-files, or --user-info must be specified")
-    
-    if sum(valid_options) > 1:
-        parser.error("Only one of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), --get-uploaded-files, or --user-info can be specified at a time")
-
 def handle_pdf_upload(args, headless_mode):
     """Handle PDF upload functionality"""
     pdf_files = []
@@ -6239,8 +6209,23 @@ def handle_user_info(args, headless_mode, details=False):
     else:
         print("Failed to retrieve user info.")
 
+def print_default_paths():
+    """
+    Print all default paths and configuration values used by scinet.py
+    """
+    print("Default configuration paths and values:")
+    print(f"  Cache directory: {get_cache_directory()}")
+    print(f"  Download directory: {get_download_directory()}")
+    print(f"  Cache file: {CACHE_FILE}")
+    print(f"  Cache duration (hours): {CACHE_DURATION_HOURS}")
+    print(f"  Log file: {LOG_FILE}")
+    print(f"  Default download dir: {DEFAULT_DOWNLOAD_DIR}")
+
 def execute_action(args, headless_mode):
     """Execute the appropriate action based on arguments"""
+    if getattr(args, "print_default", False):
+        print_default_paths()
+        return
     if getattr(args, "user_info", False):
         handle_user_info(args, headless_mode)
         return
@@ -6314,6 +6299,40 @@ def execute_action(args, headless_mode):
                     print(f"  Error: {result['error']}")
         else:
             print("\nFailed to solve request by DOI")
+
+def validate_arguments(args, parser):
+    """Validate command line arguments"""
+    # Allow --print-default to be used alone
+    if getattr(args, "print_default", False):
+        return
+
+    if bool(args.solve_doi) != bool(args.solve_pdf):
+        parser.error("--solve-doi and --solve-pdf must be used together")
+    
+    valid_options = [
+        bool(args.pdf), 
+        bool(args.request_doi), 
+        args.get_active_requests is not None, 
+        bool(args.get_fulfilled_requests),
+        bool(args.accept_fulfilled_requests),
+        bool(args.reject_fulfilled_requests),
+        bool(args.accept_fulfilled_doi),
+        bool(args.reject_fulfilled_doi),
+        args.solve_active_requests is not None,
+        args.cancel_waiting_requests is not None,
+        args.get_unsolved_requests is not None,
+        args.cancel_unsolved_requests is not None,
+        bool(args.cancel_unsolved_doi),
+        bool(args.solve_doi),
+        args.get_uploaded_files is not None,
+        bool(getattr(args, "user_info", False))
+    ]
+    
+    if not any(valid_options):
+        parser.error("One of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), --get-uploaded-files, --user-info, or --print-default must be specified")
+    
+    if sum(valid_options) > 1:
+        parser.error("Only one of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), --get-uploaded-files, --user-info, or --print-default can be specified at a time")
 
 def main():
     # Get the parent package name from the module's __name__
@@ -6397,6 +6416,7 @@ def main():
     parser.add_argument('--noconfirm', action='store_true', help='Automatically proceed with default options without user confirmation')
     parser.add_argument('--credentials', help='Path to JSON file containing login credentials (format: {"scinet_username": "user", "scinet_password": "pass"})')
     parser.add_argument('--user-info', action='store_true', help='Show user info/profile (tokens, stats, etc) after login')
+    parser.add_argument('--print-default', action='store_true', help='Print default configuration paths and values used by scinet.py')
 
     # Show installation hint if argcomplete is not available
     if not autocomplete_available and VERBOSE:

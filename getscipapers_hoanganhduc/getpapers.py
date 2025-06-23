@@ -128,6 +128,11 @@ def load_credentials(config_file: str = None):
         else:
             vprint(f"Configuration file not found: {config_file}")
         print("Please enter credentials:")
+        print("You will be asked for the following information:")
+        print("  - Email address (required, for Unpaywall and polite API usage)")
+        print("  - Elsevier API Key (optional, for Elsevier Full-Text API)")
+        print("  - Wiley TDM Token (optional, for Wiley TDM API)")
+        print("  - IEEE API Key (optional, for IEEE Xplore API)")
         
         # Prompt for input with timeout
         try:
@@ -137,7 +142,7 @@ def load_credentials(config_file: str = None):
                     raise TimeoutError("Input timeout")
                 
                 signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(30)  # 30 second timeout
+                signal.alarm(60)  # 30 second timeout
                 
                 try:
                     current_email = existing_config.get("email", "")
@@ -2095,6 +2100,18 @@ async def download_by_doi_list(doi_file: str, download_folder: str = ".", db: st
                 oa_status_text = "Open Access" if oa_status else "Closed Access"
                 print(f"  ✗ {doi} [{oa_status_text}]")
 
+def print_default_paths():
+    """
+    Print all default paths and configuration file locations used by the script.
+    """
+    print("Default configuration and data paths:")
+    print(f"  GETPAPERS_CONFIG_FILE: {GETPAPERS_CONFIG_FILE}")
+    print(f"  Default download folder: .")
+    print(f"  Platform: {platform.system()}")
+    print(f"  Nexus credentials file: {getattr(nexus, 'CREDENTIALS_FILE', 'N/A')}")
+    print(f"  Nexus session file: {getattr(nexus, 'SESSION_FILE', 'N/A')}")
+    print(f"  Nexus default proxy file: {getattr(nexus, 'DEFAULT_PROXY_FILE', 'N/A')}")
+
 async def main():
     # Get the parent package name from the module's __name__
     parent_package = __name__.split('.')[0] if '.' in __name__ else None
@@ -2122,6 +2139,7 @@ async def main():
             "  %(prog)s --search \"climate change\" --verbose\n"
             "  %(prog)s --doi 10.1002/anie.201915678 --config myconfig.json\n"
             "  %(prog)s --clear-config\n"
+            "  %(prog)s --print-default\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         prog=program_name
@@ -2158,7 +2176,17 @@ async def main():
         action="store_true",
         help="Delete the default configuration directory and all its contents"
     )
+    argparser.add_argument(
+        "--print-default",
+        action="store_true",
+        help="Print all default paths and configuration file locations used by the script"
+    )
     args = argparser.parse_args()
+
+    # Handle --print-default before anything else
+    if args.print_default:
+        print_default_paths()
+        sys.exit(0)
 
     # Handle --clear-config before anything else
     if args.clear_config:

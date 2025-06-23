@@ -1853,6 +1853,13 @@ class FacebookScraper:
         else:
             self.log(f"❌ Failed to post help request for DOIs to group {group_id}")
         return [(doi, success) for doi in dois]
+    
+    def print_default_paths():
+        """Print all default cache and download directory paths."""
+        print("Default Facebook Scraper Paths:")
+        print(f"  Cache directory: {_CACHE_DIR}")
+        print(f"  Download folder: {_DOWNLOAD_DIR}")
+        print(f"  Cache file: {CACHE_FILE}")
 
     def close(self):
         """Close the browser"""
@@ -1860,7 +1867,6 @@ class FacebookScraper:
         if self.driver:
             self.driver.quit()
             self.log("Browser closed successfully")
-
 
 def main():
     """Main function to handle command line arguments and execute Facebook scraper operations"""
@@ -2010,8 +2016,15 @@ Examples:
                        help='Group ID to post DOI help requests in (default: 188053074599163)')
     parser.add_argument('--clear-cache', action='store_true',
                        help='Delete the default cache directory and exit')
+    parser.add_argument('--print-default', action='store_true',
+                       help='Print default cache and download directory paths and exit')
     args = parser.parse_args()
     
+    # Handle --print-default before anything else
+    if args.print_default:
+        FacebookScraper.print_default_paths()
+        return
+
     # Handle --clear-cache before anything else
     if args.clear_cache:
         try:
@@ -2318,7 +2331,5 @@ Examples:
             except Exception as e:
                 print(f"❌ Error closing log file: {e}")
 
-
-# Example usage
 if __name__ == "__main__":
     main()

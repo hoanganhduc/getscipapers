@@ -5262,6 +5262,19 @@ async def batch_request_papers_by_doi(api_id, api_hash, phone_number, bot_userna
     info_print(f"Batch request completed: {requested} requested, {skipped} skipped, {errors} errors")
     return summary
 
+def print_default_paths():
+    """Print all default file and directory paths used by the script."""
+    print("\n" + "="*50)
+    print("DEFAULT FILE AND DIRECTORY PATHS")
+    print("="*50)
+    print(f"Session file:         {SESSION_FILE}")
+    print(f"Credentials file:     {CREDENTIALS_FILE}")
+    print(f"Proxy config file:    {DEFAULT_PROXY_FILE}")
+    print(f"Proxy list file:      {DEFAULT_PROXY_FILE.replace('.json', '_list.json')}")
+    print(f"Log file:             {DEFAULT_LOG_FILE}")
+    print(f"Download directory:   {DEFAULT_DOWNLOAD_DIR}")
+    print("="*50 + "\n")
+
 async def main():
     global TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME
 
@@ -5382,7 +5395,11 @@ Examples:
                        help='Automatically download papers if available (use with --check-doi)')
     parser.add_argument('--request-doi', type=str, metavar='DOI_OR_LIST_OR_FILE',
                        help='Request a paper by DOI, a comma/space separated list of DOIs, or a file containing DOIs (one per line)')
-    
+    parser.add_argument(
+        "--print-default",
+        action="store_true",
+        help="Print all default paths and configuration file locations used by the script"
+    )
     args = parser.parse_args()
     
     # Setup logging
@@ -5396,6 +5413,11 @@ Examples:
     debug_print(f"Platform: {platform.system()}")
     debug_print(f"Session file: {SESSION_FILE}")
     debug_print(f"Default log file: {DEFAULT_LOG_FILE}")
+
+    # Handle --print-default before anything else
+    if args.print_default:
+        print_default_paths()
+        sys.exit(0)
     
     # Handle clear-proxy command
     if args.clear_proxy:
