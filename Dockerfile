@@ -29,4 +29,5 @@ RUN git clone https://github.com/hoanganhduc/getscipapers.git . && \
 	find . -type d -name __pycache__ -exec rm -rf {} + && \
 	find . -type f -name "*.pyc" -delete
 
-CMD [ "bash" ]
+# Keep the container running
+CMD ["tail", "-f", "/dev/null"]
