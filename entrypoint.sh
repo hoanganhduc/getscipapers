@@ -1,6 +1,6 @@
 #!/bin/sh
 # Ensure IPFS repository is initialized
-if [ ! -d "$IPFS_PATH/config" ]; then
+if [ ! -f "$IPFS_PATH/config" ]; then
     echo "Initializing IPFS repository at $IPFS_PATH..."
     ipfs init || { echo "IPFS init failed"; exit 1; }
 fi
