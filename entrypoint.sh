@@ -1,9 +1,4 @@
 #!/bin/sh
-# Ensure IPFS repository is initialized
-if [ ! -d "$IPFS_PATH/config" ]; then
-    echo "Initializing IPFS repository at $IPFS_PATH..."
-    ipfs init || { echo "IPFS init failed"; exit 1; }
-fi
 
 # Start IPFS daemon quietly in the background
 ipfs daemon > /dev/null 2>&1 &
