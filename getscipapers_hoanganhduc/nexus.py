@@ -29,6 +29,7 @@ import shutil
 from datetime import timedelta
 import datetime as dt  # Add this import at the top if not already present
 import itertools
+import getpass
 from .getpapers import extract_dois_from_text, extract_dois_from_file
 
 
@@ -2165,43 +2166,158 @@ def get_input_with_timeout(prompt, timeout=30, default='y', keep_origin=False):
             return default
 
 async def load_credentials_from_file(credentials_path):
-    """Load API credentials from JSON file"""
+    """Load API credentials from JSON file, validate, and prompt user if invalid or missing."""
+
     global TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME
-    
-    debug_print(f"Loading credentials from: {credentials_path}")
-    
-    if not os.path.exists(credentials_path):
-        error_print(f"Credentials file not found: {credentials_path}")
-        return False
-    
-    try:
-        with open(credentials_path, 'r') as f:
-            creds = json.load(f)
-        
+
+    def prompt_for_credentials():
+        print("\nPlease enter your Telegram API credentials.")
+        tg_api_id = get_input_with_timeout("API ID: ", timeout=30, default="", keep_origin=True)
+        if not tg_api_id:
+            error_print("No API ID entered. Exiting.")
+            return None
+        tg_api_hash = get_input_with_timeout("API Hash: ", timeout=30, default="", keep_origin=True)
+        if not tg_api_hash:
+            error_print("No API Hash entered. Exiting.")
+            return None
+        phone = get_input_with_timeout("Phone number (with country code): ", timeout=30, default="", keep_origin=True)
+        if not phone:
+            error_print("No phone number entered. Exiting.")
+            return None
+        bot_username = get_input_with_timeout("Bot username (default: SciNexBot): ", timeout=30, default="SciNexBot", keep_origin=True)
+        if not bot_username:
+            bot_username = "SciNexBot"
+        return {
+            "tg_api_id": tg_api_id,
+            "tg_api_hash": tg_api_hash,
+            "phone": phone,
+            "bot_username": bot_username
+        }
+
+    async def validate_and_save(creds):
+        global TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME
         TG_API_ID = creds.get("tg_api_id", TG_API_ID)
         TG_API_HASH = creds.get("tg_api_hash", TG_API_HASH)
         PHONE = creds.get("phone", PHONE)
         BOT_USERNAME = creds.get("bot_username", BOT_USERNAME)
-        
-        info_print(f"Loaded credentials from: {credentials_path}")
-        debug_print(f"TG_API_ID: {TG_API_ID}, BOT_USERNAME: {BOT_USERNAME}")
-        
-        # Update credentials to default location if necessary
-        if credentials_path != CREDENTIALS_FILE:
-            try:
-                debug_print(f"Updating credentials to default location: {CREDENTIALS_FILE}")
-                with open(CREDENTIALS_FILE, 'w') as f:
-                    json.dump(creds, f, indent=2)
-                info_print(f"Credentials copied to default location: {CREDENTIALS_FILE}")
-            except Exception as e:
-                debug_print(f"Warning: Could not update credentials to default location: {e}")
-        
-        return [TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME]
-        
-    except (json.JSONDecodeError, KeyError) as e:
-        error_print(f"Error loading credentials file: {e}")
-        debug_print(f"Credentials loading error: {type(e).__name__}: {str(e)}")
-        return None
+        # Validate credentials
+        test_result = await test_credentials(TG_API_ID, TG_API_HASH, PHONE)
+        if test_result.get("ok"):
+            info_print("Credentials validated successfully.")
+            # Save to default location if not already there or if different
+            save_needed = True
+            if os.path.exists(CREDENTIALS_FILE):
+                try:
+                    with open(CREDENTIALS_FILE, 'r') as f:
+                        existing = json.load(f)
+                    # Compare all fields
+                    if (
+                        str(existing.get("tg_api_id", "")) == str(TG_API_ID)
+                        and str(existing.get("tg_api_hash", "")) == str(TG_API_HASH)
+                        and str(existing.get("phone", "")) == str(PHONE)
+                        and str(existing.get("bot_username", "")) == str(BOT_USERNAME)
+                    ):
+                        save_needed = False
+                except Exception:
+                    save_needed = True
+            if save_needed:
+                try:
+                    with open(CREDENTIALS_FILE, 'w') as f:
+                        json.dump({
+                            "tg_api_id": TG_API_ID,
+                            "tg_api_hash": TG_API_HASH,
+                            "phone": PHONE,
+                            "bot_username": BOT_USERNAME
+                        }, f, indent=2)
+                    info_print(f"Credentials saved to: {CREDENTIALS_FILE}")
+                except Exception as e:
+                    debug_print(f"Warning: Could not save credentials to default location: {e}")
+            return [TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME]
+        else:
+            error_print(f"Credential validation failed: {test_result.get('error', 'Unknown error')}")
+            return None
+
+    debug_print(f"Loading credentials from: {credentials_path}")
+
+    # Try credentials_path first
+    creds = None
+    if os.path.exists(credentials_path):
+        try:
+            with open(credentials_path, 'r') as f:
+                creds = json.load(f)
+            result = await validate_and_save(creds)
+            if result:
+                return result
+            else:
+                info_print("Credentials in file are invalid. Please re-enter.")
+        except Exception as e:
+            error_print(f"Error loading credentials file: {e}")
+            debug_print(f"Credentials loading error: {type(e).__name__}: {str(e)}")
+            creds = None
+
+    # If not found or invalid, try default location if different
+    if credentials_path != CREDENTIALS_FILE and os.path.exists(CREDENTIALS_FILE):
+        try:
+            with open(CREDENTIALS_FILE, 'r') as f:
+                creds = json.load(f)
+            result = await validate_and_save(creds)
+            if result:
+                return result
+            else:
+                info_print("Credentials in default location are invalid. Please re-enter.")
+        except Exception as e:
+            error_print(f"Error loading credentials file: {e}")
+            debug_print(f"Credentials loading error: {type(e).__name__}: {str(e)}")
+            creds = None
+
+    # If still not found or invalid, prompt user
+    for attempt in range(2):  # Allow up to 2 attempts
+        creds = prompt_for_credentials()
+        if not creds:
+            error_print("No credentials provided. Exiting.")
+            return None
+        result = await validate_and_save(creds)
+        if result:
+            return result
+        else:
+            info_print("Credentials invalid. Please try again.")
+    error_print("Failed to provide valid credentials after multiple attempts or timeout.")
+    return None
+    
+async def test_credentials(api_id, api_hash, phone_number, session_file='telegram_session', proxy=None):
+    """
+    Test if the provided Telegram API credentials are correct by attempting to connect and authorize.
+    Returns a dictionary with the result.
+    """
+    result = {
+        "ok": False,
+        "error": None,
+        "user": None
+    }
+    try:
+        proxy_config = load_proxy_config(proxy) if proxy else None
+        client = create_telegram_client(session_file, api_id, api_hash, proxy_config)
+        await client.start(phone=phone_number if phone_number else None)
+        if await client.is_user_authorized():
+            me = await client.get_me()
+            result["ok"] = True
+            result["user"] = {
+                "id": me.id,
+                "first_name": me.first_name,
+                "last_name": me.last_name,
+                "username": me.username,
+                "phone": me.phone
+            }
+        else:
+            result["error"] = "Not authorized. Credentials may be invalid or session expired."
+    except Exception as e:
+        result["error"] = f"Credential test failed: {str(e)}"
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+    return result
 
 async def setup_proxy_configuration(proxy_arg):
     """Setup proxy configuration - load existing or find new working proxy"""
