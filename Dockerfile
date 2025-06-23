@@ -20,8 +20,6 @@ RUN apt-get update && apt-get install -y \
 # Expose default IPFS ports
 EXPOSE 4001 4001/udp 5001 8080
 
-VOLUME [ "/home/getscipaper" ]
-
 # Create a non-root user and group
 RUN adduser --system --group --home /home/getscipaper --uid 1000 getscipaper
 
