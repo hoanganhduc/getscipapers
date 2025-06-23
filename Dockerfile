@@ -20,6 +20,8 @@ RUN apt-get update && \
 # Expose default IPFS ports
 EXPOSE 4001/tcp 4001/udp 5001/tcp 8080/tcp
 
+VOLUME [ "/home/getscipaper" ]
+
 # Create a non-root user and group
 RUN adduser --system --group --home /home/getscipaper --uid 1000 getscipaper
 
@@ -51,5 +53,3 @@ WORKDIR /home/getscipaper
 
 # Set IPFS_PATH environment variable
 ENV IPFS_PATH=/home/getscipaper/.ipfs
-
-CMD [ "/bin/bash" ]
