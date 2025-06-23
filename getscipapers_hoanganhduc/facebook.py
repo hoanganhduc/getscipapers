@@ -28,6 +28,8 @@ import json
 import datetime
 import os
 import shutil
+import sys
+import getpass
 
 USERNAME = "" # Replace with your Facebook username
 PASSWORD = "" # Replace with your Facebook password
@@ -254,6 +256,68 @@ class FacebookScraper:
         self.log("Performing fresh login...")
         self.log("Navigating to Facebook login page...")
         self.driver.get("https://www.facebook.com/login")
+
+        # Prompt for email and password if not provided
+        if not self.email or not self.password:
+            def get_input_with_timeout(prompt, timeout=30):
+                if platform.system() == "Windows":
+                    print(prompt, end='', flush=True)
+                    start_time = time.time()
+                    input_chars = []
+                    while True:
+                        if msvcrt.kbhit():
+                            char = msvcrt.getch()
+                            if char == b'\r':
+                                print()
+                                return ''.join(input_chars)
+                            elif char == b'\x08':
+                                if input_chars:
+                                    input_chars.pop()
+                                    print('\b \b', end='', flush=True)
+                            else:
+                                try:
+                                    decoded_char = char.decode('utf-8')
+                                    input_chars.append(decoded_char)
+                                    print(decoded_char, end='', flush=True)
+                                except UnicodeDecodeError:
+                                    pass
+                        if time.time() - start_time > timeout:
+                            print(f"\n⏰ Timeout: No response received within {timeout} seconds.")
+                            return None
+                        time.sleep(0.1)
+                else:
+                    def alarm_handler(signum, frame):
+                        raise TimeoutError()
+                    try:
+                        signal.signal(signal.SIGALRM, alarm_handler)
+                        signal.alarm(timeout)
+                        result = input(prompt)
+                        signal.alarm(0)
+                        return result
+                    except (TimeoutError, KeyboardInterrupt):
+                        signal.alarm(0)
+                        print(f"\n⏰ Timeout: No response received within {timeout} seconds.")
+                        return None
+
+            if not self.email:
+                self.email = get_input_with_timeout("Enter your Facebook email/username: ")
+                if not self.email:
+                    self.log("❌ Login failed: No email provided (timeout or empty input)")
+                    print("❌ Login failed: No email provided (timeout or empty input)")
+                    raise Exception("Login failed: No email provided")
+            if not self.password:
+                if platform.system() == "Windows":
+                    # getpass does not support timeout, so use fallback
+                    self.password = get_input_with_timeout("Enter your Facebook password: ")
+                else:
+                    try:
+                        self.password = getpass.getpass("Enter your Facebook password: ")
+                    except Exception:
+                        self.password = get_input_with_timeout("Enter your Facebook password: ")
+                if not self.password:
+                    self.log("❌ Login failed: No password provided (timeout or empty input)")
+                    print("❌ Login failed: No password provided (timeout or empty input)")
+                    raise Exception("Login failed: No password provided")
         
         # Enter email
         self.log("Looking for email input field...")
