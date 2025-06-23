@@ -2201,7 +2201,11 @@ async def load_credentials_from_file(credentials_path):
         PHONE = creds.get("phone", PHONE)
         BOT_USERNAME = creds.get("bot_username", BOT_USERNAME)
         # Validate credentials
+        # Try testing credentials without proxy first
         test_result = await test_credentials(TG_API_ID, TG_API_HASH, PHONE)
+        if not test_result.get("ok") and os.path.exists(DEFAULT_PROXY_FILE):
+            info_print("Credential test failed without proxy, retrying with proxy...")
+            test_result = await test_credentials(TG_API_ID, TG_API_HASH, PHONE, proxy=DEFAULT_PROXY_FILE)
         if test_result.get("ok"):
             info_print("Credentials validated successfully.")
             # Save to default location if not already there or if different
