@@ -19,7 +19,10 @@
 
 	// Use 'postCreateCommand' to run commands after the container is created.
 	// This is a good place to install additional tools or run scripts.
-	"postCreateCommand": "yarn install && bash run.sh",
+	"postCreateCommand": "yarn install",
+
+	// Use 'postStartCommand' to run commands after the container is started.
+	"postStartCommand": "service docker start && bash .devcontainer/post-start.sh",
 
 	// Configure tool-specific properties.
 	"customizations": {
