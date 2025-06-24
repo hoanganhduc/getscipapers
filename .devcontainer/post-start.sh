@@ -23,13 +23,15 @@ echo "Pulling the latest getscipapers Docker image..."
 docker pull ghcr.io/hoanganhduc/getscipapers:latest
 
 # Create and bind Docker volumes for persistent storage
-# This ensures that data in these directories persists across container restarts
-# Docker volume names cannot contain slashes, so we use names with dots or plain names
-for volume_name in "Downloads" ".config_getscipapers" ".ipfs"; do
-  # Map volume names to source directories in $HOME
-  # For example, ".config_getscipapers" maps to "$HOME/.config/getscipapers"
-  source="$HOME/${volume_name//_//}"
-  mkdir -p "$source"  # Ensure the source directory exists
+declare -A volume_map=(
+  ["vol_downloads"]="Downloads"
+  ["vol_config_getscipapers"]=".config/getscipapers"
+  ["vol_ipfs"]=".ipfs"
+)
+
+for volume_name in "${!volume_map[@]}"; do
+  source="$HOME/${volume_map[$volume_name]}"
+  mkdir -p "$source"
   docker volume create "$volume_name" \
     --driver "local" \
     --opt "type=none" \
@@ -42,8 +44,8 @@ echo "Starting getscipapers container..."
 docker run -d \
   --name getscipapers-container \
   --restart always \
-  -v Downloads:/home/getscipaper/Downloads \
-  -v .config/getscipapers:/home/getscipaper/.config/getscipapers \
+  -v vol_downloads:/home/getscipaper/Downloads \
+  -v vol_config_getscipapers:/home/getscipaper/.config/getscipapers \
   ghcr.io/hoanganhduc/getscipapers:latest
 
 # Pull the latest IPFS Kubo Docker image
@@ -66,12 +68,16 @@ echo "Starting IPFS Kubo container..."
 docker run -d \
   --name ipfs_host \
   --restart always \
-  -v .ipfs:/data/ipfs \
-  -v .ipfs:/export \
+  -v vol_ipfs:/data/ipfs \
+  -v vol_ipfs:/export \
   -p 4001:4001 \
   -p 4001:4001/udp \
   -p 127.0.0.1:8080:8080 \
   -p 127.0.0.1:5001:5001 \
   ipfs/kubo:latest
+
+# Create a script to run getscipapers with the necessary environment variables
+echo "Creating getscipapers script..."
+sudo chmod +x getscipapers && sudo cp getscipapers /usr/local/bin/getscipapers
 
 echo "All services started successfully."
