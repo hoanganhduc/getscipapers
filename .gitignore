@@ -105,3 +105,10 @@ dmypy.json
 
 # unpaywall cache
 unpaywall_cache
+
+# Yarn
+yarn-error.log
+.yarn/
+.pnp.*
+yarn.lock
+.yarn-integrity
