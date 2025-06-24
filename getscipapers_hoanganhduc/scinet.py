@@ -5520,13 +5520,26 @@ def handle_credentials(args, parser):
     """Handle credential loading and validation"""
     global USERNAME, PASSWORD
 
+    # Try to extract USERNAME from cache if it exists and is valid
+    cache_data = None
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, 'rb') as f:
+                cache_data = pickle.load(f)
+            if isinstance(cache_data, dict) and 'username' in cache_data:
+                USERNAME = cache_data['username']
+                print(f"Using cached username: {USERNAME}")
+        except Exception:
+            pass
+
     if args.credentials:
         credentials = load_credentials_from_json(args.credentials)
         if not credentials:
             print("Failed to load credentials from JSON file.")
             # Prompt user for username and password manually
             print("Please enter your username and password manually.")
-            USERNAME = get_username_with_timeout()
+            if not USERNAME:
+                USERNAME = get_username_with_timeout()
             if not USERNAME:
                 print("Error: No username provided")
                 exit(1)
@@ -5539,6 +5552,13 @@ def handle_credentials(args, parser):
             PASSWORD = credentials['scinet_password']
             print(f"Using credentials from file: {args.credentials}")
             print(f"Username: {USERNAME}")
+    else:
+        # If USERNAME is not set from cache or credentials, prompt user
+        if not USERNAME:
+            USERNAME = get_username_with_timeout()
+        if not USERNAME:
+            print("Error: No username provided")
+            exit(1)
 
 def get_password_for_username(username):
     """Get password for username, using cache if available"""
@@ -6222,6 +6242,7 @@ def handle_user_info(args, headless_mode, details=False):
         headless_mode: bool
         details: bool, if True print lists of requests, uploads, solutions
     """
+    print(f"Fetching user info of {USERNAME}...")
     info = get_user_info_logged_in(USERNAME, PASSWORD, headless=headless_mode)
     if info:
         print("\nUser Info:")
