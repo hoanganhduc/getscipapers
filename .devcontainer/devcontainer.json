@@ -22,7 +22,7 @@
 	"postCreateCommand": "yarn install",
 
 	// Use 'postStartCommand' to run commands after the container is started.
-	"postStartCommand": "service docker start && bash .devcontainer/post-start.sh",
+	"postStartCommand": "bash .devcontainer/post-start.sh",
 
 	// Configure tool-specific properties.
 	"customizations": {
