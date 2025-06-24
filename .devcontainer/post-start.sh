@@ -78,6 +78,6 @@ docker run -d \
 
 # Create a script to run getscipapers with the necessary environment variables
 echo "Creating getscipapers script..."
-sudo chmod +x getscipapers && sudo cp getscipapers /usr/local/bin/getscipapers
+chmod a+x getscipapers && sudo cp getscipapers /usr/local/bin/getscipapers
 
 echo "All services started successfully."
