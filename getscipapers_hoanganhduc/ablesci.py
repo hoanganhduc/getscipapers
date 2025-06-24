@@ -17,6 +17,7 @@ import getpass
 import glob
 import platform
 from .getpapers import extract_dois_from_text, extract_dois_from_file
+import tempfile
 
 USERNAME = "" # Replace with your actual username/email
 PASSWORD = "" # Replace with your actual password
@@ -104,6 +105,12 @@ def get_chrome_driver(headless=True):
     if headless:
         options.add_argument('--headless=new')
         options.add_argument('--disable-gpu')
+        
+    # Use a temporary directory to avoid conflicts
+    user_data_dir = os.getenv("USER_DATA_DIR", tempfile.mkdtemp())
+    if not os.path.exists(user_data_dir):
+        os.makedirs(user_data_dir, exist_ok=True)
+    options.add_argument(f"--user-data-dir={user_data_dir}")
     
     # Suppress Chrome messages
     options.add_argument('--disable-dev-shm-usage')
@@ -116,8 +123,6 @@ def get_chrome_driver(headless=True):
     options.add_argument("--disable-popup-blocking")
     options.add_argument("--disable-infobars")
     options.add_argument("--disable-extensions")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-web-security")
     options.add_argument("--allow-running-insecure-content")
     options.add_argument("--enable-unsafe-swiftshader")
