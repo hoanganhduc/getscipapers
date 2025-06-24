@@ -35,12 +35,20 @@ def get_cache_directory():
         # Use ~/.config/getscipapers/ablesci on Linux
         return os.path.join(os.path.expanduser('~'), '.config', 'getscipapers', 'ablesci')
 
+def get_credentials_directory():
+    """Get the appropriate directory for storing credentials based on the operating system."""
+    # Use the same logic as cache directory for consistency
+    return get_cache_directory()
+
 # Create the cache directory if it doesn't exist
 cache_dir = get_cache_directory()
 os.makedirs(cache_dir, exist_ok=True)
 
 CACHE_FILE = os.path.join(cache_dir, 'ablesci_cache.pkl')
-CREDENTIALS_FILE = 'credentials.json'
+# Determine the credentials file location (default: credentials.json in credentials directory)
+credentials_dir = get_credentials_directory()
+os.makedirs(credentials_dir, exist_ok=True)
+CREDENTIALS_FILE = os.path.join(credentials_dir, 'credentials.json')
 
 verbose = False
 

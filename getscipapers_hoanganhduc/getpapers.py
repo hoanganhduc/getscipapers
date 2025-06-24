@@ -42,7 +42,21 @@ def vprint(*args, **kwargs):
         print(*args, **kwargs)
 
 # Global variable for default config file location
-GETPAPERS_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".config", "getscipapers", "getpapers", "config.json") if platform.system() != "Windows" else os.path.join(os.path.expanduser("~"), "AppData", "Local", "getscipapers", "getpapers", "config.json")
+GETPAPERS_CONFIG_FILE = os.path.join(
+    os.path.expanduser("~"),
+    ".config", "getscipapers", "getpapers", "config.json"
+) if platform.system() != "Windows" else os.path.join(
+    os.path.expanduser("~"),
+    "AppData", "Local", "getscipapers", "getpapers", "config.json"
+)
+
+# Ensure the folder to save the config file exists
+config_dir = os.path.dirname(GETPAPERS_CONFIG_FILE)
+if not os.path.exists(config_dir):
+    try:
+        os.makedirs(config_dir, exist_ok=True)
+    except Exception as e:
+        print(f"Error creating config directory {config_dir}: {e}")
 
 def save_credentials(email: str = None, elsevier_api_key: str = None, 
                     wiley_tdm_token: str = None, ieee_api_key: str = None, 
