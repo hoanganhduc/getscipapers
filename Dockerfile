@@ -18,7 +18,9 @@ RUN apt-get update && \
 	rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user and group
-RUN adduser --system --group --home /home/getscipaper --uid 1000 getscipaper
+RUN adduser --system --group --home /home/vscode --uid 1000 vscode && \
+	adduser vscode sudo && \
+	echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Clone and install getscipapers
 WORKDIR /app
@@ -33,8 +35,8 @@ RUN git clone https://github.com/hoanganhduc/getscipapers.git . && \
 	find . -type f -name "*.pyc" -delete
 
 # Switch to non-root user for initialization
-USER getscipaper
-WORKDIR /home/getscipaper
+USER vscode
+WORKDIR /home/vscode
 
 # Keep the container running
 CMD ["tail", "-f", "/dev/null"]
