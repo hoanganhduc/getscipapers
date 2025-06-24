@@ -1,7 +1,7 @@
 #!/bin/bash
 
-echo "Starting Docker service..."
-sudo systemctl start docker
+sudo dockerd > /dev/null 2>&1 &
+sleep 5
 
 echo "Installing UFW (Uncomplicated Firewall)..."
 sudo pacman -S --noconfirm ufw
