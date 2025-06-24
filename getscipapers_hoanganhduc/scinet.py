@@ -67,7 +67,7 @@ def get_download_directory():
     else:  # Linux and other Unix-like systems
         # Use ~/Downloads on Linux
         download_dir = os.path.join(os.path.expanduser('~'), 'Downloads', subfolder)
-    # Create download directory if it doesn't exist
+    # Ensure all parent directories exist
     os.makedirs(download_dir, exist_ok=True)
     return download_dir
 

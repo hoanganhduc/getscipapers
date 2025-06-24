@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# This script executes the getscipapers command inside a Docker container.
+
+# Set the container name
+CONTAINER_NAME="getscipapers-container"
+
+# Check if at least one argument for the command is provided
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 [arguments...]"
+    exit 1
+fi
+
+COMMAND=("getscipapers" "$@")
+
+# Check if Docker is installed
+if ! command -v docker &> /dev/null; then
+    echo "Error: Docker is not installed"
+    exit 1
+fi
+
+# Check if container exists and is running
+if ! docker ps -q -f name="$CONTAINER_NAME" | grep -q .; then
+    echo "Error: Container '$CONTAINER_NAME' is not running"
+    exit 1
+fi
+
+# Execute command with arguments in container and display output
+docker exec -i "$CONTAINER_NAME" "${COMMAND[@]}"
