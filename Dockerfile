@@ -15,6 +15,7 @@ RUN apt-get update && \
 	  curl \
 	  wget \
 	  procps \
+	  gnupg \
 	  # Dependencies for Chrome and ChromeDriver
 	  libglib2.0-0 \
 	  libnss3 \
