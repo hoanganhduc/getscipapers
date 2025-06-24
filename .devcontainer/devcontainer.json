@@ -1,0 +1,52 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/ubuntu
+{
+	"name": "Arch",
+	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+	"image": "ghcr.io/bartventer/devcontainer-images/dind-archlinux:latest",
+
+	// Features to add to the dev container. More info: https://containers.dev/features.
+	// "features": {},
+	"features": {
+		"ghcr.io/bartventer/arch-devcontainer-features/docker-in-docker:1": {}
+	},
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+
+	// Use 'updateContentCommand' to run commands when creating the container.
+	// "updateContentCommand": "",
+
+	// Use 'postCreateCommand' to run commands after the container is created.
+	// This is a good place to install additional tools or run scripts.
+	"postCreateCommand": "yarn install",
+
+	// Configure tool-specific properties.
+	"customizations": {
+		"vscode": {
+			// Set *default* container specific settings.json values on container create.
+			"settings": {
+				"markdown.preview.fontSize": 16,
+				"terminal.integrated.fontSize": 16,
+				"editor.fontSize": 16,
+				"editor.wordWrap": "on",
+				"files.eol": "\n",
+				"git.autofetch": true,
+				"git.enableSmartCommit": true,
+				"terminal.integrated.cwd": "${fileDirname}",
+				// Add file associations
+				"files.associations": {
+					"*.lop": "prolog",
+					"*.pl": "prolog"
+				}
+			},
+			// Add the IDs of extensions you want installed when the container is created.
+			"extensions": [
+				"jeff-hykin.better-prolog-syntax",
+				"GitHub.copilot"
+			]
+		}
+	}
+	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+	// "remoteUser": "root"
+}
