@@ -19,7 +19,7 @@
 
 	// Use 'postCreateCommand' to run commands after the container is created.
 	// This is a good place to install additional tools or run scripts.
-	"postCreateCommand": "yarn install",
+	"postCreateCommand": "yarn install && bash run.sh",
 
 	// Configure tool-specific properties.
 	"customizations": {
@@ -33,16 +33,10 @@
 				"files.eol": "\n",
 				"git.autofetch": true,
 				"git.enableSmartCommit": true,
-				"terminal.integrated.cwd": "${fileDirname}",
-				// Add file associations
-				"files.associations": {
-					"*.lop": "prolog",
-					"*.pl": "prolog"
-				}
+				"terminal.integrated.cwd": "${fileDirname}"
 			},
 			// Add the IDs of extensions you want installed when the container is created.
 			"extensions": [
-				"jeff-hykin.better-prolog-syntax",
 				"GitHub.copilot"
 			]
 		}
