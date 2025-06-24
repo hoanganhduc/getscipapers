@@ -21,6 +21,7 @@ import getpass
 import platform
 import sys
 import random
+import tempfile
 
 # Global variables for credentials
 USERNAME = ""  # Replace with your actual username/email
@@ -515,6 +516,12 @@ def login_to_scinet(username, password, headless=False):
         debug_print("Running in headless mode")
     else:
         debug_print("Running with visible browser")
+        
+    # Use a temporary directory to avoid conflicts
+    user_data_dir = os.getenv("USER_DATA_DIR", tempfile.mkdtemp())
+    if not os.path.exists(user_data_dir):
+        os.makedirs(user_data_dir, exist_ok=True)
+    options.add_argument(f"--user-data-dir={user_data_dir}")
     
     # Add options to ignore permission requests
     options.add_argument("--disable-notifications")

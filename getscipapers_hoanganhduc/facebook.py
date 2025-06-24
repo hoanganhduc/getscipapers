@@ -20,6 +20,7 @@ import platform
 import signal
 import sys
 from .getpapers import extract_dois_from_text, download_by_doi
+import tempfile
 
 if platform.system() == 'Windows':
     import msvcrt
@@ -120,15 +121,22 @@ class FacebookScraper:
         else:
             self.log("Running in graphic mode")
         
+        # Use a temporary directory to avoid conflicts
+        user_data_dir = os.getenv("USER_DATA_DIR", tempfile.mkdtemp())
+        if not os.path.exists(user_data_dir):
+            os.makedirs(user_data_dir, exist_ok=True)
+        options.add_argument(f"--user-data-dir={user_data_dir}")
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option("useAutomationExtension", False)
+        options.add_argument('--disable-dev-shm-usage')
         options.add_argument("--disable-notifications")
         options.add_argument("--disable-popup-blocking")
         options.add_argument("--disable-save-password-bubble")
         options.add_argument("--disable-infobars")
         options.add_argument("--disable-extensions-ui")
         options.add_argument("--disable-component-extensions-with-background-pages")
+        options.add_argument("--no-sandbox")  # Often required in Docker
         options.add_experimental_option("prefs", {
             "profile.default_content_setting_values.notifications": 2,
             "profile.default_content_settings.popups": 0,
