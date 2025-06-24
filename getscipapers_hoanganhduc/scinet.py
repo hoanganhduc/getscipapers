@@ -545,7 +545,11 @@ def login_to_scinet(username, password, headless=False):
         
         # If cache didn't work, perform fresh login
         if not login_success:
+            print("Performing fresh login...")
             login_success = perform_login(driver, username, password)
+            # Save cache after successful login
+            if login_success:
+                save_login_cache(driver, username)
         
         # If login failed, ask user for manual input
         if not login_success:
@@ -571,6 +575,9 @@ def login_to_scinet(username, password, headless=False):
                 if manual_username and manual_password:
                     print("Attempting login with manually entered credentials...")
                     login_success = perform_login(driver, manual_username, manual_password)
+                    # Save cache after successful manual login
+                    if login_success:
+                        save_login_cache(driver, manual_username)
                 else:
                     print("Error: Username or password is empty")
                     
@@ -6357,6 +6364,29 @@ def validate_arguments(args, parser):
     if getattr(args, "print_default", False):
         return
 
+    # Allow --clear-cache to be used alone
+    if getattr(args, "clear_cache", False) and sum([
+        bool(args.pdf), 
+        bool(args.request_doi), 
+        args.get_active_requests is not None, 
+        bool(args.get_fulfilled_requests),
+        bool(args.accept_fulfilled_requests),
+        bool(args.reject_fulfilled_requests),
+        bool(args.accept_fulfilled_doi),
+        bool(args.reject_fulfilled_doi),
+        args.solve_active_requests is not None,
+        args.cancel_waiting_requests is not None,
+        args.get_unsolved_requests is not None,
+        args.cancel_unsolved_requests is not None,
+        bool(args.cancel_unsolved_doi),
+        bool(args.solve_doi),
+        args.get_uploaded_files is not None,
+        bool(getattr(args, "user_info", False)),
+        bool(getattr(args, "print_default", False)),
+        bool(getattr(args, "credentials", None))
+    ]) == 1:
+        return
+
     # Allow --credentials to be used alone
     if getattr(args, "credentials", None) and sum([
         bool(args.pdf), 
@@ -6374,8 +6404,10 @@ def validate_arguments(args, parser):
         bool(args.cancel_unsolved_doi),
         bool(args.solve_doi),
         args.get_uploaded_files is not None,
-        bool(getattr(args, "user_info", False))
-    ]) == 0:
+        bool(getattr(args, "user_info", False)),
+        bool(getattr(args, "print_default", False)),
+        bool(getattr(args, "clear_cache", False))
+    ]) == 1:
         return
 
     if bool(args.solve_doi) != bool(args.solve_pdf):
@@ -6397,14 +6429,17 @@ def validate_arguments(args, parser):
         bool(args.cancel_unsolved_doi),
         bool(args.solve_doi),
         args.get_uploaded_files is not None,
-        bool(getattr(args, "user_info", False))
+        bool(getattr(args, "user_info", False)),
+        bool(getattr(args, "clear_cache", False)),
+        bool(getattr(args, "print_default", False)),
+        bool(getattr(args, "credentials", None))
     ]
     
     if not any(valid_options):
-        parser.error("One of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), --get-uploaded-files, --user-info, --credentials, or --print-default must be specified")
+        parser.error("One of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), --get-uploaded-files, --user-info, --credentials, --clear-cache, or --print-default must be specified")
     
     if sum(valid_options) > 1:
-        parser.error("Only one of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), --get-uploaded-files, --user-info, --credentials, or --print-default can be specified at a time")
+        parser.error("Only one of --pdf, --request-doi, --get-active-requests, --get-fulfilled-requests, --accept-fulfilled-requests, --reject-fulfilled-requests, --accept-fulfilled-doi, --reject-fulfilled-doi, --solve-active-requests, --cancel-waiting-requests, --get-unsolved-requests, --cancel-unsolved-requests, --cancel-unsolved-doi, --solve-doi (with --solve-pdf), --get-uploaded-files, --user-info, --credentials, --clear-cache, or --print-default can be specified at a time")
 
 def main():
     # Get the parent package name from the module's __name__
