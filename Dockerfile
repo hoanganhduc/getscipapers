@@ -7,15 +7,49 @@ LABEL org.opencontainers.image.title="GetSciPapers" \
 	org.opencontainers.image.licenses="GPL-3.0" \
 	org.opencontainers.image.authors="Duc A. Hoang <anhduc.hoang1990@gmail.com>"
 
-# Install system dependencies
+# Install system dependencies for general use and Chrome/ChromeDriver
 RUN apt-get update && \
 	apt-get install -y --no-install-recommends \
 	  build-essential \
 	  git \
 	  curl \
 	  wget \
-	  procps && \
+	  procps \
+	  # Dependencies for Chrome and ChromeDriver
+	  libglib2.0-0 \
+	  libnss3 \
+	  libgconf-2-4 \
+	  libfontconfig1 \
+	  libx11-xcb1 \
+	  libxi6 \
+	  libxcomposite1 \
+	  libxdamage1 \
+	  libxrandr2 \
+	  libxtst6 \
+	  libxss1 \
+	  libatk1.0-0 \
+	  libatk-bridge2.0-0 \
+	  libgtk-3-0 \
+	  libasound2 \
+	  fonts-liberation \
+	  xdg-utils \
+	  unzip && \
 	rm -rf /var/lib/apt/lists/*
+
+# Install Google Chrome
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+	echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list && \
+	apt-get update && \
+	apt-get install -y --no-install-recommends google-chrome-stable && \
+	rm -rf /var/lib/apt/lists/*
+
+# Install ChromeDriver
+RUN CHROMEDRIVER_VERSION=137.0.7151.119 && \
+	wget -q https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip && \
+	unzip chromedriver-linux64.zip && \
+	mv chromedriver-linux64/chromedriver /usr/local/bin/ && \
+	chmod +x /usr/local/bin/chromedriver && \
+	rm chromedriver-linux64.zip
 
 # Create a non-root user and group
 RUN adduser --system --group --home /home/vscode --uid 1000 vscode && \
