@@ -20,6 +20,7 @@ import signal
 import getpass
 import platform
 import sys
+import random
 
 # Global variables for credentials
 USERNAME = ""  # Replace with your actual username/email
@@ -330,51 +331,101 @@ def is_logged_in(driver):
         debug_print(f"Error checking login status: {str(e)}")
         return False
 
+def simulate_human_typing(element, text, log_func=None):
+    """
+    Simulate human-like typing patterns into a Selenium element.
+
+    Args:
+        element: Selenium WebElement to type into.
+        text: The text string to type.
+        log_func: Optional logging function for debug output.
+    """
+    if log_func:
+        log_func(f"Typing text: {text[:20]}{'...' if len(text) > 20 else ''}")
+    for char in text:
+        element.send_keys(char)
+        time.sleep(random.uniform(0.1, 0.3))
+        if random.random() < 0.1:
+            pause_time = random.uniform(0.3, 0.7)
+            if log_func:
+                log_func(f"Random pause: {pause_time:.2f}s")
+            time.sleep(pause_time)
+
 def perform_login(driver, username, password):
-    """Perform actual login process"""
+    """Perform actual login process with human-like typing and paste."""
     try:
-        # Navigate to the login page
         print("Navigating to sci-net.xyz for login...")
         driver.get("https://sci-net.xyz")
-        
-        # Wait for the page to load
+
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.TAG_NAME, "body"))
         )
-        
+
         debug_print("Looking for username field...")
-        username_field = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='user']"))
-        )
-        
+        # Try to find the username field by name or by input[type='text'] in .login .form
+        try:
+            username_field = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.NAME, "user"))
+            )
+        except Exception:
+            # Fallback: try input[type='text'] inside .login .form
+            username_field = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, ".login .form input[type='text'][name='user']"))
+            )
+
         debug_print("Looking for password field...")
-        password_field = driver.find_element(By.CSS_SELECTOR, "input[name='pass']")
-        
-        # Enter credentials
-        debug_print("Entering credentials...")
+        try:
+            password_field = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.NAME, "pass"))
+            )
+        except Exception:
+            # Fallback: try input[type='password'] inside .login .form
+            password_field = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, ".login .form input[type='password'][name='pass']"))
+            )
+
+        # Enter credentials with human-like typing for first 3 chars, then paste the rest
+        debug_print("Entering credentials with human-like typing and paste...")
         username_field.clear()
-        username_field.send_keys(username)
+        if len(username) > 3:
+            simulate_human_typing(username_field, username[:3], debug_print)
+            username_field.send_keys(username[3:])
+        else:
+            simulate_human_typing(username_field, username, debug_print)
+
         password_field.clear()
-        password_field.send_keys(password)
-        
+        if len(password) > 3:
+            simulate_human_typing(password_field, password[:3], debug_print)
+            password_field.send_keys(password[3:])
+        else:
+            simulate_human_typing(password_field, password, debug_print)
+
         # Find and click login button
         debug_print("Looking for login button...")
         try:
-            login_button = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.round[type='submit()']"))
-            )
-        except:
-            login_button = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.round"))
-            )
-        
+            # Try button.round[type='submit'], fallback to button.round, fallback to button in .login .form
+            try:
+                login_button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button.round[type='submit']"))
+                )
+            except:
+                try:
+                    login_button = WebDriverWait(driver, 10).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, "button.round"))
+                    )
+                except:
+                    login_button = WebDriverWait(driver, 10).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, ".login .form button"))
+                    )
+        except Exception as e:
+            print(f"Login button not found: {str(e)}")
+            return False
+
         debug_print("Clicking login button...")
         login_button.click()
-        
-        # Wait for login to process
+
         time.sleep(3)
-        
-        # Verify login success
+
         if is_logged_in(driver):
             print("Login successful!")
             save_login_cache(driver, username)
@@ -382,7 +433,7 @@ def perform_login(driver, username, password):
         else:
             print("Login failed!")
             return False
-            
+
     except Exception as e:
         print(f"Login error: {str(e)}")
         return False
