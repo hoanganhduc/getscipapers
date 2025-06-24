@@ -44,8 +44,8 @@ echo "Starting getscipapers container..."
 docker run -d \
   --name getscipapers-container \
   --restart always \
-  -v vol_downloads:/home/getscipaper/Downloads \
-  -v vol_config_getscipapers:/home/getscipaper/.config/getscipapers \
+  -v vol_downloads:/home/vscode/Downloads \
+  -v vol_config_getscipapers:/home/vscode/.config/getscipapers \
   ghcr.io/hoanganhduc/getscipapers:latest
 
 # Pull the latest IPFS Kubo Docker image
@@ -78,6 +78,6 @@ docker run -d \
 
 # Create a script to run getscipapers with the necessary environment variables
 echo "Creating getscipapers script..."
-chmod a+x getscipapers && sudo cp getscipapers /usr/local/bin/getscipapers
+chmod a+x getscipapers && sudo cp getscipapers /usr/bin/getscipapers
 
 echo "All services started successfully."
