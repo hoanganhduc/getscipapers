@@ -67,6 +67,18 @@ In another terminal, use the `getscipapers` command to search for and request sc
 getscipapers --help
 ```
 
+# Running getscipapers in GitHub Workspace
+
+A fastest way to run `getscipapers` is to use the GitHub Codespaces feature. This allows you to run the tool in a preconfigured environment without needing to set up anything locally. To use it, follow these steps:
+
+1. Fork the repository to your GitHub account.
+2. (Optional) Set up codespace secrets for your API keys and other configurations. You can look at the [.devcontainer/set-secrets.sh](.devcontainer/set-secrets.sh) file to see what I did to set up the secrets using [GitHub CLI](https://cli.github.com/).
+3. Create a new codespace from your forked repository. This will automatically set up the environment with all dependencies installed. You can also use [Github CLI](https://cli.github.com/) to create a codespace using (for example) the following command:
+
+   ```bash
+   gh codespace create --repo hoanganhduc/getscipapers --branch master
+   ```
+
 # Docker Container for Running getscipapers
 
 ## Overview
