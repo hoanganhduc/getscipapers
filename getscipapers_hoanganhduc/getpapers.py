@@ -26,6 +26,7 @@ import queue
 import shutil
 
 from . import nexus  # Import Nexus bot functions from .nexus module
+from . import libgen  # Import LibGen functions from .libgen module
 
 DEFAULT_LIMIT = 5
 
@@ -2028,6 +2029,22 @@ async def download_by_doi(doi: str, download_folder: str = ".", db: str = "all",
             return True
         print(f"PDF file is not available on Anna's Archive for DOI: {doi}.")
 
+    if db in ["all", "libgen"]:
+        tried = True
+        print(f"Trying LibGen for DOI: {doi}...")
+        try:
+            # Call the libgen module's download_by_doi function
+            result = libgen.download_libgen_paper_by_doi(doi, download_folder=download_folder)
+            if result:
+                print(f"\nDownload Summary:")
+                print(f"Successfully downloaded: 1 PDF")
+                print(f"  ✓ {doi} [{oa_status_text}]")
+                return True
+            else:
+                print(f"PDF file is not available on LibGen for DOI: {doi}.")
+        except Exception as e:
+            print(f"Error downloading from LibGen for DOI {doi}: {e}")
+
     if db in ["all", "unpaywall"]:
         tried = True
         print(f"Trying Unpaywall for DOI: {doi}...")
@@ -2184,9 +2201,9 @@ async def main():
     argparser.add_argument(
         "--db",
         type=str,
-        choices=["all", "nexus", "scihub", "anna", "unpaywall"],
+        choices=["all", "nexus", "scihub", "anna", "unpaywall", "libgen"],
         default="all",
-        help="Specify which database to use for downloading PDFs: all, nexus, scihub, anna, unpaywall (default: all)"
+        help="Specify which database to use for downloading PDFs: all, nexus, scihub, anna, unpaywall, libgen (default: all)"
     )
     argparser.add_argument(
         "--no-download",
