@@ -44,8 +44,8 @@ echo "Starting getscipapers container..."
 docker run -d \
   --name getscipapers-container \
   --restart always \
-  -v vol_downloads:/home/seluser/Downloads \
-  -v vol_config_getscipapers:/home/seluser/.config/getscipapers \
+  -v vol_downloads:/home/vscode/Downloads \
+  -v vol_config_getscipapers:/home/vscode/.config/getscipapers \
   ghcr.io/hoanganhduc/getscipapers:latest
 
 # Pull the latest IPFS Kubo Docker image
