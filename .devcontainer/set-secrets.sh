@@ -5,8 +5,9 @@
 #        ./set-secrets.sh --create-credentials <output_file>
 #        ./set-secrets.sh --encode-base64 <input_json> <output_file>
 
-set -e
+set -e  # Exit immediately if a command exits with a non-zero status
 
+# Function to create a credentials JSON file from environment variables
 create_credentials_json() {
     OUTPUT_FILE="$1"
     OUTPUT_DIR=$(dirname "$OUTPUT_FILE")
@@ -34,6 +35,7 @@ EOF
     echo "Created credentials file at $OUTPUT_FILE"
 }
 
+# Function to encode a JSON file to base64 and write to output file
 encode_json_base64() {
     INPUT_JSON="$1"
     OUTPUT_FILE="$2"
@@ -49,17 +51,18 @@ encode_json_base64() {
     echo "Base64-encoded JSON written to $OUTPUT_FILE"
 }
 
+# Function to decode base64-encoded JSON if needed, otherwise copy as is
 decode_base64_if_needed() {
     INPUT="$1"
     OUTPUT="$2"
     # Check if input is a file and exists
     if [ -f "$INPUT" ]; then
-        # Check if file is valid JSON
+        # If file is valid JSON, copy it
         if jq empty "$INPUT" 2>/dev/null; then
             cp "$INPUT" "$OUTPUT"
             return
         fi
-        # If not valid JSON, try to decode as base64
+        # If not valid JSON, try to decode as base64 and check if result is JSON
         if base64 -d "$INPUT" 2>/dev/null | jq empty 2>/dev/null; then
             base64 -d "$INPUT" > "$OUTPUT"
             return
@@ -79,16 +82,19 @@ decode_base64_if_needed() {
     exit 1
 }
 
+# Handle --create-credentials option
 if [ $# -eq 2 ] && [ "$1" = "--create-credentials" ]; then
     create_credentials_json "$2"
     exit 0
 fi
 
+# Handle --encode-base64 option
 if [ $# -eq 3 ] && [ "$1" = "--encode-base64" ]; then
     encode_json_base64 "$2" "$3"
     exit 0
 fi
 
+# Print usage if arguments are invalid
 if [ $# -lt 1 ] || [ $# -gt 2 ]; then
     echo "Usage: $0 <secrets.json> [owner/repo]"
     echo "       $0 --delete [owner/repo]"
@@ -97,6 +103,7 @@ if [ $# -lt 1 ] || [ $# -gt 2 ]; then
     exit 1
 fi
 
+# Handle --delete option to remove all secrets from the repo
 if [ "$1" = "--delete" ]; then
     if [ $# -eq 2 ]; then
         REPO_ARG="-r $2"
@@ -119,14 +126,17 @@ if [ "$1" = "--delete" ]; then
     exit 0
 fi
 
+# Main logic: set secrets from a JSON file
 JSON_FILE="$1"
 
+# Set repository argument if provided, otherwise use default
 if [ $# -eq 2 ]; then
     REPO_ARG="-r $2"
 else
     REPO_ARG="-r hoanganhduc/getscipapers"
 fi
 
+# Check for required tools
 if ! command -v gh &> /dev/null; then
     echo "GitHub CLI (gh) is not installed."
     exit 1
@@ -137,11 +147,13 @@ if ! command -v jq &> /dev/null; then
     exit 1
 fi
 
+# Check if JSON file exists
 if [ ! -f "$JSON_FILE" ]; then
     echo "File $JSON_FILE does not exist."
     exit 1
 fi
 
+# Loop through each key in the JSON file and set it as a GitHub secret
 for key in $(jq -r 'keys[]' "$JSON_FILE"); do
     value=$(jq -r --arg k "$key" '.[$k]' "$JSON_FILE")
     echo "Setting secret: $key"
