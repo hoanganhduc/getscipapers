@@ -26,7 +26,6 @@ RUN apt-get update && \
 	  # Dependencies for Chrome and ChromeDriver
 	  libglib2.0-0 \
 	  libnss3 \
-	  libgconf-2-4 \
 	  libfontconfig1 \
 	  libx11-xcb1 \
 	  libxi6 \
@@ -38,7 +37,6 @@ RUN apt-get update && \
 	  libatk1.0-0 \
 	  libatk-bridge2.0-0 \
 	  libgtk-3-0 \
-	  libasound2 \
 	  fonts-liberation \
 	  xdg-utils \
 	  unzip && \
