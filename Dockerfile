@@ -1,4 +1,5 @@
-FROM python:3.11-slim
+# FROM python:3.11-slim
+FROM mcr.microsoft.com/devcontainers/base:bullseye
 
 # Metadata for the image
 LABEL org.opencontainers.image.title="GetSciPapers" \
@@ -7,7 +8,7 @@ LABEL org.opencontainers.image.title="GetSciPapers" \
 	org.opencontainers.image.licenses="GPL-3.0" \
 	org.opencontainers.image.authors="Duc A. Hoang <anhduc.hoang1990@gmail.com>"
 
-# Install system dependencies for general use and Chrome/ChromeDriver
+# Install system dependencies for general use, Python 3.12, Chrome/ChromeDriver, and Docker
 RUN apt-get update && \
 	apt-get install -y --no-install-recommends \
 	  build-essential \
@@ -16,6 +17,12 @@ RUN apt-get update && \
 	  wget \
 	  procps \
 	  gnupg \
+	  # Python 3.12 and pip dependencies
+	  python3.12 \
+	  python3.12-venv \
+	  python3.12-dev \
+	  python3-pip \
+	  python-is-python3 \
 	  # Dependencies for Chrome and ChromeDriver
 	  libglib2.0-0 \
 	  libnss3 \
@@ -52,10 +59,10 @@ RUN LATEST_CHROMEDRIVER_VERSION=$(curl -sS https://googlechromelabs.github.io/ch
 	chmod +x /usr/local/bin/chromedriver && \
 	rm -rf chromedriver-linux64 chromedriver-linux64.zip
 
-# Create a non-root user and group
-RUN adduser --system --group --home /home/vscode --uid 1000 vscode && \
-	adduser vscode sudo && \
-	echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+# # Create a non-root user and group
+# RUN adduser --system --group --home /home/vscode --uid 1000 vscode && \
+# 	adduser vscode sudo && \
+# 	echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Clone and install getscipapers
 WORKDIR /app
