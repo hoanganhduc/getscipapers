@@ -78,7 +78,7 @@ A fastest way to run `getscipapers` is to use the GitHub Codespaces feature. Thi
    ```bash
    gh codespace create --repo hoanganhduc/getscipapers --branch master --machine basicLinux32gb
    ```
-   For your information, the `basicLinux32gb` machine type allows you to run with 2-core, 8GB RAM, and 32GB storage. More information about machine types can be found in the [GitHub Codespaces documentation](https://docs.github.com/en/codespaces/developing-in-a-codespace/creating-a-codespace-for-a-repository).
+   For your information, the `basicLinux32gb` machine type allows you to run with 2-core, 8GB RAM, and 32GB storage. More information about machine types can be found in the [GitHub Codespaces documentation](https://docs.github.com/en/codespaces/developing-in-a-codespace/creating-a-codespace-for-a-repository). Some other machine types you may use are `standardLinux32gb`, `premiumLinux`, `largePremiumLinux`.
 4. Once the codespace is ready, you can open a terminal in the codespace and run `getscipapers` commands directly.
 
 # Docker Container for Running getscipapers
