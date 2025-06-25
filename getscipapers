@@ -7,7 +7,18 @@ CONTAINER_NAME="getscipapers-container"
 
 # Check if at least one argument for the command is provided
 if [ $# -lt 1 ]; then
-    echo "Usage: $0 [arguments...]"
+    cat <<EOF
+usage: $0 [-h] [--list] [module]
+
+A Python package to get and request scientific papers from various sources
+
+positional arguments:
+  module      Module name to execute
+
+options:
+  -h, --help  show this help message and exit
+  --list      List available modules
+EOF
     exit 1
 fi
 
