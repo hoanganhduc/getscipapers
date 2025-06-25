@@ -459,7 +459,7 @@ def search_libgen_by_query(
     page = 1
     while len(results) < limit:
         url = (
-            f"https://libgen.gs/index.php?&req={quote_plus(query)}"
+            f"https://{LIBGEN_DOMAIN}/index.php?&req={quote_plus(query)}"
             f"&object={object_type}&curtab={curtab}&page={page}"
         )
         if sort_by_year:
@@ -662,7 +662,7 @@ def interactive_libgen_download(query, limit=10, preferred_exts=None, dest_folde
     def resolve_libgen_download_url(download_url):
         # Handles /ads.php?md5=... and returns the final get.php?md5=... link
         if download_url.startswith("/ads.php?md5="):
-            ads_url = "https://libgen.gs" + download_url
+            ads_url = f"https://{LIBGEN_DOMAIN}{download_url}"
             try:
                 ads_resp = requests.get(ads_url, timeout=30)
                 if ads_resp.status_code == 200:
@@ -673,7 +673,7 @@ def interactive_libgen_download(query, limit=10, preferred_exts=None, dest_folde
                             if href.startswith("http"):
                                 return href
                             else:
-                                return "https://libgen.gs/" + href.lstrip("/")
+                                return f"https://{LIBGEN_DOMAIN}/" + href.lstrip("/")
                 return None
             except Exception:
                 return None
