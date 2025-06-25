@@ -22,7 +22,10 @@ RUN apt-get update && \
 	  zlib1g-dev \
 	  libjpeg-dev \
 	  libxml2-dev \
-	  libxslt1-dev && \
+	  libxslt1-dev \
+	  libffi-dev \
+	  pkg-config \
+	  libssl-dev && \
 	rm -rf /var/lib/apt/lists/*
 
 # Delete user with UID 1000 if exists, then create vscode user
