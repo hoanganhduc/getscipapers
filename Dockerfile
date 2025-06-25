@@ -31,13 +31,10 @@ RUN apt-get update && \
 	  libpng-dev && \
 	rm -rf /var/lib/apt/lists/*
 
-# Delete user with UID 1000 if exists, then create vscode user
-RUN if id -u 1000 >/dev/null 2>&1; then \
-		userdel -r $(getent passwd 1000 | cut -d: -f1); \
-	fi && \
-	adduser --system --group --home /home/vscode vscode && \
-	adduser vscode sudo && \
-	echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+# Rename user 'seluser' to 'vscode'
+RUN usermod -l vscode seluser && \
+	usermod -d /home/vscode -m vscode && \
+	groupmod -n vscode seluser
 
 # Set permissions for home directory
 RUN mkdir -p /home/vscode/.cache /home/vscode/.config && \
@@ -64,8 +61,8 @@ ENV DISPLAY=:99 \
 	PYTHONUNBUFFERED=1
 
 # Switch to non-root user
-USER vscode
-WORKDIR /home/vscode
+USER seluser
+WORKDIR /home/seluser
 
 # Keep the container running
 CMD ["tail", "-f", "/dev/null"]
