@@ -67,7 +67,7 @@ In another terminal, use the `getscipapers` command to search for and request sc
 getscipapers --help
 ```
 
-# Running getscipapers in GitHub Workspace
+# Running getscipapers in GitHub Codespace
 
 A fastest way to run `getscipapers` is to use the GitHub Codespaces feature. This allows you to run the tool in a preconfigured environment without needing to set up anything locally. To use it, follow these steps:
 
