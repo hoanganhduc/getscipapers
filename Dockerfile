@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM selenium/standalone-chrome:latest
 
 # Metadata for the image
 LABEL org.opencontainers.image.title="GetSciPapers" \
@@ -7,69 +7,48 @@ LABEL org.opencontainers.image.title="GetSciPapers" \
 	org.opencontainers.image.licenses="GPL-3.0" \
 	org.opencontainers.image.authors="Duc A. Hoang <anhduc.hoang1990@gmail.com>"
 
-# Install system dependencies for general use and Chrome/ChromeDriver
+# Install Python and system dependencies
+USER root
 RUN apt-get update && \
 	apt-get install -y --no-install-recommends \
-	  build-essential \
+	  python3 \
+	  python3-pip \
 	  git \
 	  curl \
 	  wget \
-	  procps \
-	  gnupg \
-	  # Dependencies for Chrome and ChromeDriver
-	  libglib2.0-0 \
-	  libnss3 \
-	  libgconf-2-4 \
-	  libfontconfig1 \
-	  libx11-xcb1 \
-	  libxi6 \
-	  libxcomposite1 \
-	  libxdamage1 \
-	  libxrandr2 \
-	  libxtst6 \
-	  libxss1 \
-	  libatk1.0-0 \
-	  libatk-bridge2.0-0 \
-	  libgtk-3-0 \
-	  libasound2 \
-	  fonts-liberation \
-	  xdg-utils \
-	  unzip && \
+	  procps && \
 	rm -rf /var/lib/apt/lists/*
-
-# Install Google Chrome
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-	echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list && \
-	apt-get update && \
-	apt-get install -y --no-install-recommends google-chrome-stable && \
-	rm -rf /var/lib/apt/lists/*
-
-# Install latest ChromeDriver
-RUN LATEST_CHROMEDRIVER_VERSION=$(curl -sS https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json | python3 -c "import sys, json; print(json.load(sys.stdin)['channels']['Stable']['version'])") && \
-	wget -q "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/${LATEST_CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip" && \
-	unzip chromedriver-linux64.zip && \
-	mv chromedriver-linux64/chromedriver /usr/local/bin/ && \
-	chmod +x /usr/local/bin/chromedriver && \
-	rm -rf chromedriver-linux64 chromedriver-linux64.zip
 
 # Create a non-root user and group
 RUN adduser --system --group --home /home/vscode --uid 1000 vscode && \
 	adduser vscode sudo && \
 	echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
+# Set permissions for home directory
+RUN mkdir -p /home/vscode/.cache /home/vscode/.config && \
+	chown -R vscode:vscode /home/vscode/.cache /home/vscode/.config
+
 # Clone and install getscipapers
 WORKDIR /app
 RUN git clone https://github.com/hoanganhduc/getscipapers.git . && \
-	pip install --upgrade pip && \
-	pip install build && \
-	pip install -r requirements.txt && \
-	python -m build && \
-	pip install -e . && \
+	pip3 install --upgrade pip && \
+	pip3 install build && \
+	pip3 install -r requirements.txt && \
+	python3 -m build && \
+	pip3 install -e . && \
 	rm -rf build/ dist/ *.egg-info/ && \
 	find . -type d -name __pycache__ -exec rm -rf {} + && \
 	find . -type f -name "*.pyc" -delete
 
-# Switch to non-root user for initialization
+# Install additional Selenium dependencies
+RUN pip3 install selenium webdriver-manager
+
+# Set environment variables for Selenium
+ENV DISPLAY=:99 \
+	PYTHONDONTWRITEBYTECODE=1 \
+	PYTHONUNBUFFERED=1
+
+# Switch to non-root user
 USER vscode
 WORKDIR /home/vscode
 
