@@ -17,6 +17,7 @@ RUN apt-get update && \
 	  wget \
 	  procps \
 	  gnupg \
+	  ufw \
 	  # Python 3.12 and pip dependencies
 	  python3.12 \
 	  python3.12-venv \
