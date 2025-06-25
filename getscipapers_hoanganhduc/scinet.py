@@ -517,11 +517,11 @@ def login_to_scinet(username, password, headless=False):
     else:
         debug_print("Running with visible browser")
         
-    # Use a temporary directory to avoid conflicts
-    user_data_dir = os.getenv("USER_DATA_DIR", tempfile.mkdtemp())
-    if not os.path.exists(user_data_dir):
-        os.makedirs(user_data_dir, exist_ok=True)
+    # Use a subdirectory of the cache directory for Chrome user data
+    user_data_dir = os.path.join(get_cache_directory(), "chrome_user_data")
+    os.makedirs(user_data_dir, exist_ok=True)
     options.add_argument(f"--user-data-dir={user_data_dir}")
+    debug_print(f"Using Chrome user data directory: {user_data_dir}")
     
     # Add options to ignore permission requests
     options.add_argument("--disable-notifications")

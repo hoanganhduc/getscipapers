@@ -106,11 +106,11 @@ def get_chrome_driver(headless=True):
         options.add_argument('--headless=new')
         options.add_argument('--disable-gpu')
         
-    # Use a temporary directory to avoid conflicts
-    user_data_dir = os.getenv("USER_DATA_DIR", tempfile.mkdtemp())
-    if not os.path.exists(user_data_dir):
-        os.makedirs(user_data_dir, exist_ok=True)
+    # Use a subdirectory of cache_dir for Chrome user data
+    user_data_dir = os.path.join(cache_dir, "chrome_user_data")
+    os.makedirs(user_data_dir, exist_ok=True)
     options.add_argument(f"--user-data-dir={user_data_dir}")
+    debug_print(f"Using Chrome user data directory: {user_data_dir}")
     
     # Suppress Chrome messages
     options.add_argument('--disable-dev-shm-usage')
