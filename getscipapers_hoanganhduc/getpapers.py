@@ -2143,9 +2143,6 @@ def print_default_paths():
     print(f"  GETPAPERS_CONFIG_FILE: {GETPAPERS_CONFIG_FILE}")
     print(f"  Default download folder: .")
     print(f"  Platform: {platform.system()}")
-    print(f"  Nexus credentials file: {getattr(nexus, 'CREDENTIALS_FILE', 'N/A')}")
-    print(f"  Nexus session file: {getattr(nexus, 'SESSION_FILE', 'N/A')}")
-    print(f"  Nexus default proxy file: {getattr(nexus, 'DEFAULT_PROXY_FILE', 'N/A')}")
 
 async def main():
     # Get the parent package name from the module's __name__
@@ -2172,8 +2169,8 @@ async def main():
             "  %(prog)s --doi 10.1016/j.cell.2019.05.031 --download-folder ./pdfs\n"
             "  %(prog)s --doi-file mylist.txt --db scihub\n"
             "  %(prog)s --search \"climate change\" --verbose\n"
-            "  %(prog)s --doi 10.1002/anie.201915678 --config myconfig.json\n"
-            "  %(prog)s --clear-config\n"
+            "  %(prog)s --doi 10.1002/anie.201915678 --credentials mycredentials.json\n"
+            "  %(prog)s --clear-credentials\n"
             "  %(prog)s --print-default\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -2202,12 +2199,12 @@ async def main():
         help="Print more details of how the script is running"
     )
     argparser.add_argument(
-        "--config",
+        "--credentials",
         type=str,
-        help="Path to custom JSON configuration file (format: {\"email\": \"your@email.com\", \"elsevier_api_key\": \"key\", \"wiley_tdm_token\": \"token\", \"ieee_api_key\": \"key\"})"
+        help="Path to custom JSON credentials file (format: {\"email\": \"your@email.com\", \"elsevier_api_key\": \"key\", \"wiley_tdm_token\": \"token\", \"ieee_api_key\": \"key\"})"
     )
     argparser.add_argument(
-        "--clear-config",
+        "--clear-credentials",
         action="store_true",
         help="Delete the default configuration directory and all its contents"
     )
@@ -2223,8 +2220,8 @@ async def main():
         print_default_paths()
         sys.exit(0)
 
-    # Handle --clear-config before anything else
-    if args.clear_config:
+    # Handle --clear-credentials before anything else
+    if args.clear_credentials:
         config_dir = os.path.dirname(GETPAPERS_CONFIG_FILE)
         if os.path.exists(config_dir):
             try:
@@ -2246,15 +2243,15 @@ async def main():
     global VERBOSE
     VERBOSE = args.verbose
 
-    # Config file
-    config_file = args.config if args.config else GETPAPERS_CONFIG_FILE
+    # Credentials file
+    credentials_file = args.credentials if args.credentials else GETPAPERS_CONFIG_FILE
 
-    # Load credentials from config file
-    load_credentials(config_file)
+    # Load credentials from credentials file
+    load_credentials(credentials_file)
 
-    # If only --config is specified, exit after loading credentials
-    if args.config and not (args.doi or args.doi_file or args.search):
-        print(f"Loaded credentials from config file: {config_file}")
+    # If only --credentials is specified, exit after loading credentials
+    if args.credentials and not (args.doi or args.doi_file or args.search):
+        print(f"Loaded credentials from file: {credentials_file}")
         sys.exit(0)
 
     if args.doi:
