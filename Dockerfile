@@ -23,6 +23,8 @@ RUN apt-get update && \
 	  python3.12-dev \
 	  python3-pip \
 	  python-is-python3 \
+	  python3-build \
+	  python3-setuptools \
 	  # Dependencies for Chrome and ChromeDriver
 	  libglib2.0-0 \
 	  libnss3 \
@@ -65,8 +67,6 @@ RUN LATEST_CHROMEDRIVER_VERSION=$(curl -sS https://googlechromelabs.github.io/ch
 # Clone and install getscipapers
 WORKDIR /app
 RUN git clone https://github.com/hoanganhduc/getscipapers.git . && \
-	pip install --upgrade pip --break-system-packages && \
-	pip install build --break-system-packages && \
 	pip install -r requirements.txt --break-system-packages && \
 	python -m build && \
 	pip install -e . --break-system-packages && \
