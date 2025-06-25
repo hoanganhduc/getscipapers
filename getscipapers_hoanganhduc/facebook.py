@@ -8,6 +8,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium.common.exceptions import SessionNotCreatedException
 from bs4 import BeautifulSoup
 import time
 import random
@@ -20,7 +21,6 @@ import platform
 import signal
 import sys
 from .getpapers import extract_dois_from_text, download_by_doi
-import tempfile
 
 if platform.system() == 'Windows':
     import msvcrt
@@ -153,8 +153,16 @@ class FacebookScraper:
         os.environ["LANG"] = "en_US.UTF-8"
         options.add_argument("--lang=en-US.UTF-8")
         options.add_argument("--disable-features=RendererCodeIntegrity")  # Sometimes helps with emoji rendering
-
-        self.driver = webdriver.Chrome(options=options)
+        try:
+            self.driver = webdriver.Chrome(options=options)
+        except SessionNotCreatedException as e:
+            print(f"Session creation failed: {e}")
+            # Attempt to kill lingering Chrome processes
+            os.system("pkill -9 chrome")
+            time.sleep(2)  # Wait briefly
+            # Retry
+            self.driver = webdriver.Chrome(options=options)
+            
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         self.log("Webdriver initialized successfully")
         
