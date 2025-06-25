@@ -14,10 +14,6 @@ while ! docker info > /dev/null 2>&1; do
   fi
 done
 
-# Install UFW (Uncomplicated Firewall)
-echo "Installing UFW (Uncomplicated Firewall)..."
-sudo apt-get install -y ufw
-
 # # Pull the latest getscipapers Docker image from GitHub Container Registry
 # echo "Pulling the latest getscipapers Docker image..."
 # docker pull ghcr.io/hoanganhduc/getscipapers:latest
