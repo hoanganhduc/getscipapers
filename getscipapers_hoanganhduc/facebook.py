@@ -122,10 +122,10 @@ class FacebookScraper:
             self.log("Running in graphic mode")
         
         # Use a subdirectory of the cache dir for Chrome user data
-        user_data_dir = os.path.join(_CACHE_DIR, "chrome_user_data")
-        os.makedirs(user_data_dir, exist_ok=True)
-        options.add_argument(f"--user-data-dir={user_data_dir}")
-        self.log(f"Using Chrome user data directory: {user_data_dir}")
+        # user_data_dir = os.path.join(_CACHE_DIR, "chrome_user_data")
+        # os.makedirs(user_data_dir, exist_ok=True)
+        # options.add_argument(f"--user-data-dir={user_data_dir}")
+        # self.log(f"Using Chrome user data directory: {user_data_dir}")
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option("useAutomationExtension", False)
@@ -137,6 +137,7 @@ class FacebookScraper:
         options.add_argument("--disable-extensions-ui")
         options.add_argument("--disable-component-extensions-with-background-pages")
         options.add_argument("--no-sandbox")  # Often required in Docker
+        options.add_argument("--disable-crash-reporter")  # Disable crash reporting
         options.add_experimental_option("prefs", {
             "profile.default_content_setting_values.notifications": 2,
             "profile.default_content_settings.popups": 0,
@@ -153,16 +154,9 @@ class FacebookScraper:
         os.environ["LANG"] = "en_US.UTF-8"
         options.add_argument("--lang=en-US.UTF-8")
         options.add_argument("--disable-features=RendererCodeIntegrity")  # Sometimes helps with emoji rendering
-        try:
-            self.driver = webdriver.Chrome(options=options)
-        except SessionNotCreatedException as e:
-            print(f"Session creation failed: {e}")
-            # Attempt to kill lingering Chrome processes
-            os.system("pkill -9 chrome")
-            time.sleep(2)  # Wait briefly
-            # Retry
-            self.driver = webdriver.Chrome(options=options)
+        
             
+        self.driver = webdriver.Chrome(options=options)    
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         self.log("Webdriver initialized successfully")
         
