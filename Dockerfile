@@ -65,11 +65,11 @@ RUN LATEST_CHROMEDRIVER_VERSION=$(curl -sS https://googlechromelabs.github.io/ch
 # Clone and install getscipapers
 WORKDIR /app
 RUN git clone https://github.com/hoanganhduc/getscipapers.git . && \
-	pip install --upgrade pip && \
-	pip install build && \
-	pip install -r requirements.txt && \
+	pip install --upgrade pip --break-system-packages && \
+	pip install build --break-system-packages && \
+	pip install -r requirements.txt --break-system-packages && \
 	python -m build && \
-	pip install -e . && \
+	pip install -e . --break-system-packages && \
 	rm -rf build/ dist/ *.egg-info/ && \
 	find . -type d -name __pycache__ -exec rm -rf {} + && \
 	find . -type f -name "*.pyc" -delete
