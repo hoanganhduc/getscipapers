@@ -1,5 +1,5 @@
 # FROM python:3.11-slim
-FROM mcr.microsoft.com/devcontainers/base:bullseye
+FROM mcr.microsoft.com/devcontainers/base:ubuntu
 
 # Metadata for the image
 LABEL org.opencontainers.image.title="GetSciPapers" \
@@ -17,11 +17,13 @@ RUN apt-get update && \
 	  wget \
 	  procps \
 	  gnupg \
-	  python3 \
-	  python3-venv \
-	  python3-dev \
+	  # Python 3.12 and pip dependencies
+	  python3.12 \
+	  python3.12-venv \
+	  python3.12-dev \
 	  python3-pip \
 	  python-is-python3 \
+	  # Dependencies for Chrome and ChromeDriver
 	  libglib2.0-0 \
 	  libnss3 \
 	  libgconf-2-4 \
