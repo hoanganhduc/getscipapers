@@ -17,9 +17,9 @@ RUN apt-get update && \
 	  wget \
 	  procps \
 	  gnupg \
-	  python3.11 \
-	  python3.11-venv \
-	  python3.11-dev \
+	  python3 \
+	  python3-venv \
+	  python3-dev \
 	  python3-pip \
 	  python-is-python3 \
 	  libglib2.0-0 \
