@@ -122,10 +122,10 @@ class FacebookScraper:
             self.log("Running in graphic mode")
         
         # Use a subdirectory of the cache dir for Chrome user data
-        # user_data_dir = os.path.join(_CACHE_DIR, "chrome_user_data")
-        # os.makedirs(user_data_dir, exist_ok=True)
-        # options.add_argument(f"--user-data-dir={user_data_dir}")
-        # self.log(f"Using Chrome user data directory: {user_data_dir}")
+        user_data_dir = os.path.join(_CACHE_DIR, "chrome_user_data")
+        os.makedirs(user_data_dir, exist_ok=True)
+        options.add_argument(f"--user-data-dir={user_data_dir}")
+        self.log(f"Using Chrome user data directory: {user_data_dir}")
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option("useAutomationExtension", False)
@@ -154,7 +154,6 @@ class FacebookScraper:
         os.environ["LANG"] = "en_US.UTF-8"
         options.add_argument("--lang=en-US.UTF-8")
         options.add_argument("--disable-features=RendererCodeIntegrity")  # Sometimes helps with emoji rendering
-        
             
         self.driver = webdriver.Chrome(options=options)    
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
