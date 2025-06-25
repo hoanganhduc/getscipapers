@@ -14,18 +14,18 @@ while ! docker info > /dev/null 2>&1; do
   fi
 done
 
-# Install UFW (Uncomplicated Firewall) using pacman
-echo "Installing UFW (Uncomplicated Firewall)..."
-sudo pacman -S --noconfirm ufw
+# # Install UFW (Uncomplicated Firewall) using pacman
+# echo "Installing UFW (Uncomplicated Firewall)..."
+# sudo pacman -S --noconfirm ufw
 
-# Pull the latest getscipapers Docker image from GitHub Container Registry
-echo "Pulling the latest getscipapers Docker image..."
-docker pull ghcr.io/hoanganhduc/getscipapers:latest
+# # Pull the latest getscipapers Docker image from GitHub Container Registry
+# echo "Pulling the latest getscipapers Docker image..."
+# docker pull ghcr.io/hoanganhduc/getscipapers:latest
 
 # Create and bind Docker volumes for persistent storage
 declare -A volume_map=(
-  ["vol_downloads"]="Downloads"
-  ["vol_config_getscipapers"]=".config/getscipapers"
+  # ["vol_downloads"]="Downloads"
+  # ["vol_config_getscipapers"]=".config/getscipapers"
   ["vol_ipfs"]=".ipfs"
 )
 
@@ -39,14 +39,14 @@ for volume_name in "${!volume_map[@]}"; do
     --opt "o=bind"
 done
 
-# Start the getscipapers container with the appropriate volume mounts
-echo "Starting getscipapers container..."
-docker run -d \
-  --name getscipapers-container \
-  --restart always \
-  -v vol_downloads:/home/vscode/Downloads \
-  -v vol_config_getscipapers:/home/vscode/.config/getscipapers \
-  ghcr.io/hoanganhduc/getscipapers:latest
+# # Start the getscipapers container with the appropriate volume mounts
+# echo "Starting getscipapers container..."
+# docker run -d \
+#   --name getscipapers-container \
+#   --restart always \
+#   -v vol_downloads:/home/vscode/Downloads \
+#   -v vol_config_getscipapers:/home/vscode/.config/getscipapers \
+#   ghcr.io/hoanganhduc/getscipapers:latest
 
 # Pull the latest IPFS Kubo Docker image
 echo "Pulling the latest IPFS Kubo Docker image..."
@@ -76,8 +76,8 @@ docker run -d \
   -p 127.0.0.1:5001:5001 \
   ipfs/kubo:latest
 
-# Create a script to run getscipapers with the necessary environment variables
-echo "Creating getscipapers script..."
-chmod a+x getscipapers && sudo cp getscipapers /usr/bin/getscipapers
+# # Create a script to run getscipapers with the necessary environment variables
+# echo "Creating getscipapers script..."
+# chmod a+x getscipapers && sudo cp getscipapers /usr/bin/getscipapers
 
 echo "All services started successfully."

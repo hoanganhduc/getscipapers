@@ -1,15 +1,12 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/ubuntu
 {
-	"name": "Arch",
+	"name": "GetSciPapers",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-	"image": "ghcr.io/bartventer/devcontainer-images/dind-archlinux:latest",
+	"image": "ghcr.io/hoanganhduc/getscipapers:latest",
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
-	"features": {
-		"ghcr.io/bartventer/arch-devcontainer-features/docker-in-docker:1": {}
-	},
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
@@ -19,7 +16,7 @@
 
 	// Use 'postCreateCommand' to run commands after the container is created.
 	// This is a good place to install additional tools or run scripts.
-	"postCreateCommand": "yarn install",
+	// "postCreateCommand": "yarn install",
 
 	// Use 'postStartCommand' to run commands after the container is started.
 	"postStartCommand": "bash .devcontainer/post-start.sh",
