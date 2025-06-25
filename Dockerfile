@@ -17,13 +17,11 @@ RUN apt-get update && \
 	  wget \
 	  procps \
 	  gnupg \
-	  # Python 3.12 and pip dependencies
-	  python3.12 \
-	  python3.12-venv \
-	  python3.12-dev \
+	  python3.11 \
+	  python3.11-venv \
+	  python3.11-dev \
 	  python3-pip \
 	  python-is-python3 \
-	  # Dependencies for Chrome and ChromeDriver
 	  libglib2.0-0 \
 	  libnss3 \
 	  libgconf-2-4 \
