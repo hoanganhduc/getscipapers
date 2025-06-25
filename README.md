@@ -55,10 +55,10 @@ find . -type f -name "*.pyc" -delete
 
 ## Usage
 
-If you want to use the Nexus Search database, start the IPFS daemon in one terminal:
+If you want to use the Nexus Search database, start the IPFS daemon (if this is the first time running IPFS daemon, run `ipfs init` first) in one terminal:
 
 ```bash
-ipfs daemon --init
+ipfs daemon
 ```
 
 In another terminal, use the `getscipapers` command to search for and request scientific papers. For usage details, run:
