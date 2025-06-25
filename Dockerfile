@@ -44,13 +44,13 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key
 	apt-get install -y --no-install-recommends google-chrome-stable && \
 	rm -rf /var/lib/apt/lists/*
 
-# Install ChromeDriver
-RUN CHROMEDRIVER_VERSION=137.0.7151.119 && \
-	wget -q https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip && \
+# Install latest ChromeDriver
+RUN LATEST_CHROMEDRIVER_VERSION=$(curl -sS https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json | python3 -c "import sys, json; print(json.load(sys.stdin)['channels']['Stable']['version'])") && \
+	wget -q "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/${LATEST_CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip" && \
 	unzip chromedriver-linux64.zip && \
 	mv chromedriver-linux64/chromedriver /usr/local/bin/ && \
 	chmod +x /usr/local/bin/chromedriver && \
-	rm chromedriver-linux64.zip
+	rm -rf chromedriver-linux64 chromedriver-linux64.zip
 
 # Create a non-root user and group
 RUN adduser --system --group --home /home/vscode --uid 1000 vscode && \
