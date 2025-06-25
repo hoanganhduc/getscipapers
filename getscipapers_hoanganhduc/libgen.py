@@ -774,11 +774,11 @@ def main():
     parent_package = __name__.split('.')[0] if '.' in __name__ else None
 
     if parent_package is None:
-        program_name = 'getpapers'
+        program_name = 'libgen'
     elif '_' in parent_package:
         # If the parent package has an underscore, strip it
         parent_package = parent_package[:parent_package.index('_')]
-        program_name = f"{parent_package} getpapers"
+        program_name = f"{parent_package} libgen"
         
     parser = argparse.ArgumentParser(
         prog=program_name,
