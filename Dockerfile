@@ -19,8 +19,11 @@ RUN apt-get update && \
 	  procps && \
 	rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user and group
-RUN adduser --system --group --home /home/vscode --uid 1000 vscode && \
+# Delete user with UID 1000 if exists, then create vscode user
+RUN if id -u 1000 >/dev/null 2>&1; then \
+		userdel -r $(getent passwd 1000 | cut -d: -f1); \
+	fi && \
+	adduser --system --group --home /home/vscode vscode && \
 	adduser vscode sudo && \
 	echo "vscode ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
