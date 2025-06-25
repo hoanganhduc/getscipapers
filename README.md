@@ -76,8 +76,10 @@ A fastest way to run `getscipapers` is to use the GitHub Codespaces feature. Thi
 3. Create a new codespace from your forked repository. This will automatically set up the environment with all dependencies installed. You can also use [Github CLI](https://cli.github.com/) to create a codespace using (for example) the following command:
 
    ```bash
-   gh codespace create --repo hoanganhduc/getscipapers --branch master
+   gh codespace create --repo hoanganhduc/getscipapers --branch master --machine basicLinux32gb
    ```
+   For your information, the `basicLinux32gb` machine type allows you to run with 2-core, 8GB RAM, and 32GB storage. More information about machine types can be found in the [GitHub Codespaces documentation](https://docs.github.com/en/codespaces/developing-in-a-codespace/creating-a-codespace-for-a-repository).
+4. Once the codespace is ready, you can open a terminal in the codespace and run `getscipapers` commands directly.
 
 # Docker Container for Running getscipapers
 
