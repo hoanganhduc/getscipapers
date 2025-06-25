@@ -15,10 +15,14 @@ __author__ = "Duc A. Hoang (hoanganhduc)"
 __email__ = "anhduc.hoang1990@gmail.com"
 __description__ = "A Python package to get and request scientific papers from various sources"
 
-# Automatically import all Python modules in this directory
+# Automatically import all Python modules in this directory except Zlibrary
 _current_dir = Path(__file__).parent
 for _file in _current_dir.glob("*.py"):
-    if _file.name != "__init__.py" and not _file.name.startswith("_"):
+    if (
+        _file.name != "__init__.py"
+        and not _file.name.startswith("_")
+        and _file.stem.lower() != "zlibrary"
+    ):
         _module_name = _file.stem
         try:
             importlib.import_module(f".{_module_name}", package=__name__)
