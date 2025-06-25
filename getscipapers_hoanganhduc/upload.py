@@ -157,8 +157,29 @@ def share_dropbox_item(dropbox_path, verbose=False):
     shareable_link = run_command(command, verbose).strip()
     return shareable_link
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Upload files to temp.sh, bashupload.com, Google Drive, or Dropbox")
+def main():
+    # Get the parent package name from the module's __name__
+    parent_package = __name__.split('.')[0] if '.' in __name__ else None
+
+    if parent_package is None:
+        program_name = 'upload'
+    elif '_' in parent_package:
+        # If the parent package has an underscore, strip it
+        parent_package = parent_package[:parent_package.index('_')]
+        program_name = f"{parent_package} upload"
+        
+    parser = argparse.ArgumentParser(
+        prog=program_name, 
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Upload files to temp.sh, bashupload.com, Google Drive, or Dropbox",
+        epilog="""
+Examples:
+  %(prog)s myfile.txt --service temp.sh
+  %(prog)s "folder1,file2.pdf" --service bashupload.com
+  %(prog)s myfolder --service gdrive --remote-path backup/myfolder
+  %(prog)s file.txt --service dropbox --remote-path shared/file.txt -v
+"""
+    )
     parser.add_argument(
         "paths",
         help="Comma-separated list of files or directories to upload"
@@ -178,6 +199,9 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    if args.service in ["gdrive", "dropbox"]:
+        print(f"{ICONS['info']} Note: Google Drive and Dropbox services require rclone to be installed and configured. See https://rclone.org/ for instructions.")
+
     input_paths = [p.strip() for p in args.paths.split(",") if p.strip()]
     files = get_files_from_args(input_paths)
     if not files:
@@ -192,3 +216,6 @@ if __name__ == "__main__":
         upload_to_gdrive(files, args.remote_path, args.verbose)
     elif args.service == "dropbox":
         upload_to_dropbox(files, args.remote_path, args.verbose)
+
+if __name__ == "__main__":
+    main()

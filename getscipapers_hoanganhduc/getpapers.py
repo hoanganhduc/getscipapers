@@ -139,6 +139,16 @@ def load_credentials(config_file: str = None):
             vprint(f"Error loading config file {config_file}: {e}")
             print(f"Configuration file {config_file} is corrupted. Will recreate.")
             file_exists = False
+
+    # After loading, save to default config file if it does not exist
+    if file_exists and config_file != GETPAPERS_CONFIG_FILE and not os.path.exists(GETPAPERS_CONFIG_FILE):
+        save_credentials(
+            email=existing_config.get("email"),
+            elsevier_api_key=existing_config.get("elsevier_api_key"),
+            wiley_tdm_token=existing_config.get("wiley_tdm_token"),
+            ieee_api_key=existing_config.get("ieee_api_key"),
+            config_file=GETPAPERS_CONFIG_FILE
+        )
     
     # Check if any required fields are empty
     needs_input = (not file_exists or 
