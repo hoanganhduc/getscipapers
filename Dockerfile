@@ -16,7 +16,13 @@ RUN apt-get update && \
 	  git \
 	  curl \
 	  wget \
-	  procps && \
+	  procps \
+	  build-essential \
+	  libqpdf-dev \
+	  zlib1g-dev \
+	  libjpeg-dev \
+	  libxml2-dev \
+	  libxslt1-dev && \
 	rm -rf /var/lib/apt/lists/*
 
 # Delete user with UID 1000 if exists, then create vscode user
