@@ -36,11 +36,15 @@ def main():
     if len(sys.argv) > 1 and not sys.argv[1].startswith('-'):
         module_name = sys.argv[1]
         
-        # Get available modules
+        # Get available modules, excluding Zlibrary
         available_modules = []
         _current_dir = Path(__file__).parent
         for _file in _current_dir.glob("*.py"):
-            if _file.name != "__init__.py" and not _file.name.startswith("_"):
+            if (
+                _file.name != "__init__.py"
+                and not _file.name.startswith("_")
+                and _file.stem.lower() != "zlibrary"
+            ):
                 available_modules.append(_file.stem)
         
         if module_name == "list":
