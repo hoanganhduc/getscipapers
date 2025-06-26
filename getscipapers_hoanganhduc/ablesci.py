@@ -59,39 +59,81 @@ def debug_print(message):
 
 def load_credentials_from_file(filepath):
     """Load login credentials from a JSON file.
-    
+
     Args:
         filepath: Path to JSON file containing credentials
-        
+
     Returns:
         tuple: (username, password) or (None, None) if file doesn't exist or is invalid
-        
+
     Expected JSON format:
     {
         "ablesci_username": "your_email@example.com",
         "ablesci_password": "your_password"
     }
     """
+    global USERNAME, PASSWORD
     debug_print(f"Attempting to load credentials from: {filepath}")
-    
+
     if not os.path.exists(filepath):
         debug_print(f"Credentials file not found: {filepath}")
         return None, None
-    
+
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             credentials = json.load(f)
-        
+
         username = credentials.get('ablesci_username')
         password = credentials.get('ablesci_password')
-        
+
         if not username or not password:
             debug_print("Invalid credentials file: missing ablesci_username or ablesci_password")
             return None, None
-        
+
         debug_print(f"Successfully loaded credentials for user: {username}")
+
+        # Set global variables
+        USERNAME = username
+        PASSWORD = password
+
+        # If credentials file is not the default, update default if different
+        if os.path.abspath(filepath) != os.path.abspath(CREDENTIALS_FILE):
+            debug_print("Credentials loaded from non-default location, checking if update needed")
+            need_update = True
+            if os.path.exists(CREDENTIALS_FILE):
+                try:
+                    with open(CREDENTIALS_FILE, 'r', encoding='utf-8') as f2:
+                        default_creds = json.load(f2)
+                    if (default_creds.get('ablesci_username') == username and
+                        default_creds.get('ablesci_password') == password):
+                        need_update = False
+                except Exception as e:
+                    debug_print(f"Error reading default credentials file: {e}")
+            if need_update:
+                try:
+                    with open(CREDENTIALS_FILE, 'w', encoding='utf-8') as f2:
+                        json.dump({
+                            "ablesci_username": username,
+                            "ablesci_password": password
+                        }, f2, ensure_ascii=False, indent=2)
+                    debug_print("Default credentials file updated with new credentials")
+                except Exception as e:
+                    debug_print(f"Failed to update default credentials file: {e}")
+        else:
+            # If credentials file is the default and does not exist, save it
+            if not os.path.exists(CREDENTIALS_FILE):
+                try:
+                    with open(CREDENTIALS_FILE, 'w', encoding='utf-8') as f2:
+                        json.dump({
+                            "ablesci_username": username,
+                            "ablesci_password": password
+                        }, f2, ensure_ascii=False, indent=2)
+                    debug_print("Default credentials file created after loading credentials")
+                except Exception as e:
+                    debug_print(f"Failed to create default credentials file: {e}")
+
         return username, password
-        
+
     except json.JSONDecodeError as e:
         debug_print(f"Invalid JSON in credentials file: {e}")
         return None, None

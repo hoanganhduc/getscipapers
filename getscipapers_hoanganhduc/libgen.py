@@ -7,6 +7,15 @@ import sys
 import re
 import os
 import platform
+import ftplib
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+import shutil
+import hashlib
 
 # List of LibGen mirror domains (main alternatives)
 LIBGEN_MIRRORS = [
@@ -54,6 +63,25 @@ def get_default_download_folder():
     return folder
 
 DEFAULT_DOWNLOAD_DIR = get_default_download_folder()
+
+def get_default_cache_dir():
+    """
+    Returns the default cache directory for the current OS.
+    Creates the folder if it does not exist.
+    """
+    home = os.path.expanduser("~")
+    system = platform.system()
+    if system == "Windows":
+        folder = os.path.join(home, "AppData", "Local", "getscipapers", "libgen")
+    elif system == "Darwin":
+        folder = os.path.join(home, "Library", "Caches", "getscipapers", "libgen")
+    else:
+        # Assume Linux/Unix
+        folder = os.path.join(home, ".config", "getscipapers", "libgen")
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+cache_dir = get_default_cache_dir()
 
 def search_libgen_by_doi(doi, limit=10):
     """
@@ -1061,6 +1089,326 @@ def interactive_libgen_download(query, limit=10, preferred_exts=None, dest_folde
     else:
         print("No failed downloads.")
 
+def fetch_libgen_edition_info(libgen_id, verbose=False):
+    """
+    Fetch extra info from edition.php for a given LibGen ID.
+
+    Args:
+        libgen_id (str): The LibGen edition ID.
+        verbose (bool): If True, print debug info.
+
+    Returns:
+        dict: Extracted info dictionary, or empty dict if not found.
+    """
+    edition_url = f"https://{LIBGEN_DOMAIN}/edition.php?id={libgen_id}"
+    info = {}
+    try:
+        resp = requests.get(edition_url, timeout=10)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            # Fetch cover and links from left column
+            left_div = soup.find("div", class_="col-xl-2 order-xl-1 col-12 order-1 d-flex tall float-left")
+            if left_div:
+                a_tag = left_div.find("a", href=True)
+                img_tag = left_div.find("img", class_="img-fluid")
+                if a_tag and img_tag:
+                    info["coverurl"] = img_tag.get("src")
+                    info["cover_download_link"] = a_tag.get("href")
+            # Fetch main info from center column
+            info_div = soup.find("div", class_="col-xl-7 order-xl-2 col-12 order-2 float-left")
+            if info_div:
+                for p in info_div.find_all("p"):
+                    strong = p.find("strong")
+                    if strong:
+                        key = strong.get_text(strip=True).rstrip(":")
+                        strong.extract()
+                        value = p.get_text(strip=True)
+                        # Special handling for DOI (may be in <a>)
+                        if key.lower() == "doi":
+                            a = p.find("a")
+                            if a:
+                                value = a.get_text(strip=True)
+                                info["doi_url"] = a.get("href")
+                        info[key.lower()] = value
+                badge = info_div.find("span", class_="badge badge-primary")
+                if badge:
+                    info["type"] = badge.get_text(strip=True)
+            # Fetch files and download links from files table
+            files_div = soup.find("div", class_="col-12 order-7 float-left")
+            files = {}
+            if files_div:
+                table = files_div.find("table", id="tablelibgen")
+                if table:
+                    for tr in table.find_all("tr"):
+                        tds = tr.find_all("td")
+                        if len(tds) >= 2:
+                            file_info = {}
+                            # Parse size and extension
+                            size_ext_html = tds[1].decode_contents()
+                            size_match = re.search(r"<strong>Size:</strong>\s*<nobr>([^<]+)</nobr>", size_ext_html)
+                            if size_match:
+                                file_info["size"] = size_match.group(1).strip()
+                            ext_match = re.search(r"<strong>Extension:</strong>\s*([a-zA-Z0-9]+)", size_ext_html)
+                            if ext_match:
+                                file_info["extension"] = ext_match.group(1).strip()
+                            # Parse pages if present
+                            pages_match = re.search(r"<strong>Pages:</strong>\s*([^\s<]+)", size_ext_html)
+                            if pages_match:
+                                file_info["pages"] = pages_match.group(1).strip()
+                            # Download links and md5
+                            for a in tds[1].find_all("a"):
+                                label = a.get_text(strip=True)
+                                link = a.get("href", "")
+                                if "md5=" in link:
+                                    md5 = re.search(r"md5=([a-fA-F0-9]{32})", link)
+                                    if md5:
+                                        file_info["md5"] = md5.group(1)
+                                file_info.setdefault("mirrors", {})[label] = link
+                            # Add file_info to files dict (use md5 or index as key)
+                            key = file_info.get("md5") or str(len(files))
+                            files[key] = file_info
+            if files:
+                info["files"] = files
+            if verbose:
+                print("Extra info from edition.php:")
+                for k, v in info.items():
+                    print(f"  {k.capitalize()}: {v}")
+        else:
+            if verbose:
+                print(f"Could not fetch edition info (HTTP {resp.status_code})")
+    except Exception as e:
+        if verbose:
+            print(f"Error fetching edition info: {e}")
+    return info
+
+def upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbose=False):
+    """
+    Upload a file to ftp://ftp.libgen.gs/upload and return the file URL if successful.
+    Before uploading, check if the file (by md5sum) already exists in LibGen.
+
+    Args:
+        filepath (str): Path to the file to upload.
+        username (str): FTP username (default: 'anonymous').
+        password (str): FTP password (default: '').
+        verbose (bool): If True, print debug info.
+
+    Returns:
+        str or None: The URL of the uploaded file if successful, else None.
+    """
+
+    ftp_host = "ftp.libgen.gs"
+    ftp_dir = "upload"
+    filename = os.path.basename(filepath)
+
+    # Calculate md5sum of the file
+    def file_md5sum(path):
+        hash_md5 = hashlib.md5()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
+
+    md5sum = file_md5sum(filepath)
+    if verbose:
+        print(f"MD5 sum of file: {md5sum}")
+
+    # Check if file already exists in LibGen
+    check_url = f"https://{LIBGEN_DOMAIN}/json.php?object=f&md5={md5sum}"
+    try:
+        resp = requests.get(check_url, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, dict) and data:
+                print("File already exists in LibGen (by md5sum).")
+                # Get the first LibGen ID (should use "e_id" field)
+                libgen_id = None
+                for v in data.values():
+                    if "e_id" in v:
+                        libgen_id = v["e_id"]
+                        break
+                if libgen_id:
+                    info = fetch_libgen_edition_info(libgen_id, verbose=verbose)
+                    # Pretty print file info using print_libgen_query_results if available
+                    try:
+                        print_libgen_query_results([
+                            {**v, "e_id": v.get("e_id", None)} for v in data.values()
+                        ])
+                    except Exception:
+                        for v in data.values():
+                            print(f"LibGen e_id: {v.get('e_id', 'N/A')}")
+                            for k, val in v.items():
+                                print(f"  {k}: {val}")
+                return None
+    except Exception as e:
+        if verbose:
+            print(f"Error checking LibGen for md5sum: {e}")
+
+    # Proceed to upload if not found
+    try:
+        with ftplib.FTP(ftp_host) as ftp:
+            ftp.login(user=username, passwd=password)
+            if verbose:
+                print(f"Connected to FTP: {ftp_host}")
+            ftp.cwd(ftp_dir)
+            if verbose:
+                print(f"Changed to directory: {ftp_dir}")
+            with open(filepath, "rb") as f:
+                ftp.storbinary(f"STOR {filename}", f)
+            if verbose:
+                print(f"Uploaded file: {filename}")
+        # Construct the URL (public access may depend on server config)
+        url = f"ftp://{ftp_host}/{ftp_dir}/{filename}"
+        return url
+    except Exception as e:
+        if verbose:
+            print(f"FTP upload failed: {e}")
+        return None
+    
+def selenium_libgen_login(username="genesis", password="upload", headless=True, verbose=False):
+    """
+    Open Chrome with Selenium, load http://librarian.libgen.gs/librarian.php,
+    find and follow the login link if present, and login with phpBB forum settings.
+    Checks "remember me" and "hide my online status this session" before login.
+    If already logged in (by detecting upload form), skip login.
+    """
+    options = webdriver.ChromeOptions()
+    if headless:
+        options.add_argument("--headless=new")
+        options.add_argument("--disable-gpu")
+    user_data_dir = os.path.join(cache_dir, "chrome_user_data")
+    os.makedirs(user_data_dir, exist_ok=True)
+    options.add_argument(f"--user-data-dir={user_data_dir}")
+    if verbose:
+        print(f"Using Chrome user data directory: {user_data_dir}")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    prefs = {
+        "profile.default_content_setting_values.notifications": 2,
+        "credentials_enable_service": False,
+        "profile.password_manager_enabled": False,
+        "profile.default_content_setting_values.automatic_downloads": 1,
+        "profile.default_content_setting_values.popups": 0,
+    }
+    options.add_experimental_option("prefs", prefs)
+    options.add_argument("--disable-save-password-bubble")
+    prefs["safebrowsing.enabled"] = True
+    prefs["safebrowsing.protection_level"] = 0
+    driver = None
+    try:
+        driver = webdriver.Chrome(options=options)
+        driver.get("http://librarian.libgen.gs/librarian.php")
+        if verbose:
+            print("Opened librarian page.")
+
+        # Check if already logged in by looking for upload form radio buttons
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            page_source = driver.page_source
+            if (
+                'name="pre_lg_topic"' in page_source
+                and 'id="pre_l"' in page_source
+                and 'Libgen' in page_source
+            ):
+                if verbose:
+                    print("Already logged in (upload form detected).")
+                driver.quit()
+                return True
+        except Exception as e:
+            if verbose:
+                print("Error while checking login status:", e)
+
+        # Wait for the page to load and look for login/register link
+        try:
+            alert_div = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div.alert.alert-danger"))
+            )
+            login_link = None
+            for a in alert_div.find_elements(By.TAG_NAME, "a"):
+                href = a.get_attribute("href")
+                if href and ("mode=login" in href or "mode=register" in href):
+                    login_link = href
+                    break
+            if login_link:
+                if verbose:
+                    print(f"Found login/register link: {login_link}")
+                driver.get(login_link)
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.NAME, "username"))
+                )
+                user_input = driver.find_element(By.NAME, "username")
+                pass_input = driver.find_element(By.NAME, "password")
+                user_input.clear()
+                user_input.send_keys(username)
+                pass_input.clear()
+                pass_input.send_keys(password)
+                try:
+                    remember_checkbox = driver.find_element(By.NAME, "autologin")
+                    if not remember_checkbox.is_selected():
+                        remember_checkbox.click()
+                except Exception:
+                    if verbose:
+                        print("Could not find 'remember me' checkbox.")
+                try:
+                    hide_checkbox = driver.find_element(By.NAME, "viewonline")
+                    if not hide_checkbox.is_selected():
+                        hide_checkbox.click()
+                except Exception:
+                    if verbose:
+                        print("Could not find 'hide my online status' checkbox.")
+                login_btn = None
+                try:
+                    login_btn = driver.find_element(By.NAME, "login")
+                except Exception:
+                    buttons = driver.find_elements(By.XPATH, "//input[@type='submit']")
+                    if buttons:
+                        login_btn = buttons[0]
+                if login_btn:
+                    login_btn.click()
+                    if verbose:
+                        print("Submitted login form.")
+                    time.sleep(2)
+                    driver.get("http://librarian.libgen.gs/librarian.php")
+                    WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.TAG_NAME, "body"))
+                    )
+                    page_source = driver.page_source
+                    if (
+                        'name="pre_lg_topic"' in page_source
+                        and 'id="pre_l"' in page_source
+                        and 'Libgen' in page_source
+                    ):
+                        if verbose:
+                            print("Login successful (upload form detected).")
+                        driver.quit()
+                        return True
+                    else:
+                        if verbose:
+                            print("Login may have failed (upload form not detected).")
+                        driver.quit()
+                        return False
+                else:
+                    if verbose:
+                        print("Login button not found.")
+            else:
+                if verbose:
+                    print("No login/register link found. Maybe already logged in or not required.")
+        except Exception as e:
+            if verbose:
+                print("Could not find login/register link or alert div:", e)
+
+        if verbose:
+            print("Quitting after login attempt.")
+        driver.quit()
+        return False
+    except Exception as e:
+        if verbose:
+            print("Selenium error:", e)
+        if driver:
+            driver.quit()
+        return False
+
 def main():
     # Get the parent package name from the module's __name__
     parent_package = __name__.split('.')[0] if '.' in __name__ else None
@@ -1089,11 +1437,20 @@ Examples:
 
   Download by DOI to a specific folder:
     %(prog)s --check-doi 10.1007/978-3-030-14665-2 --download "C:/Papers"
+
+  Login to LibGen:
+    %(prog)s --login
+
+  Clear cache directory:
+    %(prog)s --clear-cache
 """
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--search", type=str, help="Search LibGen by query string")
     group.add_argument("--check-doi", type=str, help="Search LibGen by DOI")
+    group.add_argument("--login", action="store_true", help="Login to LibGen (default username/password)")
+    group.add_argument("--clear-cache", action="store_true", help="Clear the cache directory and exit")
+
     parser.add_argument("--limit", type=int, default=10, help="Maximum number of results to return (default: 10)")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose/debug output")
     parser.add_argument(
@@ -1105,6 +1462,26 @@ Examples:
         help="Download after search (interactive for --search, auto for --check-doi). Optionally specify download directory."
     )
     args = parser.parse_args()
+
+    # Handle clear-cache option
+    if getattr(args, "clear_cache", False):
+        try:
+            shutil.rmtree(cache_dir)
+            os.makedirs(cache_dir, exist_ok=True)
+            print(f"✅ Cache directory '{cache_dir}' cleared.")
+        except Exception as e:
+            print(f"❌ Failed to clear cache directory '{cache_dir}': {e}")
+        return
+
+    # Handle login option
+    if getattr(args, "login", False):
+        print("Attempting to login to LibGen with default credentials...")
+        success = selenium_libgen_login(username="genesis", password="upload", headless=True, verbose=args.verbose)
+        if success:
+            print("✅ Login successful.")
+        else:
+            print("❌ Login failed.")
+        return
 
     # Determine download directory if --download is used
     download_dir = None
