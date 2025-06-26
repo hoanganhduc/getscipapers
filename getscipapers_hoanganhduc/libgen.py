@@ -59,6 +59,7 @@ def search_libgen_by_doi(doi, limit=10):
     """
     Search for documents on LibGen using a DOI number via the JSON API,
     and fetch additional details from the edition page.
+    If found, also search Crossref to update missing or incorrect information if possible.
 
     Args:
         doi (str): The DOI number to search for.
@@ -86,6 +87,60 @@ def search_libgen_by_doi(doi, limit=10):
         return {}
 
     if not isinstance(data, dict):
+        return {}
+
+    # Try to get Crossref metadata if LibGen found something
+    crossref_info = {}
+    crossref_fields = [
+        "title", "author", "authors", "publisher", "year", "language", "pages", "isbn", "isbn13"
+    ]
+    def fetch_crossref(doi):
+        api_url = f"https://api.crossref.org/works/{quote_plus(doi)}"
+        try:
+            resp = requests.get(api_url, timeout=10)
+            if resp.status_code == 200:
+                obj = resp.json()
+                if "message" in obj:
+                    msg = obj["message"]
+                    info = {}
+                    # Title
+                    if "title" in msg and msg["title"]:
+                        info["title"] = msg["title"][0]
+                    # Authors
+                    if "author" in msg and msg["author"]:
+                        authors = []
+                        for a in msg["author"]:
+                            name = []
+                            if "given" in a:
+                                name.append(a["given"])
+                            if "family" in a:
+                                name.append(a["family"])
+                            if name:
+                                authors.append(" ".join(name))
+                        info["authors"] = ", ".join(authors)
+                    # Publisher
+                    if "publisher" in msg:
+                        info["publisher"] = msg["publisher"]
+                    # Year
+                    if "issued" in msg and "date-parts" in msg["issued"]:
+                        try:
+                            info["year"] = str(msg["issued"]["date-parts"][0][0])
+                        except Exception:
+                            pass
+                    # Language
+                    if "language" in msg:
+                        info["language"] = msg["language"]
+                    # Pages
+                    if "page" in msg:
+                        info["pages"] = msg["page"]
+                    # ISBN
+                    if "ISBN" in msg and msg["ISBN"]:
+                        info["isbn"] = msg["ISBN"][0]
+                        if len(msg["ISBN"]) > 1:
+                            info["isbn13"] = msg["ISBN"][1]
+                    return info
+        except Exception:
+            pass
         return {}
 
     # For each LibGen ID, fetch more info from edition.php
@@ -164,12 +219,49 @@ def search_libgen_by_doi(doi, limit=10):
         except Exception:
             continue
 
+    # Fetch Crossref info once if LibGen found something
+    if data:
+        crossref_info = fetch_crossref(doi)
+        if crossref_info:
+            for libgen_id, entry in data.items():
+                # Only update missing or obviously incorrect fields
+                for field in crossref_fields:
+                    crossref_val = crossref_info.get(field)
+                    entry_val = entry.get(field)
+                    # Update if missing or empty, or if title/author/publisher/pages looks suspiciously short
+                    if not entry_val or (
+                        field in ["title", "authors", "author", "publisher", "pages"]
+                        and entry_val and len(str(entry_val)) < 5
+                    ):
+                        if crossref_val:
+                            entry[field] = crossref_val
+                # Special: update 'author' if 'authors' is present
+                if "authors" in entry and not entry.get("author"):
+                    entry["author"] = entry["authors"]
+                # Add journal field if available from Crossref
+                if "journal" not in entry:
+                    journal_val = crossref_info.get("container-title")
+                    if not journal_val:
+                        # Try to get from Crossref message if present
+                        journal_val = crossref_info.get("journal")
+                    if not journal_val and "container-title" in crossref_info:
+                        journal_val = crossref_info["container-title"]
+                    if not journal_val and "journal" in crossref_info:
+                        journal_val = crossref_info["journal"]
+                    # If still not found, try to get from LibGen extra fields
+                    if not journal_val:
+                        journal_val = entry.get("journal")
+                    if journal_val:
+                        entry["journal"] = journal_val
+
     return data
 
 def print_libgen_doi_result(result):
     """
     Pretty-print the result of a LibGen DOI search using icons.
     Only print fields that have non-empty values.
+    Formats 'series' to better display journal, volume, and issue if possible.
+    If 'pages' looks like an article number (i.e., only a single number, not a range), display as 'Article Number'.
     """
     if not result:
         print("❌ No results found for the given DOI.")
@@ -195,11 +287,10 @@ def print_libgen_doi_result(result):
         ("🏢 Publisher:", ["publisher"]),
         ("📅 Year:", ["year"]),
         ("🌐 Language:", ["language"]),
-        ("📄 Pages:", ["pages", "pagetotal"]),
+        # Pages/Article Number handled below
         ("💾 Size:", ["filesize", "size"]),
         ("📚 Extension:", ["extension", "filetype"]),
-        ("📝 Series:", ["series"]),
-        ("🏷️  Volume:", ["volumeinfo"]),
+        # Series/journal/volume/issue handled below
         ("🏷️  Edition:", ["edition"]),
         ("🏷️  Identifier:", ["identifier"]),
         ("🏷️  ISBN:", ["isbn", "isbn13"]),
@@ -229,7 +320,71 @@ def print_libgen_doi_result(result):
     }
 
     for entry in entries:
+        # Special handling for journal/series/volume/issue
+        series = entry.get("series", "")
+        volume = entry.get("volumeinfo", "") or entry.get("volume", "")
+        issue = entry.get("issue", "")
+        journal = entry.get("journal", "")
+
+        # Try to extract journal, volume, issue from 'series' if present
+        # Common patterns: "Journal Name, Vol. 12, No. 3", "Journal Name, Volume 12, Issue 3"
+        if series:
+            # Try to split by comma and parse
+            parts = [p.strip() for p in series.split(",")]
+            journal_name = ""
+            vol = ""
+            iss = ""
+            for p in parts:
+                if re.search(r"\b(vol\.?|volume)\b", p, re.I):
+                    vol = p
+                elif re.search(r"\b(no\.?|issue)\b", p, re.I):
+                    iss = p
+                elif not journal_name:
+                    journal_name = p
+            if not journal and journal_name:
+                journal = journal_name
+            if not volume and vol:
+                volume = re.sub(r".*?(vol\.?|volume)\s*", "", vol, flags=re.I)
+            if not issue and iss:
+                issue = re.sub(r".*?(no\.?|issue)\s*", "", iss, flags=re.I)
+
+        # Print journal/series/volume/issue in a nice format
+        if journal or volume or issue:
+            journal_line = "📰  Journal:"
+            if journal:
+                journal_line += f" {journal}"
+            if volume:
+                journal_line += f", Vol. {volume}"
+            if issue:
+                journal_line += f", Issue {issue}"
+            print(journal_line)
+
+        # Special handling for pages/article number
+        pages_val = None
+        for k in ["pages", "pagetotal"]:
+            v = entry.get(k)
+            if v not in (None, "", [], {}):
+                pages_val = v
+                break
+        if pages_val not in (None, "", [], {}):
+            # If pages is a single number (not a range), treat as Article Number
+            # Accepts: only digits, or digits with possible whitespace, or e.g. "e12345"
+            # If it does NOT contain "--" or "-" or "–" or "—" or " to "
+            pages_str = str(pages_val).strip()
+            if (
+                not re.search(r"(--|–|—|-| to )", pages_str)
+                and (re.fullmatch(r"[eE]?\d+", pages_str) or pages_str.isdigit())
+            ):
+                print(f"{'🔢 Article Number:':<15} {pages_str}")
+            else:
+                print(f"{'📄  Pages:':<15} {pages_str}")
+
         for label, keys in field_map:
+            # Skip 'series', 'volumeinfo', 'pages', 'pagetotal' here, already handled
+            if label in ("📝 Series:", "🏷️  Volume:"):
+                continue
+            if label == "📄  Pages:":
+                continue
             value = None
             for k in keys:
                 v = entry.get(k)
@@ -277,7 +432,7 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
         verbose (bool): If True, print debug information.
 
     Returns:
-        bool: True if download succeeded, False otherwise.
+        str or None: File path if download succeeded, None otherwise.
     """
 
     if dest_folder is None:
@@ -290,7 +445,7 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
         print("\nDownload Summary:")
         print("❌ Failed downloads:")
         print(f"  ❌ DOI: {doi} (No result found)")
-        return False
+        return None
 
     # Flatten result to first entry
     if isinstance(result, dict) and result:
@@ -301,7 +456,7 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
         print("\nDownload Summary:")
         print("❌ Failed downloads:")
         print(f"  ❌ DOI: {doi} (Unexpected result format)")
-        return False
+        return None
 
     files = entry.get("files", {})
     if not files:
@@ -310,7 +465,7 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
         print("\nDownload Summary:")
         print("❌ Failed downloads:")
         print(f"  ❌ DOI: {doi} (No downloadable files found)")
-        return False
+        return None
 
     # Select file by preferred extension
     file_info = None
@@ -346,7 +501,7 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
         print("\nDownload Summary:")
         print("❌ Failed downloads:")
         print(f"  ❌ DOI: {doi} (No download URL found)")
-        return False
+        return None
 
     filename = entry.get("title", "libgen_paper")
     ext = file_info.get("extension", "pdf")
@@ -417,6 +572,7 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
         print("✅ Successful downloads:")
         for label, path in successes:
             print(f"  ✅ Mirror '{label}': {path}")
+        return successes[0][1]
     else:
         print("No successful downloads.")
 
@@ -427,7 +583,7 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
     else:
         print("No failed downloads.")
 
-    return bool(successes)
+    return None
 
 def search_libgen_by_query(
     query,
@@ -440,6 +596,7 @@ def search_libgen_by_query(
 ):
     """
     Search for documents on LibGen using a query string by parsing the HTML results.
+    If a DOI is found, also search Crossref to update missing or incorrect information if possible.
 
     Args:
         query (str): The search query.
@@ -589,6 +746,90 @@ def search_libgen_by_query(
                 return 0
         results = sorted(results, key=year_key, reverse=order_desc)
 
+    # --- Crossref enrichment for entries with DOI ---
+    crossref_fields = [
+        "title", "author", "authors", "publisher", "year", "language", "pages", "isbn", "isbn13"
+    ]
+    def fetch_crossref(doi):
+        api_url = f"https://api.crossref.org/works/{quote_plus(doi)}"
+        try:
+            resp = requests.get(api_url, timeout=10)
+            if resp.status_code == 200:
+                obj = resp.json()
+                if "message" in obj:
+                    msg = obj["message"]
+                    info = {}
+                    # Title
+                    if "title" in msg and msg["title"]:
+                        info["title"] = msg["title"][0]
+                    # Authors
+                    if "author" in msg and msg["author"]:
+                        authors = []
+                        for a in msg["author"]:
+                            name = []
+                            if "given" in a:
+                                name.append(a["given"])
+                            if "family" in a:
+                                name.append(a["family"])
+                            if name:
+                                authors.append(" ".join(name))
+                        info["authors"] = ", ".join(authors)
+                    # Publisher
+                    if "publisher" in msg:
+                        info["publisher"] = msg["publisher"]
+                    # Year
+                    if "issued" in msg and "date-parts" in msg["issued"]:
+                        try:
+                            info["year"] = str(msg["issued"]["date-parts"][0][0])
+                        except Exception:
+                            pass
+                    # Language
+                    if "language" in msg:
+                        info["language"] = msg["language"]
+                    # Pages
+                    if "page" in msg:
+                        info["pages"] = msg["page"]
+                    # ISBN
+                    if "ISBN" in msg and msg["ISBN"]:
+                        info["isbn"] = msg["ISBN"][0]
+                        if len(msg["ISBN"]) > 1:
+                            info["isbn13"] = msg["ISBN"][1]
+                    # Journal
+                    if "container-title" in msg and msg["container-title"]:
+                        info["journal"] = msg["container-title"][0]
+                    return info
+        except Exception:
+            pass
+        return {}
+
+    for entry in results:
+        doi = entry.get("doi", "")
+        if doi:
+            crossref_info = fetch_crossref(doi)
+            if crossref_info:
+                for field in crossref_fields:
+                    crossref_val = crossref_info.get(field)
+                    entry_val = entry.get(field)
+                    # Update if missing or empty, or if title/author/publisher/pages looks suspiciously short
+                    if not entry_val or (
+                        field in ["title", "authors", "author", "publisher", "pages"]
+                        and entry_val and len(str(entry_val)) < 5
+                    ):
+                        if crossref_val:
+                            entry[field] = crossref_val
+                # Special: update 'author' if 'authors' is present
+                if "authors" in entry and not entry.get("author"):
+                    entry["author"] = entry["authors"]
+                # Add journal field if available from Crossref
+                if "journal" not in entry:
+                    journal_val = crossref_info.get("journal")
+                    if not journal_val and "container-title" in crossref_info:
+                        journal_val = crossref_info["container-title"]
+                    if not journal_val and "journal" in crossref_info:
+                        journal_val = crossref_info["journal"]
+                    if journal_val:
+                        entry["journal"] = journal_val
+
     if verbose:
         print(f"[DEBUG] Returning {len(results[:limit])} results")
     return results[:limit]
@@ -596,20 +837,71 @@ def search_libgen_by_query(
 def print_libgen_query_results(results):
     """
     Pretty-print the results of a LibGen query search using icons and numbering.
+    Handles 'series' text for journal/volume/issue, and prints 'pages' as article number if appropriate.
     """
     if not results:
         print("❌ No results found for the given query.")
         return
 
     for idx, entry in enumerate(results, 1):
+        # Handle journal/series/volume/issue from 'series' field
+        series = entry.get("series", "")
+        volume = entry.get("volumeinfo", "") or entry.get("volume", "")
+        issue = entry.get("issue", "")
+        journal = entry.get("journal", "")
+
+        # Try to extract journal, volume, issue from 'series' if present
+        if series:
+            parts = [p.strip() for p in series.split(",")]
+            journal_name = ""
+            vol = ""
+            iss = ""
+            for p in parts:
+                if re.search(r"\b(vol\.?|volume)\b", p, re.I):
+                    vol = p
+                elif re.search(r"\b(no\.?|issue)\b", p, re.I):
+                    iss = p
+                elif not journal_name:
+                    journal_name = p
+            if not journal and journal_name:
+                journal = journal_name
+            if not volume and vol:
+                volume = re.sub(r".*?(vol\.?|volume)\s*", "", vol, flags=re.I)
+            if not issue and iss:
+                issue = re.sub(r".*?(no\.?|issue)\s*", "", iss, flags=re.I)
+
         print(f"#{idx} 📄 Title:      {entry.get('title', 'N/A')}")
+        if journal or volume or issue:
+            journal_line = "   📰 Journal:"
+            if journal:
+                journal_line += f" {journal}"
+            if volume:
+                journal_line += f", Vol. {volume}"
+            if issue:
+                journal_line += f", Issue {issue}"
+            print(journal_line)
+
         print("   🆔 ID:         ", entry.get("id", "N/A"))
         print("   🔗 DOI:        ", entry.get("doi", "N/A"))
         print("   👨‍🔬 Authors:   ", entry.get("authors", "N/A"))
         print("   🏢 Publisher:   ", entry.get("publisher", "N/A"))
         print("   📅 Year:       ", entry.get("year", "N/A"))
         print("   🌐 Language:   ", entry.get("language", "N/A"))
-        print("   📄 Pages:      ", entry.get("pages", "N/A"))
+
+        # Handle pages/article number
+        pages_val = entry.get("pages", None)
+        if pages_val not in (None, "", [], {}):
+            pages_str = str(pages_val).strip()
+            if (
+                not re.search(r"(--|–|—|-| to )", pages_str)
+                and (re.fullmatch(r"[eE]?\d+", pages_str) or pages_str.isdigit())
+            ):
+                print(f"   🔢 Article Number: {pages_str}")
+            else:
+                print(f"   📄 Pages:      {pages_str}")
+        else:
+            print("   📄 Pages:      N/A")
+
         print("   💾 Size:       ", entry.get("size", "N/A"))
         print("   📚 Extension:  ", entry.get("extension", "N/A"))
         print("   🔗 Mirrors:")
