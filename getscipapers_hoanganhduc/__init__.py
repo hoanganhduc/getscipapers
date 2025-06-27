@@ -81,11 +81,15 @@ def main():
     args = parser.parse_args()
     
     if args.list:
-        # Get available modules
+        # Get available modules, excluding Zlibrary
         available_modules = []
         _current_dir = Path(__file__).parent
         for _file in _current_dir.glob("*.py"):
-            if _file.name != "__init__.py" and not _file.name.startswith("_"):
+            if (
+                _file.name != "__init__.py"
+                and not _file.name.startswith("_")
+                and _file.stem.lower() != "zlibrary"
+            ):
                 available_modules.append(_file.stem)
         
         print("Available modules:")
