@@ -405,7 +405,7 @@ def fetch_crossref_data(doi):
         vprint(f"Unexpected error fetching Crossref data for DOI {doi}: {e}")
         return None
 
-async def is_open_access_unpaywall(doi: str, email: str = EMAIL) -> bool:
+async def is_open_access_unpaywall(doi: str, email: str = "anhduc.hoang1990@googlemail.com") -> bool:
     """
     Check if a DOI is open access using the Unpaywall API.
     Returns True if open access, False otherwise.
@@ -1650,7 +1650,7 @@ async def download_from_pmc(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FO
 async def download_from_unpaywall(
     doi: str,
     download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
-    email: str = EMAIL
+    email: str = "anhduc.hoang1990@googlemail.com"
 ):
     """
     Download all possible open access PDFs for a DOI via Unpaywall.
