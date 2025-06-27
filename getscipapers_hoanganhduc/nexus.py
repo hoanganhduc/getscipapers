@@ -834,7 +834,7 @@ async def test_and_select_working_proxy():
         debug_print(f"Proxy testing error: {type(e).__name__}: {str(e)}")
         return None
 
-async def test_telegram_connection(api_id, api_hash, phone_number, session_file='telegram_session', proxy=None):
+async def test_telegram_connection(api_id, api_hash, phone_number, session_file=SESSION_FILE, proxy=None):
     """
     Test connection to Telegram servers with comprehensive diagnostics
     
@@ -1179,7 +1179,7 @@ async def fetch_recent_messages(client, bot_entity, sent_message):
     debug_print(f"No newer messages found among {len(seen_messages)} unique recent messages")
     return None
 
-async def click_callback_button(api_id, api_hash, phone_number, bot_username, message_id, button_data, session_file='telegram_session', proxy=None):
+async def click_callback_button(api_id, api_hash, phone_number, bot_username, message_id, button_data, session_file=SESSION_FILE, proxy=None):
     """
     Click a callback button in a bot's message
     
@@ -1328,7 +1328,7 @@ async def click_callback_button(api_id, api_hash, phone_number, bot_username, me
         debug_print("Disconnecting client after button click...")
         await client.disconnect()
 
-async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, message, session_file='telegram_session', proxy=None, limit=None):
+async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, message, session_file=SESSION_FILE, proxy=None, limit=None):
     """
     Send a message from your user account to a Telegram bot and wait for its reply.
 
@@ -1680,7 +1680,7 @@ async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, mess
         await client.disconnect()
         debug_print("Client disconnected")
 
-async def create_session(api_id, api_hash, phone_number, session_file='telegram_session'):
+async def create_session(api_id, api_hash, phone_number, session_file=SESSION_FILE):
     """Create a new session file interactively"""
     debug_print(f"Creating new session with file: {session_file}")
     client = TelegramClient(session_file, api_id, api_hash)
@@ -2292,7 +2292,7 @@ async def load_credentials_from_file(credentials_path):
     error_print("Failed to provide valid credentials after multiple attempts or timeout.")
     return None
     
-async def test_credentials(api_id, api_hash, phone_number, session_file='telegram_session', proxy=None):
+async def test_credentials(api_id, api_hash, phone_number, session_file=SESSION_FILE, proxy=None):
     """
     Test if the provided Telegram API credentials are correct by attempting to connect and authorize.
     Returns a dictionary with the result.
@@ -2718,7 +2718,7 @@ async def process_callback_buttons(bot_reply, proxy_to_use):
     
     info_print(f"\n--- Completed processing all {len(callback_buttons)} buttons ---")
 
-async def get_latest_messages_from_bot(api_id, api_hash, bot_username, session_file='telegram_session', limit=10, proxy=None):
+async def get_latest_messages_from_bot(api_id, api_hash, bot_username, session_file=SESSION_FILE, limit=10, proxy=None):
     """
     Get the latest messages from a bot
     
@@ -2819,7 +2819,7 @@ async def get_latest_messages_from_bot(api_id, api_hash, bot_username, session_f
         debug_print("Disconnecting client...")
         await client.disconnect()
 
-async def get_user_profile(api_id, api_hash, phone_number, bot_username, session_file='telegram_session', proxy=None):
+async def get_user_profile(api_id, api_hash, phone_number, bot_username, session_file=SESSION_FILE, proxy=None):
     """
     Get user profile information from Nexus bot by sending /profile command
     
@@ -3116,7 +3116,7 @@ def format_messages_result(messages_result):
         logger.info("Formatting messages result for display")
         logger.info(result_text)
 
-async def fetch_and_display_recent_messages(api_id, api_hash, bot_username, session_file='telegram_session', 
+async def fetch_and_display_recent_messages(api_id, api_hash, bot_username, session_file=SESSION_FILE, 
                                             limit=10, proxy=None, display=True):
     """
     Fetch recent messages from a bot and optionally display them
@@ -3153,7 +3153,7 @@ async def fetch_and_display_recent_messages(api_id, api_hash, bot_username, sess
     
     return messages_result
 
-async def fetch_nexus_aaron_messages(api_id, api_hash, phone_number, session_file='telegram_session', 
+async def fetch_nexus_aaron_messages(api_id, api_hash, phone_number, session_file=SESSION_FILE, 
                                     limit=10, proxy=None, display=True):
     """
     Fetch recent messages from the @nexus_aaron bot specifically
@@ -3544,7 +3544,7 @@ def parse_nexus_aaron_upload(text):
     
     return upload_info
 
-async def upload_file_to_bot(api_id, api_hash, phone_number, bot_username, file_path, message="", session_file='telegram_session', proxy=None):
+async def upload_file_to_bot(api_id, api_hash, phone_number, bot_username, file_path, message="", session_file=SESSION_FILE, proxy=None):
     """
     Upload a file to a Telegram bot with optional message
     
@@ -3753,7 +3753,7 @@ def format_upload_result(upload_result):
         logger.info("Formatting upload result for display")
         logger.info(result_text)
 
-async def upload_file_to_nexus_aaron(api_id, api_hash, phone_number, file_path, message="", session_file='telegram_session', proxy=None):
+async def upload_file_to_nexus_aaron(api_id, api_hash, phone_number, file_path, message="", session_file=SESSION_FILE, proxy=None):
     """
     Upload a file to the @nexus_aaron bot specifically
     
@@ -3868,7 +3868,7 @@ def format_nexus_aaron_upload_result(upload_result):
         logger.info("Formatting nexus_aaron upload result for display")
         logger.info(result_text)
 
-async def list_and_reply_to_nexus_aaron_message(api_id, api_hash, phone_number, session_file='telegram_session', limit=10, proxy=None):
+async def list_and_reply_to_nexus_aaron_message(api_id, api_hash, phone_number, session_file=SESSION_FILE, limit=10, proxy=None):
     """
     List recent research request messages from @nexus_aaron, allow user to select one, and upload a file as reply
     
@@ -4222,7 +4222,7 @@ def format_list_and_reply_result(result):
         logger.info("Formatting list and reply result for display")
         logger.info(result_text)
 
-async def check_doi_availability_on_nexus(api_id, api_hash, phone_number, bot_username, doi, session_file='telegram_session', proxy=None, download=False):
+async def check_doi_availability_on_nexus(api_id, api_hash, phone_number, bot_username, doi, session_file=SESSION_FILE, proxy=None, download=False):
     """
     Check if a DOI is available on Nexus by sending it to the bot and analyzing the response
     
@@ -4660,7 +4660,7 @@ def format_doi_availability_result(availability_result):
         logger.info("Formatting DOI availability result for display")
         logger.info(result_text)
 
-async def batch_check_doi_availability(api_id, api_hash, phone_number, bot_username, doi_list, session_file='telegram_session', proxy=None, delay=2, download=False):
+async def batch_check_doi_availability(api_id, api_hash, phone_number, bot_username, doi_list, session_file=SESSION_FILE, proxy=None, delay=2, download=False):
     """
     Check availability of multiple DOIs on Nexus with rate limiting and optional auto-download
     
@@ -5253,7 +5253,7 @@ def format_download_from_nexus_bot_result(download_result):
         logger.info("Formatting download result for display")
         logger.info(result_text)
 
-async def request_paper_by_doi(api_id, api_hash, phone_number, bot_username, doi, session_file='telegram_session', proxy=None):
+async def request_paper_by_doi(api_id, api_hash, phone_number, bot_username, doi, session_file=SESSION_FILE, proxy=None):
     """
     Request a paper from Nexus by DOI.
     This will send the DOI to the bot, detect if a request is needed, and click the request button if available.
@@ -5320,7 +5320,7 @@ async def request_paper_by_doi(api_id, api_hash, phone_number, bot_username, doi
             "details": click_result.get("error", "Unknown error")
         }
 
-async def batch_request_papers_by_doi(api_id, api_hash, phone_number, bot_username, doi_list, session_file='telegram_session', proxy=None, delay=2):
+async def batch_request_papers_by_doi(api_id, api_hash, phone_number, bot_username, doi_list, session_file=SESSION_FILE, proxy=None, delay=2):
     """
     Request multiple papers from Nexus by DOI.
     For each DOI, sends the DOI to the bot, detects if a request is needed, and clicks the request button if available.
