@@ -625,7 +625,7 @@ def extract_dois_from_text(text: str) -> list:
     dois = []
     
     # Extract direct DOIs from text
-    # Common DOI patterns (strict and relaxed)
+    # Common DOI patterns (strict and relaxed), allow brackets in DOI suffix
     doi_patterns = [
         r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',  # Standard DOI
         r'\b10\.\d{4,9}\s*/\s*[^\s"\'<>#{}()[\],;:?!&]+',  # DOI with spaces around slash
@@ -633,6 +633,8 @@ def extract_dois_from_text(text: str) -> list:
         r'\bhttps?://doi\.org/(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',  # DOI in URL
         r'\bhttps?://dx\.doi\.org/(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',  # dx.doi.org
         r'\bdoi\s*=\s*["\']?(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',  # BibTeX style
+        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&\]]+',  # Allow closing bracket at end
+        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&\)]+',  # Allow closing parenthesis at end
     ]
     for pattern in doi_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
