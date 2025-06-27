@@ -2210,7 +2210,8 @@ def print_default_paths():
     """
     print("Default configuration and data paths:")
     print(f"  GETPAPERS_CONFIG_FILE: {GETPAPERS_CONFIG_FILE}")
-    print(f"  Default download folder: .")
+    print(f"  Default download folder: {DEFAULT_DOWNLOAD_FOLDER}")
+    print(f"  Unpywall cache file: {UNPYWALL_CACHE_FILE}")
     print(f"  Platform: {platform.system()}")
 
 async def main():
@@ -2249,7 +2250,7 @@ async def main():
     argparser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     argparser.add_argument("--doi", type=str, help="Specify a DOI to download the paper")
     argparser.add_argument("--doi-file", type=str, help="Path to a text file containing DOIs (one per line)")
-    argparser.add_argument("--download-folder", type=str, default=".", help="Folder to save downloaded PDFs")
+    argparser.add_argument("--download-folder", type=str, default=DEFAULT_DOWNLOAD_FOLDER, help="Folder to save downloaded PDFs")
     argparser.add_argument(
         "--db",
         type=str,

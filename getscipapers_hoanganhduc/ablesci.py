@@ -2483,6 +2483,7 @@ def print_default_paths():
     print(f"  Cache directory: {cache_dir}")
     print(f"  Cache file: {CACHE_FILE}")
     print(f"  Credentials file: {CREDENTIALS_FILE}")
+    print(f"  Default download folder: {DEFAULT_DOWNLOAD_FOLDER}")
 
 def main():
     global verbose
