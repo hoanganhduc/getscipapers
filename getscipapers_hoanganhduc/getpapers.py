@@ -59,6 +59,24 @@ if not os.path.exists(config_dir):
     except Exception as e:
         print(f"Error creating config directory {config_dir}: {e}")
 
+def get_default_download_folder():
+    """
+    Get the default download folder for the current OS.
+    - Windows: %USERPROFILE%\Downloads\getscipapers\getpapers
+    - macOS: ~/Downloads/getscipapers/getpapers
+    - Linux: ~/Downloads/getscipapers/getpapers
+    """
+    system = platform.system()
+    if system == "Windows":
+        base = os.environ.get('USERPROFILE', os.path.expanduser('~'))
+        folder = os.path.join(base, 'Downloads', 'getscipapers', 'getpapers')
+    else:
+        folder = os.path.join(os.path.expanduser('~'), 'Downloads', 'getscipapers', 'getpapers')
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+DEFAULT_DOWNLOAD_FOLDER = get_default_download_folder()
+
 def save_credentials(email: str = None, elsevier_api_key: str = None, 
                     wiley_tdm_token: str = None, ieee_api_key: str = None, 
                     config_file: str = None):
@@ -387,7 +405,7 @@ def fetch_crossref_data(doi):
         vprint(f"Unexpected error fetching Crossref data for DOI {doi}: {e}")
         return None
 
-async def is_open_access_unpaywall(doi: str, email: str = "anhduc.hoang1990@googlemail.com") -> bool:
+async def is_open_access_unpaywall(doi: str, email: str = EMAIL) -> bool:
     """
     Check if a DOI is open access using the Unpaywall API.
     Returns True if open access, False otherwise.
@@ -1315,7 +1333,7 @@ def is_elsevier_doi(doi: str) -> bool:
 
 async def download_elsevier_pdf_by_doi(
     doi: str,
-    download_folder: str = ".",
+    download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
     api_key: str = ELSEVIER_API_KEY # Use the global API key by default
 ):
     """
@@ -1472,7 +1490,7 @@ def is_wiley_doi(doi: str) -> bool:
 
 async def download_wiley_pdf_by_doi(
     doi: str,
-    download_folder: str = ".",
+    download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
     tdm_token: str = WILEY_TDM_TOKEN  # Use the global token by default
 ) -> bool:
     """
@@ -1542,7 +1560,7 @@ def is_pmc_doi(doi: str) -> bool:
     except Exception:
         return False
 
-async def download_from_pmc(doi: str, download_folder: str = ".") -> bool:
+async def download_from_pmc(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER) -> bool:
     """
     Download a PDF from PubMed Central (PMC) using the DOI.
     Returns True if successful, else False.
@@ -1631,8 +1649,8 @@ async def download_from_pmc(doi: str, download_folder: str = ".") -> bool:
     
 async def download_from_unpaywall(
     doi: str,
-    download_folder: str = ".",
-    email: str = "anhduc.hoang1990@googlemail.com"
+    download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
+    email: str = EMAIL
 ):
     """
     Download all possible open access PDFs for a DOI via Unpaywall.
@@ -1799,7 +1817,7 @@ async def download_from_unpaywall(
         print(f"Error querying Unpaywall for DOI {doi}: {e}")
         return False
 
-async def download_from_nexus(id: str, doi: str, download_folder: str = "."):
+async def download_from_nexus(id: str, doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER):
     safe_doi = doi.replace('/', '_')
     filename = f"{safe_doi}_nexus.pdf"
     filepath = f"{download_folder}/{filename}"
@@ -1827,7 +1845,7 @@ async def download_from_nexus(id: str, doi: str, download_folder: str = "."):
     
     return False
 
-async def download_from_nexus_bot(doi: str, download_folder: str = "."):
+async def download_from_nexus_bot(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER):
     """
     Download a PDF by DOI using the Nexus bot (via .nexus module).
     Returns True if successful, else False.
@@ -1874,7 +1892,7 @@ async def download_from_nexus_bot(doi: str, download_folder: str = "."):
         print(f"Error downloading PDF from Nexus bot for DOI {doi}: {e}")
     return False
 
-async def download_from_scihub(doi: str, download_folder: str = "."):
+async def download_from_scihub(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER):
     safe_doi = doi.replace('/', '_')
     filename = f"{safe_doi}_scihub.pdf"
     filepath = f"{download_folder}/{filename}"
@@ -1915,7 +1933,7 @@ async def download_from_scihub(doi: str, download_folder: str = "."):
             print(f"Error accessing Sci-Hub at {domain}: {e}")
     return False
 
-async def download_from_anna_archive(doi: str, download_folder: str = "."):
+async def download_from_anna_archive(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER):
     safe_doi = doi.replace('/', '_')
     filename = f"{safe_doi}_anna.pdf"
     filepath = f"{download_folder}/{filename}"
@@ -1974,7 +1992,7 @@ async def download_from_anna_archive(doi: str, download_folder: str = "."):
             print(f"Error accessing Anna's Archive for DOI {doi} at {domain}: {e}")
     return False
 
-async def download_by_doi(doi: str, download_folder: str = ".", db: str = "all", no_download: bool = False):
+async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER, db: str = "all", no_download: bool = False):
     vprint(f"Starting download_by_doi for DOI: {doi}, folder: {download_folder}, db: {db}, no_download: {no_download}")
     results = await search_documents(doi, 1)
     
@@ -2109,7 +2127,7 @@ async def download_by_doi(doi: str, download_folder: str = ".", db: str = "all",
     # print(f"  ✗ {doi} [{oa_status_text}]")
     return False
 
-async def download_by_doi_list(doi_file: str, download_folder: str = ".", db: str = "all", no_download: bool = False):
+async def download_by_doi_list(doi_file: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER, db: str = "all", no_download: bool = False):
     vprint(f"Starting download_by_doi_list for file: {doi_file}, folder: {download_folder}, db: {db}, no_download: {no_download}")
     
     # Check if the file contains only DOIs (one per line)
