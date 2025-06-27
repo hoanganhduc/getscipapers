@@ -88,7 +88,7 @@ def main():
         print("Available modules:")
         for module in available_modules:
             print(f"  - {module}")
-        print(f"\nTo know how to execute a module, use: {os.path.basename(sys.argv[0])} module --help")
+        print(f"\nTo know how to execute a module, use: {os.path.basename(sys.argv[0])} module_name --help")
         return
     
     print(f"getscipapers v{__version__}")
