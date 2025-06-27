@@ -2034,17 +2034,6 @@ Examples:
         FacebookScraper.print_default_paths()
         return
 
-    # Enforce --credentials cannot be used with other arguments except --verbose
-    if args.credentials:
-        # List of argument names that are allowed with --credentials
-        allowed_with_credentials = {'credentials', 'verbose', 'facebook'}
-        # Check if any other argument is set (not None/False/empty)
-        other_args = [arg for arg in vars(args) if getattr(args, arg) not in (None, False, [], '') and arg not in allowed_with_credentials]
-        if other_args:
-            print("❌ Error: --credentials cannot be used with other arguments except --verbose.")
-            print("   Please use --credentials alone (optionally with --verbose) to load credentials.")
-            return
-
     # Handle --clear-cache before anything else
     if args.clear_cache:
         try:
@@ -2172,7 +2161,7 @@ Examples:
             if not scraper.load_credentials(args.credentials):
                 print_and_log("⚠️ Could not load credentials from specified file")
             else:
-                print_and_log("✅ Credentials loaded successfully")
+                print_and_log("✅ Credentials loaded successfully. Exiting...")
                 return
         
         # Setup and login
