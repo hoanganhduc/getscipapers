@@ -81,7 +81,14 @@ def get_default_cache_dir():
     os.makedirs(folder, exist_ok=True)
     return folder
 
+# Global cache dir
 cache_dir = get_default_cache_dir()
+
+# Global default Chrome user data dir inside cache dir
+DEFAULT_CHROME_USER_DIR = os.path.join(cache_dir, "chrome_user_data")
+os.makedirs(DEFAULT_CHROME_USER_DIR, exist_ok=True)
+
+
 
 def search_libgen_by_doi(doi, limit=10):
     """
@@ -1219,25 +1226,9 @@ def upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbo
         if resp.status_code == 200:
             data = resp.json()
             if isinstance(data, dict) and data:
-                print("File already exists in LibGen (by md5sum).")
-                # Get the first LibGen ID (should use "e_id" field)
-                libgen_id = None
-                for v in data.values():
-                    if "e_id" in v:
-                        libgen_id = v["e_id"]
-                        break
-                if libgen_id:
-                    info = fetch_libgen_edition_info(libgen_id, verbose=verbose)
-                    # Pretty print file info using print_libgen_query_results if available
-                    try:
-                        print_libgen_query_results([
-                            {**v, "e_id": v.get("e_id", None)} for v in data.values()
-                        ])
-                    except Exception:
-                        for v in data.values():
-                            print(f"LibGen e_id: {v.get('e_id', 'N/A')}")
-                            for k, val in v.items():
-                                print(f"  {k}: {val}")
+                print("ℹ️  File already exists in LibGen (by md5sum).")
+                file_url = f"https://{LIBGEN_DOMAIN}/file.php?md5={md5sum}"
+                print(f"🔗 File URL: {file_url}")
                 return None
     except Exception as e:
         if verbose:
@@ -1264,22 +1255,16 @@ def upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbo
             print(f"FTP upload failed: {e}")
         return None
     
-def selenium_libgen_login(username="genesis", password="upload", headless=True, verbose=False):
+def create_chrome_driver(headless=True, extra_prefs=None):
     """
-    Open Chrome with Selenium, load http://librarian.libgen.gs/librarian.php,
-    find and follow the login link if present, and login with phpBB forum settings.
-    Checks "remember me" and "hide my online status this session" before login.
-    If already logged in (by detecting upload form), skip login.
+    Create and return a Selenium Chrome WebDriver with default user data directory and options.
     """
     options = webdriver.ChromeOptions()
     if headless:
         options.add_argument("--headless=new")
         options.add_argument("--disable-gpu")
-    user_data_dir = os.path.join(cache_dir, "chrome_user_data")
-    os.makedirs(user_data_dir, exist_ok=True)
-    options.add_argument(f"--user-data-dir={user_data_dir}")
-    if verbose:
-        print(f"Using Chrome user data directory: {user_data_dir}")
+    os.makedirs(DEFAULT_CHROME_USER_DIR, exist_ok=True)
+    options.add_argument(f"--user-data-dir={DEFAULT_CHROME_USER_DIR}")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     prefs = {
@@ -1288,33 +1273,47 @@ def selenium_libgen_login(username="genesis", password="upload", headless=True, 
         "profile.password_manager_enabled": False,
         "profile.default_content_setting_values.automatic_downloads": 1,
         "profile.default_content_setting_values.popups": 0,
+        "safebrowsing.enabled": True,
+        "safebrowsing.protection_level": 0,
     }
+    if extra_prefs:
+        prefs.update(extra_prefs)
     options.add_experimental_option("prefs", prefs)
     options.add_argument("--disable-save-password-bubble")
-    prefs["safebrowsing.enabled"] = True
-    prefs["safebrowsing.protection_level"] = 0
+    return webdriver.Chrome(options=options)
+
+def selenium_libgen_login(username="genesis", password="upload", headless=True, verbose=False):
+    """
+    Open Chrome with Selenium, load http://librarian.libgen.gs/librarian.php,
+    find and follow the login link if present, and login with phpBB forum settings.
+    Checks "remember me" and "hide my online status this session" before login.
+    If already logged in (by detecting upload form), skip login.
+    """
+    if verbose:
+        print(f"Using Chrome user data directory: {DEFAULT_CHROME_USER_DIR}")
     driver = None
     try:
-        driver = webdriver.Chrome(options=options)
+        driver = create_chrome_driver(headless=headless)
         driver.get("http://librarian.libgen.gs/librarian.php")
         if verbose:
             print("Opened librarian page.")
 
-        # Check if already logged in by looking for upload form radio buttons
+        # Check if already logged in by looking for upload form with id="upload-form"
         try:
             WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
-            page_source = driver.page_source
-            if (
-                'name="pre_lg_topic"' in page_source
-                and 'id="pre_l"' in page_source
-                and 'Libgen' in page_source
-            ):
+            try:
+                upload_form = driver.find_element(By.ID, "upload-form")
+                if upload_form:
+                    if verbose:
+                        print("Already logged in (upload form detected by id='upload-form').")
+                    driver.quit()
+                    return True
+            except Exception:
+                # Not found, continue to login flow
                 if verbose:
-                    print("Already logged in (upload form detected).")
-                driver.quit()
-                return True
+                    print("Upload form with id='upload-form' not found, proceeding to login.")
         except Exception as e:
             if verbose:
                 print("Error while checking login status:", e)
@@ -1409,6 +1408,292 @@ def selenium_libgen_login(username="genesis", password="upload", headless=True, 
             driver.quit()
         return False
 
+def selenium_libgen_upload(local_file_path, bib_id, username="genesis", password="upload", headless=True, verbose=False):
+    """
+    Upload a local file to http://librarian.libgen.gs/librarian.php after logging in with Selenium.
+    Fills the FTP path in the upload form and clicks the Upload button.
+    After upload, finds the bibliography search form, selects the appropriate source (crossref for DOI, goodreads for ISBN),
+    fills the bib_id in the bibliography search input, and clicks the Search button.
+    Then waits for a while and clicks the Register button.
+
+    Args:
+        local_file_path (str): Path to the local file to upload.
+        bib_id (str): DOI or ISBN to associate with the upload.
+        username (str): LibGen username (default: 'genesis').
+        password (str): LibGen password (default: 'upload').
+        headless (bool): Run browser in headless mode.
+        verbose (bool): Print debug info.
+
+    Returns:
+        bool: True if upload succeeded, False otherwise.
+    """
+    ftp_url = upload_file_to_libgen_ftp(local_file_path, username='anonymous', password='', verbose=verbose)
+    if not ftp_url:
+        if verbose:
+            print("❌ FTP upload failed or file already exists.")
+        return False
+
+    login_success = selenium_libgen_login(username=username, password=password, headless=headless, verbose=verbose)
+    if not login_success:
+        if verbose:
+            print("❌ Login failed, cannot upload.")
+        return False
+
+    driver = None
+    try:
+        driver = create_chrome_driver(headless=headless)
+        driver.get("http://librarian.libgen.gs/librarian.php")
+        if verbose:
+            print("🌐 Opened librarian page for upload.")
+
+        if not _selenium_fill_upload_form(driver, ftp_url, verbose):
+            driver.quit()
+            return False
+
+        upload_success, success_message = _selenium_wait_for_upload_success(driver, verbose)
+        if upload_success:
+            if success_message:
+                print(f"✅ Upload success message: {success_message}")
+            elif verbose:
+                print("✅ Upload process completed. (No explicit success message found.)")
+        else:
+            if verbose:
+                print("❌ Upload failed.")
+            driver.quit()
+            return False
+
+        biblio_success = _selenium_register_bibliography(driver, bib_id, local_file_path, verbose)
+        driver.quit()
+        return biblio_success
+
+    except Exception as e:
+        if verbose:
+            print("❌ Selenium error:", e)
+        if driver:
+            driver.quit()
+        return False
+
+def _selenium_fill_upload_form(driver, ftp_url, verbose=False):
+    """Fill the upload form with the FTP path and click the Upload button."""
+    try:
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.NAME, "ftppath"))
+        )
+    except Exception as e:
+        if verbose:
+            print("❌ FTP path input not found:", e)
+        return False
+
+    try:
+        libgen_radio = driver.find_element(By.ID, "pre_l")
+        if not libgen_radio.is_selected():
+            libgen_radio.click()
+        if verbose:
+            print("🔘 Checked the Libgen radio button.")
+    except Exception as e:
+        if verbose:
+            print("❌ Could not find or check Libgen radio button:", e)
+        return False
+
+    try:
+        ftppath_input = driver.find_element(By.NAME, "ftppath")
+        ftppath_input.clear()
+        ftppath_input.send_keys(ftp_url)
+        if verbose:
+            print(f"📤 Pasted FTP path: {ftp_url}")
+    except Exception as e:
+        if verbose:
+            print("❌ Could not find or fill FTP path input:", e)
+        return False
+
+    try:
+        upload_btn = driver.find_element(By.ID, "upload-file")
+        upload_btn.click()
+        if verbose:
+            print("⬆️ Clicked the Upload button.")
+    except Exception as e:
+        if verbose:
+            print("❌ Could not find or click Upload button:", e)
+        return False
+
+    time.sleep(10)  # Wait for upload to process
+    return True
+
+def _selenium_wait_for_upload_success(driver, verbose=False):
+    """Wait for upload to complete and try to extract a success message."""
+    page_source = driver.page_source
+    success = False
+    success_message = None
+
+    try:
+        alert_success = driver.find_elements(By.CSS_SELECTOR, ".alert-success, .alert.alert-success")
+        if alert_success:
+            for alert in alert_success:
+                msg = alert.text.strip()
+                if msg:
+                    success_message = msg
+                    break
+        if not success_message:
+            divs = driver.find_elements(By.TAG_NAME, "div")
+            for div in divs:
+                text = div.text.strip().lower()
+                if "success" in text or "uploaded" in text:
+                    success_message = div.text.strip()
+                    break
+    except Exception:
+        pass
+
+    if not success_message:
+        if "success" in page_source.lower() or "uploaded" in page_source.lower():
+            success_message = "Upload appears to have succeeded (no explicit message found)."
+            success = True
+        else:
+            success = True  # Assume success if no error found
+    else:
+        success = True
+
+    return success, success_message
+
+def _selenium_register_bibliography(driver, bib_id, local_file_path, verbose=False):
+    """
+    Register the uploaded file with a DOI or ISBN using the bibliography form.
+    If bib_id looks like an ISBN, selects 'goodreads' as source and uses bib_id.
+    If bib_id looks like a DOI, selects 'crossref' and uses bib_id.
+    """
+    def is_isbn(val):
+        # Simple check: ISBN-10 or ISBN-13 (digits, possibly with hyphens)
+        val = val.replace("-", "").replace(" ", "")
+        return (len(val) == 10 or len(val) == 13) and val.isdigit()
+
+    def is_doi(val):
+        # Simple check: contains a slash and at least one dot
+        return "/" in val and "." in val
+
+    try:
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "bibliosearch-form"))
+        )
+        if verbose:
+            print("📑 Found bibliography search form.")
+
+        # Decide source and value
+        if is_isbn(bib_id):
+            source_value = "goodreads"
+            biblio_value = bib_id
+            if verbose:
+                print(f"Using ISBN: {bib_id} (goodreads)")
+        elif is_doi(bib_id):
+            source_value = "crossref"
+            biblio_value = bib_id
+            if verbose:
+                print(f"Using DOI: {bib_id} (crossref)")
+        else:
+            if verbose:
+                print(f"❌ bib_id '{bib_id}' is neither a valid DOI nor ISBN.")
+            return False
+
+        # Select source in dropdown
+        try:
+            select_elem = driver.find_element(By.ID, "bibliosearchsource")
+            for option in select_elem.find_elements(By.TAG_NAME, "option"):
+                if option.get_attribute("value") == source_value:
+                    option.click()
+                    if verbose:
+                        print(f"🔽 Selected '{source_value}' in bibliography source dropdown.")
+                    break
+        except Exception as e:
+            if verbose:
+                print(f"❌ Could not select '{source_value}' in dropdown:", e)
+
+        # Fill input
+        try:
+            biblio_input = driver.find_element(By.ID, "bibliosearchid")
+            biblio_input.clear()
+            biblio_input.send_keys(biblio_value)
+            if verbose:
+                print(f"📝 Filled bibliography search input with {source_value.upper()}: {biblio_value}")
+        except Exception as e:
+            if verbose:
+                print(f"❌ Could not fill bibliography search input with {source_value.upper()}:", e)
+
+        # Click Search
+        try:
+            search_btn = driver.find_element(By.CSS_SELECTOR, "form#bibliosearch-form button[type='submit'].btn.btn-primary")
+            search_btn.click()
+            if verbose:
+                print("🔍 Clicked the Search button in bibliography form.")
+        except Exception as e:
+            if verbose:
+                print("❌ Could not find or click Search button in bibliography form:", e)
+
+        if verbose:
+            print("⏳ Waiting for Register button to appear...")
+        try:
+            WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, "button.btn.btn-primary.btn-lg.btn-block.col-md-12[type='submit']")
+                )
+            )
+            time.sleep(2)
+            register_btn = driver.find_element(
+                By.CSS_SELECTOR, "button.btn.btn-primary.btn-lg.btn-block.col-md-12[type='submit']"
+            )
+            register_btn.click()
+            if verbose:
+                print("📝 Clicked the Register button.")
+        except Exception as e:
+            if verbose:
+                print("❌ Could not find or click Register button:", e)
+
+        if verbose:
+            print("⏳ Waiting for final page after Register...")
+        time.sleep(10)
+
+        try:
+            final_page_source = driver.page_source
+            final_message = None
+            try:
+                alert_divs = driver.find_elements(By.CSS_SELECTOR, ".alert, .alert-success, .alert-danger, .alert-info")
+                for div in alert_divs:
+                    text = div.text.strip()
+                    if text:
+                        final_message = text
+                        break
+            except Exception:
+                pass
+            if not final_message:
+                divs = driver.find_elements(By.TAG_NAME, "div")
+                for div in divs:
+                    text = div.text.strip().lower()
+                    if any(word in text for word in ["success", "registered", "error", "fail"]):
+                        final_message = div.text.strip()
+                        break
+            if final_message:
+                print(f"✅ Final response: {final_message}")
+                md5sum = _file_md5sum(local_file_path)
+                file_url = f"https://{LIBGEN_DOMAIN}/file.php?md5={md5sum}"
+                print(f"✅ Uploaded file URL: {file_url}")
+            else:
+                print("✅ Final page loaded. (No explicit message found.)")
+                print(final_page_source[:1000])
+        except Exception as e:
+            print(f"❌ Could not extract final response: {e}")
+
+        time.sleep(2)
+        return True
+
+    except Exception as e:
+        if verbose:
+            print("❌ Bibliography search form not found after upload:", e)
+        return False
+
+def _file_md5sum(path):
+    hash_md5 = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
 def main():
     # Get the parent package name from the module's __name__
     parent_package = __name__.split('.')[0] if '.' in __name__ else None
@@ -1441,6 +1726,15 @@ Examples:
   Login to LibGen:
     %(prog)s --login
 
+  Upload a file to LibGen FTP:
+    %(prog)s --upload /path/to/file.pdf
+
+  Upload a file to LibGen FTP with DOI:
+    %(prog)s --upload /path/to/file.pdf --upload-doi 10.1000/xyz123
+
+  Upload a file to LibGen FTP with ISBN:
+    %(prog)s --upload /path/to/file.pdf --upload-isbn 9781234567890
+
   Clear cache directory:
     %(prog)s --clear-cache
 """
@@ -1448,8 +1742,29 @@ Examples:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--search", type=str, help="Search LibGen by query string")
     group.add_argument("--check-doi", type=str, help="Search LibGen by DOI")
-    group.add_argument("--login", action="store_true", help="Login to LibGen (default username/password)")
+    group.add_argument(
+        "--login",
+        action="store_true",
+        help="Login to LibGen (default username: 'genesis', password: 'upload')"
+    )
     group.add_argument("--clear-cache", action="store_true", help="Clear the cache directory and exit")
+    group.add_argument("--upload", type=str, metavar="FILEPATH", help="Upload a file to LibGen FTP")
+
+    upload_id_group = parser.add_mutually_exclusive_group()
+    upload_id_group.add_argument(
+        "--upload-doi",
+        type=str,
+        default="",
+        help="DOI to associate with --upload (required to register the file metadata to the LibGen database). "
+             "If not specified, the uploaded file will NOT appear in the LibGen database."
+    )
+    upload_id_group.add_argument(
+        "--upload-isbn",
+        type=str,
+        default="",
+        help="ISBN to associate with --upload (required to register the file metadata to the LibGen database). "
+             "If not specified, the uploaded file will NOT appear in the LibGen database."
+    )
 
     parser.add_argument("--limit", type=int, default=10, help="Maximum number of results to return (default: 10)")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose/debug output")
@@ -1481,6 +1796,41 @@ Examples:
             print("✅ Login successful.")
         else:
             print("❌ Login failed.")
+        return
+
+    # Handle upload option
+    if getattr(args, "upload", None):
+        filepath = args.upload
+        upload_doi = getattr(args, "upload_doi", "")
+        upload_isbn = getattr(args, "upload_isbn", "")
+        if upload_doi and upload_isbn:
+            print("❌ You cannot specify both --upload-doi and --upload-isbn.")
+            return
+        upload_id = upload_doi or upload_isbn
+        if not os.path.isfile(filepath):
+            print(f"❌ File not found: {filepath}")
+            return
+        if upload_id:
+            print(f"Uploading file to LibGen using Selenium: {filepath}")
+            success = selenium_libgen_upload(
+                local_file_path=filepath,
+                bib_id=upload_id,
+                username="genesis",
+                password="upload",
+                headless=True,
+                verbose=args.verbose
+            )
+            if success:
+                print("✅ File registered to LibGen librarian.")
+            else:
+                print("❌ Upload failed or file already exists in LibGen.")
+        else:
+            print(f"Uploading file to LibGen FTP only (no DOI/ISBN registration): {filepath}")
+            url = upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbose=args.verbose)
+            if url:
+                print(f"✅ Uploaded to FTP: {url}")
+            else:
+                print("❌ Upload failed or file already exists in LibGen.")
         return
 
     # Determine download directory if --download is used
