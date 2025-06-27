@@ -21,7 +21,7 @@
 
 * **(Optional)** Obtain free API keys from [Elsevier](https://dev.elsevier.com/), [Wiley](https://onlinelibrary.wiley.com/library-info/resources/text-and-datamining), or [IEEE](https://developer.ieee.org/getting_started) (IEEE support not yet implemented).
 
-* **(Optional)** Create accounts at [Sci-Net](https://sci-net.xyz), [AbleSci](https://ablesci.com), [Science Hub Mutual Aid](https://www.pidantuan.com/) (not yet implemented), or [Facebook](https://www.facebook.com/) to request papers. For Facebook, join the relevant group after creating your account.
+* **(Optional)** Create accounts at [Sci-Net](https://sci-net.xyz), [AbleSci](https://ablesci.com), [Science Hub Mutual Aid](https://www.pidantuan.com/) (not yet implemented), [Z-Library](https://z-library.sk/) or [Facebook](https://www.facebook.com/) to request or download papers/books. For Facebook, join the relevant group after creating your account.
 
 * Install [Python](https://www.python.org) (version 3.10 or later).
 
@@ -122,7 +122,7 @@ docker run -d \
     ghcr.io/hoanganhduc/getscipapers:latest
 ```
 
-This setup saves downloaded papers and settings to your host machine.
+This setup saves downloaded papers and settings to your host machine. You can change the folder paths as needed.
 
 ## Optional: Integrate with IPFS
 
@@ -143,13 +143,12 @@ docker run -d \
     -v $ipfs_staging:/export \
     -v $ipfs_data:/data/ipfs \
     -p 4001:4001 \
-    -p 4001:4001/udp \
-    -p 127.0.0.1:8080:8080 \
-    -p 127.0.0.1:5001:5001 \
+    -p 8080:8080 \
+    -p 5001:5001 \
     ipfs/kubo:latest
 ```
 
-This starts the IPFS daemon with persistent storage and the required ports.
+This starts the IPFS daemon with persistent storage and the required ports. You can change the folder paths as needed.
 
 ## Running getscipapers Commands
 
@@ -226,6 +225,6 @@ This setup allows you to use **getscipapers** in an isolated environment, keepin
 
 ## Remarks
 
-* This package is under active development and may not function as expected.
-* Many features in the `ablesci`, `scinet`, and `facebook` modules rely on Selenium and may break if the target websites change.
+* This package is a work in progress and may not function as expected.
+* Many features in the `ablesci`, `scinet`, `libgen`, and `facebook` modules rely on Selenium and may break if the target websites change.
 * The `nexus` module may not work reliably when using a proxy (the default configuration). Issues such as `307 Temporary Redirect` errors may occur, and downloads may fail if the Nexus Search server or Telegram bot is unavailable.
