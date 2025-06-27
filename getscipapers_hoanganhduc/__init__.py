@@ -95,8 +95,8 @@ def main():
     print(f"Author: {__author__}")
     print(f"Description: {__description__}")
     print("\nUse --help for usage information")
-    print(f"To execute a module, use: python {sys.argv[0]} module_name [module_args]")
-    print(f"To list available modules, use: python {sys.argv[0]} list")
+    print(f"To execute a module, use: {os.path.basename(sys.argv[0])} module_name [module_args]")
+    print(f"To list available modules, use: {os.path.basename(sys.argv[0])} --list")
 
 if __name__ == "__main__":
     main()
