@@ -47,13 +47,6 @@ def main():
             ):
                 available_modules.append(_file.stem)
         
-        if module_name == "list":
-            print("Available modules:")
-            for module in available_modules:
-                print(f"  - {module}")
-            print(f"\nTo know how to execute a module, use: {os.path.basename(sys.argv[0])} module --help")
-            return
-        
         if module_name in available_modules:
             try:
                 # Remove the module name from sys.argv so the module can parse its own args
