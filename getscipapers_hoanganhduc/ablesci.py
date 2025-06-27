@@ -2544,6 +2544,7 @@ def main():
     # Set global credentials file path if provided
     CREDENTIALS_FILE = args.credentials if args.credentials else 'credentials.json'
     debug_print(f"Credentials file: {CREDENTIALS_FILE}")
+    print("Credentials file is succesfully loaded.")
 
     if args.user_info:
         print("Getting user info...")
