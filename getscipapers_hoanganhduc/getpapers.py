@@ -607,9 +607,22 @@ def extract_dois_from_text(text: str) -> list:
     dois = []
     
     # Extract direct DOIs from text
-    # Improved pattern: allow any non-whitespace, non-quote, non-angle-bracket after the slash
-    doi_pattern = r'\b10\.\d{4,}(?:\.\d+)*\/[^\s]+'
-    dois = re.findall(doi_pattern, text, re.IGNORECASE)
+    # Common DOI patterns (strict and relaxed)
+    doi_patterns = [
+        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',  # Standard DOI
+        r'\b10\.\d{4,9}\s*/\s*[^\s"\'<>#{}()[\],;:?!&]+',  # DOI with spaces around slash
+        r'\bdoi:\s*10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',  # doi: prefix
+        r'\bhttps?://doi\.org/(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',  # DOI in URL
+        r'\bhttps?://dx\.doi\.org/(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',  # dx.doi.org
+        r'\bdoi\s*=\s*["\']?(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',  # BibTeX style
+    ]
+    for pattern in doi_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        if matches:
+            if isinstance(matches[0], tuple):
+                # If pattern uses a capturing group, flatten
+                matches = [m[0] for m in matches]
+            dois.extend(matches)
 
     # Remove duplicates while preserving order
     dois = list(dict.fromkeys(dois))
@@ -620,7 +633,16 @@ def extract_dois_from_text(text: str) -> list:
     
     for url in urls:
         # Skip URLs that already contain DOIs (already extracted above)
-        if re.search(doi_pattern, url):
+        # Accept both strict and relaxed DOI patterns
+        already_has_doi = False
+        for pattern in [
+            r'10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',
+            r'10\.\d{4,9}\s*/\s*[^\s"\'<>#{}()[\],;:?!&]+'
+        ]:
+            if re.search(pattern, url):
+                already_has_doi = True
+                break
+        if already_has_doi:
             continue
             
         # Handle ScienceDirect URLs with PIIs
