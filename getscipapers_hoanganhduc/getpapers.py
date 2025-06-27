@@ -607,7 +607,7 @@ def extract_dois_from_text(text: str) -> list:
     dois = []
     
     # Extract direct DOIs from text
-    doi_pattern = r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+'
+    doi_pattern = r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+(?:\.[^\s"\'<>#{}()[\],;:?!&]+)*'
     dois.extend(re.findall(doi_pattern, text))
     
     # Extract DOIs from URLs
