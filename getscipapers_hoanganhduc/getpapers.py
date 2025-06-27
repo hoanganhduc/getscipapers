@@ -17,6 +17,7 @@ import unpywall
 from unpywall import Unpywall
 import pandas as pd
 from unpywall.utils import UnpywallCredentials
+from unpywall.cache import UnpywallCache
 from urllib.parse import urljoin
 from crossref.restful import Works
 import PyPDF2
@@ -58,6 +59,10 @@ if not os.path.exists(config_dir):
         os.makedirs(config_dir, exist_ok=True)
     except Exception as e:
         print(f"Error creating config directory {config_dir}: {e}")
+
+# Set Unpywall cache directory to the same folder as the config file
+UNPYWALL_CACHE_DIR = os.path.dirname(GETPAPERS_CONFIG_FILE)
+UNPYWALL_CACHE_FILE = os.path.join(UNPYWALL_CACHE_DIR, "unpywall_cache")
 
 def get_default_download_folder():
     """
@@ -2278,6 +2283,10 @@ async def main():
         help="Print all default paths and configuration file locations used by the script"
     )
     args = argparser.parse_args()
+
+    # Initialize Unpywall cache
+    cache = UnpywallCache(UNPYWALL_CACHE_FILE)
+    Unpywall.init_cache(cache)
 
     # Handle --print-default before anything else
     if args.print_default:
