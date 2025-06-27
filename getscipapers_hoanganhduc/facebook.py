@@ -2162,7 +2162,7 @@ Examples:
             else:
                 print_and_log("✅ Credentials loaded successfully")
                 # If only --credentials (and maybe --verbose) are specified, exit after loading
-                other_args = [a for a in vars(args) if getattr(args, a) and a not in ("credentials", "verbose", "log", "no_headless", "print_default", "clear_cache")]
+                other_args = [a for a in vars(args) if getattr(args, a) and a not in ("credentials", "verbose", "log", "no_headless", "print_default", "clear_cache", "facebook")]
                 if not other_args:
                     return
         
