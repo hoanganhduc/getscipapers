@@ -667,10 +667,11 @@ def extract_dois_from_text(text: str) -> list:
                 dois.append(mdpi_doi)
             continue
         
-        # For other URLs, try to fetch and extract DOIs from the page
+        # For other URLs, try to fetch and extract DOIs from the page using all patterns
         vprint(f"Checking URL for DOI: {url}")
-        page_dois = fetch_dois_from_url(url, doi_pattern)
-        dois.extend(page_dois)
+        for doi_pattern in doi_patterns:
+            page_dois = fetch_dois_from_url(url, doi_pattern)
+            dois.extend(page_dois)
     
     # Remove duplicates while preserving order
     unique_dois = list(dict.fromkeys(dois))
