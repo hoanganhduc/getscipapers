@@ -2541,10 +2541,15 @@ def main():
 
     debug_print(f"Cache file exists: {os.path.exists(CACHE_FILE)}")
 
-    # Set global credentials file path if provided
-    CREDENTIALS_FILE = args.credentials if args.credentials else 'credentials.json'
-    debug_print(f"Credentials file: {CREDENTIALS_FILE}")
-    print("Credentials file is succesfully loaded.")
+    # Load credentials from specified file if provided
+    if args.credentials:
+        username, password = load_credentials_from_file(args.credentials)
+        if username and password:
+            print(f"Credentials loaded successfully for user: {username}")
+            sys.exit(0)
+        else:
+            print(f"Failed to load credentials from: {args.credentials}")
+            sys.exit(1)
 
     if args.user_info:
         print("Getting user info...")
