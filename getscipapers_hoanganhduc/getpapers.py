@@ -607,9 +607,12 @@ def extract_dois_from_text(text: str) -> list:
     dois = []
     
     # Extract direct DOIs from text
-    doi_pattern = r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+(?:\.[^\s"\'<>#{}()[\],;:?!&]+)*'
-    dois.extend(re.findall(doi_pattern, text))
-    
+    doi_pattern = r'10\.\d{4,9}/[A-Za-z0-9][A-Za-z0-9.\-;()/:_]*'
+    dois = re.findall(doi_pattern, text, re.IGNORECASE)
+
+    # Remove duplicates while preserving order
+    dois = list(dict.fromkeys(dois))
+
     # Extract DOIs from URLs
     url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+[^\s<>"{}|\\^`\[\].,;:!?]'
     urls = re.findall(url_pattern, text)
@@ -649,7 +652,7 @@ def extract_dois_from_text(text: str) -> list:
     # Remove duplicates while preserving order
     unique_dois = list(dict.fromkeys(dois))
     
-    # Filter to keep only valid paper DOIs
+    # # Filter to keep only valid paper DOIs
     filtered_dois = filter_paper_dois(unique_dois)
     
     return filtered_dois
