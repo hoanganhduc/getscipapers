@@ -1,6 +1,6 @@
 # This script provides a function to search for books in Z-library using the Zlibrary-API by Bipinkrish (https://github.com/bipinkrish/Zlibrary-API/).
 
-from Zlibrary import Zlibrary
+from .Zlibrary import Zlibrary
 import argparse
 import os
 import json
