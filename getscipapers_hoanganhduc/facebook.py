@@ -1903,6 +1903,9 @@ Popular Facebook Groups for Scientific Paper Requests:
 Note: Replace with actual group IDs. To find a group ID, visit the group page and copy the numeric ID from the URL.''',
         epilog='''
 Examples:
+  Load credentials
+    %(prog)s --credentials credentials.json
+
   Search for posts:
     %(prog)s --search "python programming" --search-limit 20
 
@@ -1950,9 +1953,6 @@ Examples:
 
   Post to group from file:
     %(prog)s --post-in-group 188053074599163 --group-post-file content.txt
-
-  Run with custom credentials:
-    %(prog)s --credentials creds.json --search "news" --verbose
 
   Run in graphic mode (non-headless):
     %(prog)s --search "python" --no-headless --verbose
@@ -2033,6 +2033,17 @@ Examples:
     if args.print_default:
         FacebookScraper.print_default_paths()
         return
+
+    # Enforce --credentials cannot be used with other arguments except --verbose
+    if args.credentials:
+        # List of argument names that are allowed with --credentials
+        allowed_with_credentials = {'credentials', 'verbose'}
+        # Check if any other argument is set (not None/False/empty)
+        other_args = [arg for arg in vars(args) if getattr(args, arg) not in (None, False, [], '') and arg not in allowed_with_credentials]
+        if other_args:
+            print("❌ Error: --credentials cannot be used with other arguments except --verbose.")
+            print("   Please use --credentials alone (optionally with --verbose) to load credentials.")
+            return
 
     # Handle --clear-cache before anything else
     if args.clear_cache:
@@ -2155,16 +2166,14 @@ Examples:
     )
     
     try:
+
         # Load credentials if specified
         if args.credentials:
             if not scraper.load_credentials(args.credentials):
                 print_and_log("⚠️ Could not load credentials from specified file")
             else:
                 print_and_log("✅ Credentials loaded successfully")
-                # If only --credentials (and maybe --verbose) are specified, exit after loading
-                other_args = [a for a in vars(args) if getattr(args, a) and a not in ("credentials", "verbose", "log", "no_headless", "print_default", "clear_cache", "facebook")]
-                if not other_args:
-                    return
+                return
         
         # Setup and login
         scraper.initialize_driver()
