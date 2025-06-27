@@ -608,7 +608,7 @@ def extract_dois_from_text(text: str) -> list:
     
     # Extract direct DOIs from text
     # Improved pattern: allow any non-whitespace, non-quote, non-angle-bracket after the slash
-    doi_pattern = r'10\.\d{4,9}/[^\s"\'<>]+'
+    doi_pattern = r'\b10\.\d{4,9}/[^\s"\'<>]+'
     dois = re.findall(doi_pattern, text, re.IGNORECASE)
 
     # Remove duplicates while preserving order
