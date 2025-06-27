@@ -2160,9 +2160,10 @@ Examples:
         if args.credentials:
             if not scraper.load_credentials(args.credentials):
                 print_and_log("⚠️ Could not load credentials from specified file")
+                sys.exit(1)
             else:
                 print_and_log("✅ Credentials loaded successfully. Exiting...")
-                return
+                sys.exit(0)
         
         # Setup and login
         scraper.initialize_driver()
