@@ -2037,7 +2037,7 @@ Examples:
     # Enforce --credentials cannot be used with other arguments except --verbose
     if args.credentials:
         # List of argument names that are allowed with --credentials
-        allowed_with_credentials = {'credentials', 'verbose'}
+        allowed_with_credentials = {'credentials', 'verbose', 'facebook'}
         # Check if any other argument is set (not None/False/empty)
         other_args = [arg for arg in vars(args) if getattr(args, arg) not in (None, False, [], '') and arg not in allowed_with_credentials]
         if other_args:
