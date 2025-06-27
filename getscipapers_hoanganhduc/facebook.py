@@ -20,7 +20,7 @@ import os
 import platform
 import signal
 import sys
-from .getpapers import extract_dois_from_text, download_by_doi
+from . import getpapers
 
 if platform.system() == 'Windows':
     import msvcrt
@@ -623,7 +623,7 @@ class FacebookScraper:
         if not text:
             return []
         try:
-            return extract_dois_from_text(text)
+            return getpapers.extract_dois_from_text(text)
         except Exception as e:
             self.log(f"Error extracting DOIs: {e}")
             return []
@@ -714,14 +714,14 @@ class FacebookScraper:
                                     # If loop is already running, use run_coroutine_threadsafe
                                     import concurrent.futures
                                     with concurrent.futures.ThreadPoolExecutor() as executor:
-                                        future = executor.submit(asyncio.run, download_by_doi(doi, download, no_download=False))
+                                        future = executor.submit(asyncio.run, getpapers.download_by_doi(doi, download, no_download=False))
                                         pdf_path = future.result()
                                 else:
                                     # If no loop is running, use asyncio.run
-                                    pdf_path = asyncio.run(download_by_doi(doi, download, no_download=False))
+                                    pdf_path = asyncio.run(getpapers.download_by_doi(doi, download, no_download=False))
                             except RuntimeError:
                                 # If there's no event loop, create one
-                                pdf_path = asyncio.run(download_by_doi(doi, download, no_download=False))
+                                pdf_path = asyncio.run(getpapers.download_by_doi(doi, download, no_download=False))
 
                             if pdf_path and os.path.exists(pdf_path):
                                 absolute_path = os.path.abspath(pdf_path)
@@ -1322,14 +1322,14 @@ class FacebookScraper:
                                         # If loop is already running, use run_coroutine_threadsafe
                                         import concurrent.futures
                                         with concurrent.futures.ThreadPoolExecutor() as executor:
-                                            future = executor.submit(asyncio.run, download_by_doi(doi, download, no_download=False))
+                                            future = executor.submit(asyncio.run, getpapers.download_by_doi(doi, download, no_download=False))
                                             pdf_path = future.result()
                                     else:
                                         # If no loop is running, use asyncio.run
-                                        pdf_path = asyncio.run(download_by_doi(doi, download, no_download=False))
+                                        pdf_path = asyncio.run(getpapers.download_by_doi(doi, download, no_download=False))
                                 except RuntimeError:
                                     # If there's no event loop, create one
-                                    pdf_path = asyncio.run(download_by_doi(doi, download, no_download=False))
+                                    pdf_path = asyncio.run(getpapers.download_by_doi(doi, download, no_download=False))
 
                                 if pdf_path and os.path.exists(pdf_path):
                                     absolute_path = os.path.abspath(pdf_path)
