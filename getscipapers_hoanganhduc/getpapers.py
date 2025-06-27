@@ -310,35 +310,35 @@ def load_credentials(config_file: str = None):
     vprint(f"Using existing credentials from {config_file}")
     return existing_config
 
-def is_paper_doi(doi: str) -> bool:
-    """
-    Check if a DOI corresponds to a scholarly paper (article, preprint, or book) using the Crossref API.
-    Returns True if the DOI is for a journal article, proceeding, preprint, or book, False otherwise.
-    Falls back to direct HTTP request if the python API returns None.
-    """
-    try:
-        works = Works()
-        result = works.doi(doi)
-        if not result:
-            # Fallback: try direct HTTP request to Crossref API
-            result = fetch_crossref_data(doi)
-            if not result:
-                return False
+# def is_paper_doi(doi: str) -> bool:
+#     """
+#     Check if a DOI corresponds to a scholarly paper (article, preprint, or book) using the Crossref API.
+#     Returns True if the DOI is for a journal article, proceeding, preprint, or book, False otherwise.
+#     Falls back to direct HTTP request if the python API returns None.
+#     """
+#     try:
+#         works = Works()
+#         result = works.doi(doi)
+#         if not result:
+#             # Fallback: try direct HTTP request to Crossref API
+#             result = fetch_crossref_data(doi)
+#             if not result:
+#                 return False
         
-        # Accept common scholarly types
-        valid_types = [
-            'journal-article',
-            'proceedings-article',
-            'book',
-            'book-chapter',
-            'monograph',
-            'reference-book',
-            'posted-content',  # preprints
-            'report'
-        ]
-        return result.get('type') in valid_types
-    except Exception:
-        return False
+#         # Accept common scholarly types
+#         valid_types = [
+#             'journal-article',
+#             'proceedings-article',
+#             'book',
+#             'book-chapter',
+#             'monograph',
+#             'reference-book',
+#             'posted-content',  # preprints
+#             'report'
+#         ]
+#         return result.get('type') in valid_types
+#     except Exception:
+#         return False
 
 def fetch_crossref_data(doi):
     """
@@ -587,17 +587,17 @@ def fetch_dois_from_url(url: str, doi_pattern: str) -> list:
         vprint(f"Error fetching {url}: {e}")
     return []
 
-def filter_paper_dois(dois: list) -> list:
-    """
-    Filter a list of DOIs, keeping only those that are scholarly papers.
-    """
-    filtered = []
-    for doi in dois:
-        if is_paper_doi(doi):
-            filtered.append(doi)
-        else:
-            vprint(f"Ignored non-paper DOI: {doi}")
-    return filtered
+# def filter_paper_dois(dois: list) -> list:
+#     """
+#     Filter a list of DOIs, keeping only those that are scholarly papers.
+#     """
+#     filtered = []
+#     for doi in dois:
+#         if is_paper_doi(doi):
+#             filtered.append(doi)
+#         else:
+#             vprint(f"Ignored non-paper DOI: {doi}")
+#     return filtered
 
 def extract_dois_from_text(text: str) -> list:
     """
@@ -675,10 +675,10 @@ def extract_dois_from_text(text: str) -> list:
     # Remove duplicates while preserving order
     unique_dois = list(dict.fromkeys(dois))
     
-    # # Filter to keep only valid paper DOIs
-    filtered_dois = filter_paper_dois(unique_dois)
+    # # # Filter to keep only valid paper DOIs
+    # filtered_dois = filter_paper_dois(unique_dois)
     
-    return filtered_dois
+    return unique_dois
 
 def extract_dois_from_file(input_file: str):
     """Extract DOI numbers from a text file and write them to a new file"""
