@@ -16,7 +16,7 @@ import readline
 import getpass
 import glob
 import platform
-from .getpapers import extract_dois_from_text, extract_dois_from_file
+from . import getpapers
 import tempfile
 
 USERNAME = "" # Replace with your actual username/email
@@ -613,8 +613,8 @@ def parse_dois_input(doi_input):
     debug_print(f"Parsing DOI input: {doi_input}")
     if os.path.isfile(doi_input):
         debug_print("Input is a file path")
-        return extract_dois_from_file(doi_input)
-    return extract_dois_from_text(doi_input)
+        return getpapers.extract_dois_from_file(doi_input)
+    return getpapers.extract_dois_from_text(doi_input)
 
 def request_multiple_dois(dois, headless=True):
     debug_print(f"Starting batch request for {len(dois)} DOIs")
