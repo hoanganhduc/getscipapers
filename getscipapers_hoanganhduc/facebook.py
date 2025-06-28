@@ -20,7 +20,7 @@ import os
 import platform
 import signal
 import sys
-from .getpapers import extract_dois_from_text, download_by_doi
+from . import getpapers
 
 if platform.system() == 'Windows':
     import msvcrt
@@ -623,7 +623,7 @@ class FacebookScraper:
         if not text:
             return []
         try:
-            return extract_dois_from_text(text)
+            return getpapers.extract_dois_from_text(text)
         except Exception as e:
             self.log(f"Error extracting DOIs: {e}")
             return []
@@ -714,14 +714,14 @@ class FacebookScraper:
                                     # If loop is already running, use run_coroutine_threadsafe
                                     import concurrent.futures
                                     with concurrent.futures.ThreadPoolExecutor() as executor:
-                                        future = executor.submit(asyncio.run, download_by_doi(doi, download, no_download=False))
+                                        future = executor.submit(asyncio.run, getpapers.download_by_doi(doi, download, no_download=False))
                                         pdf_path = future.result()
                                 else:
                                     # If no loop is running, use asyncio.run
-                                    pdf_path = asyncio.run(download_by_doi(doi, download, no_download=False))
+                                    pdf_path = asyncio.run(getpapers.download_by_doi(doi, download, no_download=False))
                             except RuntimeError:
                                 # If there's no event loop, create one
-                                pdf_path = asyncio.run(download_by_doi(doi, download, no_download=False))
+                                pdf_path = asyncio.run(getpapers.download_by_doi(doi, download, no_download=False))
 
                             if pdf_path and os.path.exists(pdf_path):
                                 absolute_path = os.path.abspath(pdf_path)
@@ -1322,14 +1322,14 @@ class FacebookScraper:
                                         # If loop is already running, use run_coroutine_threadsafe
                                         import concurrent.futures
                                         with concurrent.futures.ThreadPoolExecutor() as executor:
-                                            future = executor.submit(asyncio.run, download_by_doi(doi, download, no_download=False))
+                                            future = executor.submit(asyncio.run, getpapers.download_by_doi(doi, download, no_download=False))
                                             pdf_path = future.result()
                                     else:
                                         # If no loop is running, use asyncio.run
-                                        pdf_path = asyncio.run(download_by_doi(doi, download, no_download=False))
+                                        pdf_path = asyncio.run(getpapers.download_by_doi(doi, download, no_download=False))
                                 except RuntimeError:
                                     # If there's no event loop, create one
-                                    pdf_path = asyncio.run(download_by_doi(doi, download, no_download=False))
+                                    pdf_path = asyncio.run(getpapers.download_by_doi(doi, download, no_download=False))
 
                                 if pdf_path and os.path.exists(pdf_path):
                                     absolute_path = os.path.abspath(pdf_path)
@@ -1903,6 +1903,9 @@ Popular Facebook Groups for Scientific Paper Requests:
 Note: Replace with actual group IDs. To find a group ID, visit the group page and copy the numeric ID from the URL.''',
         epilog='''
 Examples:
+  Load credentials
+    %(prog)s --credentials credentials.json
+
   Search for posts:
     %(prog)s --search "python programming" --search-limit 20
 
@@ -1950,9 +1953,6 @@ Examples:
 
   Post to group from file:
     %(prog)s --post-in-group 188053074599163 --group-post-file content.txt
-
-  Run with custom credentials:
-    %(prog)s --credentials creds.json --search "news" --verbose
 
   Run in graphic mode (non-headless):
     %(prog)s --search "python" --no-headless --verbose
@@ -2155,16 +2155,15 @@ Examples:
     )
     
     try:
+
         # Load credentials if specified
         if args.credentials:
             if not scraper.load_credentials(args.credentials):
                 print_and_log("⚠️ Could not load credentials from specified file")
+                sys.exit(1)
             else:
-                print_and_log("✅ Credentials loaded successfully")
-                # If only --credentials (and maybe --verbose) are specified, exit after loading
-                other_args = [a for a in vars(args) if getattr(args, a) and a not in ("credentials", "verbose", "log", "no_headless", "print_default", "clear_cache")]
-                if not other_args:
-                    return
+                print_and_log("✅ Credentials loaded successfully. Exiting...")
+                sys.exit(0)
         
         # Setup and login
         scraper.initialize_driver()

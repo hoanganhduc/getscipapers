@@ -16,7 +16,7 @@ import readline
 import getpass
 import glob
 import platform
-from .getpapers import extract_dois_from_text, extract_dois_from_file
+from . import getpapers
 import tempfile
 
 USERNAME = "" # Replace with your actual username/email
@@ -50,6 +50,24 @@ CACHE_FILE = os.path.join(cache_dir, 'ablesci_cache.pkl')
 credentials_dir = get_credentials_directory()
 os.makedirs(credentials_dir, exist_ok=True)
 CREDENTIALS_FILE = os.path.join(credentials_dir, 'credentials.json')
+
+def get_default_download_folder():
+    """
+    Get the default download folder for the current OS.
+    - Windows: %USERPROFILE%\Downloads\getscipapers\ablesci
+    - macOS: ~/Downloads/getscipapers/ablesci
+    - Linux: ~/Downloads/getscipapers/ablesci
+    """
+    system = platform.system()
+    if system == "Windows":
+        base = os.environ.get('USERPROFILE', os.path.expanduser('~'))
+        folder = os.path.join(base, 'Downloads', 'getscipapers', 'ablesci')
+    else:
+        folder = os.path.join(os.path.expanduser('~'), 'Downloads', 'getscipapers', 'ablesci')
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+DEFAULT_DOWNLOAD_FOLDER = get_default_download_folder()
 
 verbose = False
 
@@ -613,8 +631,8 @@ def parse_dois_input(doi_input):
     debug_print(f"Parsing DOI input: {doi_input}")
     if os.path.isfile(doi_input):
         debug_print("Input is a file path")
-        return extract_dois_from_file(doi_input)
-    return extract_dois_from_text(doi_input)
+        return getpapers.extract_dois_from_file(doi_input)
+    return getpapers.extract_dois_from_text(doi_input)
 
 def request_multiple_dois(dois, headless=True):
     debug_print(f"Starting batch request for {len(dois)} DOIs")
@@ -994,7 +1012,7 @@ def download_file_from_fulfilled_request(detail_url, download_folder=None, headl
     
     # Set up download folder
     if download_folder is None:
-        download_folder = os.getcwd()
+        download_folder = DEFAULT_DOWNLOAD_FOLDER
     
     # Ensure download folder exists
     os.makedirs(download_folder, exist_ok=True)
@@ -1230,7 +1248,7 @@ def interactive_download_fulfilled_requests(headless=True, download_folder=None)
     
     Args:
         headless: Whether to run browser in headless mode
-        download_folder: Directory to save the downloaded files (default: current directory)
+        download_folder: Directory to save the downloaded files (default: DEFAULT_DOWNLOAD_FOLDER)
     """
     requests = get_fulfilled_requests(headless=headless)
     if not requests:
@@ -1298,14 +1316,14 @@ def interactive_download_fulfilled_requests(headless=True, download_folder=None)
         return
 
     # Show download folder info
-    folder_path = download_folder or os.getcwd()
+    folder_path = download_folder if download_folder else DEFAULT_DOWNLOAD_FOLDER
     print(f"\nDownload folder: {folder_path}")
     print(f"Starting download for {len(indices)} requests...")
     
     for idx in sorted(indices):
         req = requests[idx]
         print(f"Downloading file for request {idx+1}: {req.get('title', 'N/A')}")
-        success = download_file_from_fulfilled_request(req.get('detailUrl'), download_folder=download_folder, headless=headless)
+        success = download_file_from_fulfilled_request(req.get('detailUrl'), download_folder=folder_path, headless=headless)
         if not success:
             print(f"Failed to download file for request {idx+1}.")
         time.sleep(2)  # Small delay between downloads
@@ -2465,6 +2483,7 @@ def print_default_paths():
     print(f"  Cache directory: {cache_dir}")
     print(f"  Cache file: {CACHE_FILE}")
     print(f"  Credentials file: {CREDENTIALS_FILE}")
+    print(f"  Default download folder: {DEFAULT_DOWNLOAD_FOLDER}")
 
 def main():
     global verbose
@@ -2541,9 +2560,15 @@ def main():
 
     debug_print(f"Cache file exists: {os.path.exists(CACHE_FILE)}")
 
-    # Set global credentials file path if provided
-    CREDENTIALS_FILE = args.credentials if args.credentials else 'credentials.json'
-    debug_print(f"Credentials file: {CREDENTIALS_FILE}")
+    # Load credentials from specified file if provided
+    if args.credentials:
+        username, password = load_credentials_from_file(args.credentials)
+        if username and password:
+            print(f"Credentials loaded successfully for user: {username}")
+            sys.exit(0)
+        else:
+            print(f"Failed to load credentials from: {args.credentials}")
+            sys.exit(1)
 
     if args.user_info:
         print("Getting user info...")

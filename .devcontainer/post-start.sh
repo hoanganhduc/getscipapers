@@ -67,9 +67,8 @@ docker run -d \
   -v vol_ipfs:/data/ipfs \
   -v vol_ipfs:/export \
   -p 4001:4001 \
-  -p 4001:4001/udp \
-  -p 127.0.0.1:8080:8080 \
-  -p 127.0.0.1:5001:5001 \
+  -p 8080:8080 \
+  -p 5001:5001 \
   ipfs/kubo:latest
 
 # # Create a script to run getscipapers with the necessary environment variables

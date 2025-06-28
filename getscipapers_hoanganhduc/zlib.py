@@ -1,6 +1,6 @@
 # This script provides a function to search for books in Z-library using the Zlibrary-API by Bipinkrish (https://github.com/bipinkrish/Zlibrary-API/).
 
-from Zlibrary import Zlibrary
+from .Zlibrary import Zlibrary
 import argparse
 import os
 import json
@@ -462,7 +462,7 @@ def main():
         description="Search and download books from Z-library.",
         epilog="""Examples:
   %(prog)s --search "deep learning"
-  %(prog)s --search "tolkien" --limit 5
+  %(prog)s --search "tolkien" --search-limit 5
   %(prog)s --search "python" --download
   %(prog)s --search "data science" --download "C:\Books"
   %(prog)s --user-info
@@ -472,7 +472,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument('--search', type=str, help='Search query (book title, author, etc.)')
-    parser.add_argument('--limit', type=int, help='Number of results to return (only with --search)')
+    parser.add_argument('--search-limit', type=int, help='Number of results to return (only with --search)')
     parser.add_argument('--credentials', type=str, metavar='CREDENTIALS', help='Path to Z-library credentials JSON file')
     parser.add_argument('--clear-credentials', action='store_true', help='Clear saved Z-library credentials')
     parser.add_argument('--download', nargs='?', const=DEFAULT_DOWNLOAD_DIR, default=None, metavar='DOWNLOAD_DIR', help='Download directory for selected books (optional, uses default if not specified)')
@@ -482,8 +482,21 @@ def main():
     parser.add_argument('--popular-language', type=str, metavar='LANG', help='Language code for most popular books (optional)')
     args = parser.parse_args()
 
-    if args.limit is not None and not args.search:
-        print("--limit can only be used with --search.")
+    # Prevent using --credentials and --clear-credentials at the same time
+    if args.credentials and args.clear_credentials:
+        print("Error: --credentials and --clear-credentials cannot be used at the same time.")
+        return
+
+    # If only --credentials is specified, load and quit
+    if args.credentials and not (
+        args.search or args.search_limit or args.clear_credentials or args.download or
+        args.user_info or args.recent or args.popular or args.popular_language
+    ):
+        load_credentials(args.credentials)
+        return
+
+    if args.search_limit is not None and not args.search:
+        print("--search-limit can only be used with --search.")
         return
 
     if args.clear_credentials:
@@ -571,12 +584,12 @@ def main():
         interactive_login_search_download(
             query=args.search,
             download_dir=args.download,
-            limit=args.limit if args.limit is not None else 20
+            limit=args.search_limit if args.search_limit is not None else 20
         )
         return
 
     if args.search and not args.download:
-        search_limit = args.limit if args.limit is not None else 20
+        search_limit = args.search_limit if args.search_limit is not None else 20
         results = search_zlibrary_books(
             args.search,
             limit=search_limit,

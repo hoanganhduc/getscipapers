@@ -17,6 +17,7 @@ import unpywall
 from unpywall import Unpywall
 import pandas as pd
 from unpywall.utils import UnpywallCredentials
+from unpywall.cache import UnpywallCache
 from urllib.parse import urljoin
 from crossref.restful import Works
 import PyPDF2
@@ -58,6 +59,28 @@ if not os.path.exists(config_dir):
         os.makedirs(config_dir, exist_ok=True)
     except Exception as e:
         print(f"Error creating config directory {config_dir}: {e}")
+
+# Set Unpywall cache directory to the same folder as the config file
+UNPYWALL_CACHE_DIR = os.path.dirname(GETPAPERS_CONFIG_FILE)
+UNPYWALL_CACHE_FILE = os.path.join(UNPYWALL_CACHE_DIR, "unpywall_cache")
+
+def get_default_download_folder():
+    """
+    Get the default download folder for the current OS.
+    - Windows: %USERPROFILE%\Downloads\getscipapers\getpapers
+    - macOS: ~/Downloads/getscipapers/getpapers
+    - Linux: ~/Downloads/getscipapers/getpapers
+    """
+    system = platform.system()
+    if system == "Windows":
+        base = os.environ.get('USERPROFILE', os.path.expanduser('~'))
+        folder = os.path.join(base, 'Downloads', 'getscipapers', 'getpapers')
+    else:
+        folder = os.path.join(os.path.expanduser('~'), 'Downloads', 'getscipapers', 'getpapers')
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+DEFAULT_DOWNLOAD_FOLDER = get_default_download_folder()
 
 def save_credentials(email: str = None, elsevier_api_key: str = None, 
                     wiley_tdm_token: str = None, ieee_api_key: str = None, 
@@ -310,35 +333,35 @@ def load_credentials(config_file: str = None):
     vprint(f"Using existing credentials from {config_file}")
     return existing_config
 
-def is_paper_doi(doi: str) -> bool:
-    """
-    Check if a DOI corresponds to a scholarly paper (article, preprint, or book) using the Crossref API.
-    Returns True if the DOI is for a journal article, proceeding, preprint, or book, False otherwise.
-    Falls back to direct HTTP request if the python API returns None.
-    """
-    try:
-        works = Works()
-        result = works.doi(doi)
-        if not result:
-            # Fallback: try direct HTTP request to Crossref API
-            result = fetch_crossref_data(doi)
-            if not result:
-                return False
+# def is_paper_doi(doi: str) -> bool:
+#     """
+#     Check if a DOI corresponds to a scholarly paper (article, preprint, or book) using the Crossref API.
+#     Returns True if the DOI is for a journal article, proceeding, preprint, or book, False otherwise.
+#     Falls back to direct HTTP request if the python API returns None.
+#     """
+#     try:
+#         works = Works()
+#         result = works.doi(doi)
+#         if not result:
+#             # Fallback: try direct HTTP request to Crossref API
+#             result = fetch_crossref_data(doi)
+#             if not result:
+#                 return False
         
-        # Accept common scholarly types
-        valid_types = [
-            'journal-article',
-            'proceedings-article',
-            'book',
-            'book-chapter',
-            'monograph',
-            'reference-book',
-            'posted-content',  # preprints
-            'report'
-        ]
-        return result.get('type') in valid_types
-    except Exception:
-        return False
+#         # Accept common scholarly types
+#         valid_types = [
+#             'journal-article',
+#             'proceedings-article',
+#             'book',
+#             'book-chapter',
+#             'monograph',
+#             'reference-book',
+#             'posted-content',  # preprints
+#             'report'
+#         ]
+#         return result.get('type') in valid_types
+#     except Exception:
+#         return False
 
 def fetch_crossref_data(doi):
     """
@@ -587,17 +610,17 @@ def fetch_dois_from_url(url: str, doi_pattern: str) -> list:
         vprint(f"Error fetching {url}: {e}")
     return []
 
-def filter_paper_dois(dois: list) -> list:
-    """
-    Filter a list of DOIs, keeping only those that are scholarly papers.
-    """
-    filtered = []
-    for doi in dois:
-        if is_paper_doi(doi):
-            filtered.append(doi)
-        else:
-            vprint(f"Ignored non-paper DOI: {doi}")
-    return filtered
+# def filter_paper_dois(dois: list) -> list:
+#     """
+#     Filter a list of DOIs, keeping only those that are scholarly papers.
+#     """
+#     filtered = []
+#     for doi in dois:
+#         if is_paper_doi(doi):
+#             filtered.append(doi)
+#         else:
+#             vprint(f"Ignored non-paper DOI: {doi}")
+#     return filtered
 
 def extract_dois_from_text(text: str) -> list:
     """
@@ -607,16 +630,44 @@ def extract_dois_from_text(text: str) -> list:
     dois = []
     
     # Extract direct DOIs from text
-    doi_pattern = r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+'
-    dois.extend(re.findall(doi_pattern, text))
-    
+    # Common DOI patterns (strict and relaxed), allow brackets in DOI suffix
+    doi_patterns = [
+        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',  # Standard DOI
+        r'\b10\.\d{4,9}\s*/\s*[^\s"\'<>#{}()[\],;:?!&]+',  # DOI with spaces around slash
+        r'\bdoi:\s*10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',  # doi: prefix
+        r'\bhttps?://doi\.org/(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',  # DOI in URL
+        r'\bhttps?://dx\.doi\.org/(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',  # dx.doi.org
+        r'\bdoi\s*=\s*["\']?(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',  # BibTeX style
+        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&\]]+',  # Allow closing bracket at end
+        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&\)]+',  # Allow closing parenthesis at end
+    ]
+    for pattern in doi_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        if matches:
+            if isinstance(matches[0], tuple):
+                # If pattern uses a capturing group, flatten
+                matches = [m[0] for m in matches]
+            dois.extend(matches)
+
+    # Remove duplicates while preserving order
+    dois = list(dict.fromkeys(dois))
+
     # Extract DOIs from URLs
     url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+[^\s<>"{}|\\^`\[\].,;:!?]'
     urls = re.findall(url_pattern, text)
     
     for url in urls:
         # Skip URLs that already contain DOIs (already extracted above)
-        if re.search(doi_pattern, url):
+        # Accept both strict and relaxed DOI patterns
+        already_has_doi = False
+        for pattern in [
+            r'10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',
+            r'10\.\d{4,9}\s*/\s*[^\s"\'<>#{}()[\],;:?!&]+'
+        ]:
+            if re.search(pattern, url):
+                already_has_doi = True
+                break
+        if already_has_doi:
             continue
             
         # Handle ScienceDirect URLs with PIIs
@@ -641,18 +692,19 @@ def extract_dois_from_text(text: str) -> list:
                 dois.append(mdpi_doi)
             continue
         
-        # For other URLs, try to fetch and extract DOIs from the page
+        # For other URLs, try to fetch and extract DOIs from the page using all patterns
         vprint(f"Checking URL for DOI: {url}")
-        page_dois = fetch_dois_from_url(url, doi_pattern)
-        dois.extend(page_dois)
+        for doi_pattern in doi_patterns:
+            page_dois = fetch_dois_from_url(url, doi_pattern)
+            dois.extend(page_dois)
     
     # Remove duplicates while preserving order
     unique_dois = list(dict.fromkeys(dois))
     
-    # Filter to keep only valid paper DOIs
-    filtered_dois = filter_paper_dois(unique_dois)
+    # # # Filter to keep only valid paper DOIs
+    # filtered_dois = filter_paper_dois(unique_dois)
     
-    return filtered_dois
+    return unique_dois
 
 def extract_dois_from_file(input_file: str):
     """Extract DOI numbers from a text file and write them to a new file"""
@@ -1288,7 +1340,7 @@ def is_elsevier_doi(doi: str) -> bool:
 
 async def download_elsevier_pdf_by_doi(
     doi: str,
-    download_folder: str = ".",
+    download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
     api_key: str = ELSEVIER_API_KEY # Use the global API key by default
 ):
     """
@@ -1445,7 +1497,7 @@ def is_wiley_doi(doi: str) -> bool:
 
 async def download_wiley_pdf_by_doi(
     doi: str,
-    download_folder: str = ".",
+    download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
     tdm_token: str = WILEY_TDM_TOKEN  # Use the global token by default
 ) -> bool:
     """
@@ -1515,7 +1567,7 @@ def is_pmc_doi(doi: str) -> bool:
     except Exception:
         return False
 
-async def download_from_pmc(doi: str, download_folder: str = ".") -> bool:
+async def download_from_pmc(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER) -> bool:
     """
     Download a PDF from PubMed Central (PMC) using the DOI.
     Returns True if successful, else False.
@@ -1604,7 +1656,7 @@ async def download_from_pmc(doi: str, download_folder: str = ".") -> bool:
     
 async def download_from_unpaywall(
     doi: str,
-    download_folder: str = ".",
+    download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
     email: str = "anhduc.hoang1990@googlemail.com"
 ):
     """
@@ -1772,7 +1824,7 @@ async def download_from_unpaywall(
         print(f"Error querying Unpaywall for DOI {doi}: {e}")
         return False
 
-async def download_from_nexus(id: str, doi: str, download_folder: str = "."):
+async def download_from_nexus(id: str, doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER):
     safe_doi = doi.replace('/', '_')
     filename = f"{safe_doi}_nexus.pdf"
     filepath = f"{download_folder}/{filename}"
@@ -1800,7 +1852,7 @@ async def download_from_nexus(id: str, doi: str, download_folder: str = "."):
     
     return False
 
-async def download_from_nexus_bot(doi: str, download_folder: str = "."):
+async def download_from_nexus_bot(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER):
     """
     Download a PDF by DOI using the Nexus bot (via .nexus module).
     Returns True if successful, else False.
@@ -1847,7 +1899,7 @@ async def download_from_nexus_bot(doi: str, download_folder: str = "."):
         print(f"Error downloading PDF from Nexus bot for DOI {doi}: {e}")
     return False
 
-async def download_from_scihub(doi: str, download_folder: str = "."):
+async def download_from_scihub(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER):
     safe_doi = doi.replace('/', '_')
     filename = f"{safe_doi}_scihub.pdf"
     filepath = f"{download_folder}/{filename}"
@@ -1888,7 +1940,7 @@ async def download_from_scihub(doi: str, download_folder: str = "."):
             print(f"Error accessing Sci-Hub at {domain}: {e}")
     return False
 
-async def download_from_anna_archive(doi: str, download_folder: str = "."):
+async def download_from_anna_archive(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER):
     safe_doi = doi.replace('/', '_')
     filename = f"{safe_doi}_anna.pdf"
     filepath = f"{download_folder}/{filename}"
@@ -1947,7 +1999,7 @@ async def download_from_anna_archive(doi: str, download_folder: str = "."):
             print(f"Error accessing Anna's Archive for DOI {doi} at {domain}: {e}")
     return False
 
-async def download_by_doi(doi: str, download_folder: str = ".", db: str = "all", no_download: bool = False):
+async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER, db: str = "all", no_download: bool = False):
     vprint(f"Starting download_by_doi for DOI: {doi}, folder: {download_folder}, db: {db}, no_download: {no_download}")
     results = await search_documents(doi, 1)
     
@@ -2082,7 +2134,7 @@ async def download_by_doi(doi: str, download_folder: str = ".", db: str = "all",
     # print(f"  ✗ {doi} [{oa_status_text}]")
     return False
 
-async def download_by_doi_list(doi_file: str, download_folder: str = ".", db: str = "all", no_download: bool = False):
+async def download_by_doi_list(doi_file: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER, db: str = "all", no_download: bool = False):
     vprint(f"Starting download_by_doi_list for file: {doi_file}, folder: {download_folder}, db: {db}, no_download: {no_download}")
     
     # Check if the file contains only DOIs (one per line)
@@ -2158,7 +2210,8 @@ def print_default_paths():
     """
     print("Default configuration and data paths:")
     print(f"  GETPAPERS_CONFIG_FILE: {GETPAPERS_CONFIG_FILE}")
-    print(f"  Default download folder: .")
+    print(f"  Default download folder: {DEFAULT_DOWNLOAD_FOLDER}")
+    print(f"  Unpywall cache file: {UNPYWALL_CACHE_FILE}")
     print(f"  Platform: {platform.system()}")
 
 async def main():
@@ -2197,7 +2250,7 @@ async def main():
     argparser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     argparser.add_argument("--doi", type=str, help="Specify a DOI to download the paper")
     argparser.add_argument("--doi-file", type=str, help="Path to a text file containing DOIs (one per line)")
-    argparser.add_argument("--download-folder", type=str, default=".", help="Folder to save downloaded PDFs")
+    argparser.add_argument("--download-folder", type=str, default=DEFAULT_DOWNLOAD_FOLDER, help="Folder to save downloaded PDFs")
     argparser.add_argument(
         "--db",
         type=str,
@@ -2231,6 +2284,10 @@ async def main():
         help="Print all default paths and configuration file locations used by the script"
     )
     args = argparser.parse_args()
+
+    # Initialize Unpywall cache
+    cache = UnpywallCache(UNPYWALL_CACHE_FILE)
+    Unpywall.init_cache(cache)
 
     # Handle --print-default before anything else
     if args.print_default:

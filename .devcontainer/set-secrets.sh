@@ -32,6 +32,7 @@ create_credentials_json() {
     "ieee_api_key": "${IEEE_API_KEY}"
 }
 EOF
+    chmod 600 "$OUTPUT_FILE"
     echo "Created credentials file at $OUTPUT_FILE"
 }
 

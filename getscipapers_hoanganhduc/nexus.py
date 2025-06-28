@@ -30,7 +30,7 @@ from datetime import timedelta
 import datetime as dt  # Add this import at the top if not already present
 import itertools
 import getpass
-from .getpapers import extract_dois_from_text, extract_dois_from_file
+from . import getpapers
 
 
 if platform.system() == 'Windows':
@@ -105,43 +105,34 @@ def error_print(message):
 
 # Set file paths based on operating system
 def get_file_paths():
-    """Get the appropriate file paths based on the operating system"""
+    """Get the appropriate file paths based on the operating system, using a single config dir for all except downloads."""
     system = platform.system()
-    
+    home = os.path.expanduser("~")
+
     if system == "Windows":
-        # Windows: Use AppData\Local directory
-        app_data = os.path.expandvars("%LOCALAPPDATA%")
-        base_dir = os.path.join(app_data, "getscipapers", "nexus")
-        log_dir = os.path.join(app_data, "getscipapers", "nexus", "logs")
-        config_dir = base_dir
-        download_dir = os.path.join(os.path.expanduser("~"), "Downloads", "getscipapers", "nexus")
+        # Windows: Use AppData\Local\getscipapers\nexus as config dir
+        config_dir = os.path.join(os.environ.get("LOCALAPPDATA", home), "getscipapers", "nexus")
     elif system == "Darwin":  # macOS
-        # macOS: Use ~/Library/Application Support directory
-        home = os.path.expanduser("~")
-        base_dir = os.path.join(home, "Library", "Application Support", "getscipapers", "nexus")
-        log_dir = os.path.join(base_dir, "getscipapers", "nexus", "logs")
-        config_dir = base_dir
-        download_dir = os.path.join(home, "Downloads", "getscipapers", "nexus")
+        # macOS: Use ~/Library/Application Support/getscipapers/nexus as config dir
+        config_dir = os.path.join(home, "Library", "Application Support", "getscipapers", "nexus")
     else:  # Linux and other Unix-like systems
-        # Linux: Use ~/.config for credentials and session files
-        home = os.path.expanduser("~")
-        base_dir = os.path.join(home, ".config", "getscipapers", "nexus")
-        log_dir = os.path.join(home, ".config", "getscipapers", "nexus", "logs")
+        # Linux: Use ~/.config/getscipapers/nexus as config dir
         config_dir = os.path.join(home, ".config", "getscipapers", "nexus")
-        download_dir = os.path.join(home, "Downloads", "getscipapers", "nexus")
-    
-    # Create directories if they don't exist
-    os.makedirs(base_dir, exist_ok=True)
-    os.makedirs(log_dir, exist_ok=True)
+
+    # Download dir is always ~/Downloads/getscipapers/nexus
+    download_dir = os.path.join(home, "Downloads", "getscipapers", "nexus")
+
+    # Log file in config dir/logs
+    log_dir = os.path.join(config_dir, "logs")
     os.makedirs(config_dir, exist_ok=True)
+    os.makedirs(log_dir, exist_ok=True)
     os.makedirs(download_dir, exist_ok=True)
-    
-    # Default log file
+
     timestamp = datetime.now().strftime("%Y%m%d")
     default_log_file = os.path.join(log_dir, f"telegram_bot_{timestamp}.log")
-    
+
     return {
-        "session": os.path.join(base_dir, "telegram_session.session"),
+        "session": os.path.join(config_dir, "telegram_session.session"),
         "credentials": os.path.join(config_dir, "credentials.json"),
         "proxy": os.path.join(config_dir, "proxy.json"),
         "log": default_log_file,
@@ -5708,7 +5699,7 @@ Examples:
         if os.path.isfile(input_value):
             info_print(f"Reading DOIs from file: {input_value}")
             try:
-                doi_list = extract_dois_from_file(input_value)
+                doi_list = getpapers.extract_dois_from_file(input_value)
                 if not doi_list:
                     info_print(f"No valid DOIs found in file: {input_value}")
             except Exception as e:
@@ -5717,7 +5708,7 @@ Examples:
         else:
             # Use extract_dois_from_text for comma/space separated input
             info_print(f"Extracting DOIs from input: {input_value}")
-            doi_list = extract_dois_from_text(input_value)
+            doi_list = getpapers.extract_dois_from_text(input_value)
             if not doi_list:
                 info_print(f"No valid DOIs found in input: {input_value}")
 
@@ -5765,16 +5756,16 @@ Examples:
         if os.path.isfile(input_value):
             info_print(f"Reading DOIs from file: {input_value}")
             try:
-                doi_list = extract_dois_from_file(input_value)
+                doi_list = getpapers.extract_dois_from_file(input_value)
                 if not doi_list:
-                    info_print(f"No valid DOIs found in file: {input_value}")
+                    info_print(f"No valid DOIs found in file: {input_value}. Either the DOI is invaild or it cannot be verified on Crossref.")
             except Exception as e:
                 error_print(f"Failed to extract DOIs from file: {e}")
             return
         else:
             # Use extract_dois_from_text for comma/space separated input
             info_print(f"Extracting DOIs from input: {input_value}")
-            doi_list = extract_dois_from_text(input_value)
+            doi_list = getpapers.extract_dois_from_text(input_value)
             if not doi_list:
                 info_print(f"No valid DOIs found in input: {input_value}")
 
