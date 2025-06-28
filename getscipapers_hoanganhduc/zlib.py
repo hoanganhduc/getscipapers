@@ -46,41 +46,38 @@ def save_credentials(email=None, password=None):
 def load_credentials(credentials_path=None):
     """
     Load credentials from the given path or the default config file.
-    If credentials_path is not specified, look for the config file in the default config directory.
-    If credentials_path is specified, load from it and save to default location.
-    Also sets global EMAIL and PASSWORD variables.
-    After loading, check if credentials can be used for login and print the result.
+    Returns a list: [email, password].
+    If credentials_path is specified, load from it and save to default location if different.
+    If not specified but default config exists, load default config.
+    If neither exists, prompt user to input and save.
     """
-    print("Loading Z-library credentials...")
-    global EMAIL, PASSWORD
-    if credentials_path is None:
+    # Determine which path to use
+    if credentials_path is not None:
+        path = credentials_path
+    elif os.path.exists(CONFIG_FILE):
         path = CONFIG_FILE
     else:
-        path = credentials_path
+        path = None
 
-    if os.path.exists(path):
+    if path and os.path.exists(path):
         with open(path, "r") as f:
             creds = json.load(f)
-        # If loaded from a custom path, save to default location
-        if credentials_path and credentials_path != CONFIG_FILE:
+        # If loaded from a custom path, save to default location if different
+        if credentials_path and os.path.abspath(credentials_path) != os.path.abspath(CONFIG_FILE):
             save_credentials(creds.get("zlib_email"), creds.get("zlib_password"))
-        EMAIL = creds.get("zlib_email", "")
-        PASSWORD = creds.get("zlib_password", "")
-        # Check login
-        if EMAIL and PASSWORD:
-            try:
-                Z = Zlibrary(email=EMAIL, password=PASSWORD)
-                if Z.isLoggedIn():
-                    print("Login successful with loaded credentials.")
-                else:
-                    print("Login failed with loaded credentials.")
-            except Exception as e:
-                print(f"Error during login check: {e}")
-        return creds
-    print("No credentials found.")
-    EMAIL = ""
-    PASSWORD = ""
-    return {}
+        email = creds.get("zlib_email", "")
+        password = creds.get("zlib_password", "")
+        return [email, password]
+
+    # If no credentials found, prompt user to input and save
+    print("No credentials found. Please enter your Z-library credentials.")
+    prompt_and_save_credentials()
+    # After prompting, load from default config file
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
+            creds = json.load(f)
+        return [creds.get("zlib_email", ""), creds.get("zlib_password", "")]
+    return ["", ""]  # If still no credentials, return empty
 
 def prompt_and_save_credentials():
     """
@@ -460,6 +457,8 @@ def interactive_login_search_download(query=None, download_dir=None, limit=20, s
             print("Download failed.")
 
 def main():
+    global EMAIL, PASSWORD, CONFIG_DIR, CONFIG_FILE, DEFAULT_DOWNLOAD_DIR
+    
     # Get the parent package name from the module's __name__
     parent_package = __name__.split('.')[0] if '.' in __name__ else None
 
@@ -500,43 +499,11 @@ def main():
         print("Error: --credentials and --clear-credentials cannot be used at the same time.")
         return
 
-    # If only --credentials is specified, load and quit
-    if args.credentials and not (
-        args.search or args.search_limit or args.clear_credentials or args.download or
-        args.user_info or args.recent or args.popular or args.popular_language
-    ):
-        load_credentials(args.credentials)
-        return
-
-    if args.search_limit is not None and not args.search:
-        print("--search-limit can only be used with --search.")
-        return
-
-    if args.clear_credentials:
-        if os.path.exists(CONFIG_FILE):
-            os.remove(CONFIG_FILE)
-            print("Credentials cleared.")
-        else:
-            print("No credentials to clear.")
-        return
-
-    if args.credentials:
-        creds = load_credentials(args.credentials)
-        email = creds.get("zlib_email")
-        password = creds.get("zlib_password")
-        if email and password:
-            print("Credentials loaded from:", args.credentials)
+    email, password = load_credentials(args.credentials if args.credentials else None)
+    if is_logged_in(email=email, password=password):
+        print(f"Already logged in as: {email}")
     else:
-        creds = load_credentials()
-        email = creds.get("zlib_email")
-        password = creds.get("zlib_password")
-        if not email or not password:
-            prompt_and_save_credentials()
-            creds = load_credentials()
-            email = creds.get("zlib_email")
-            password = creds.get("zlib_password")
-        if email and password:
-            print("Credentials loaded from user input")
+        print("Not logged in. Some features may not work without login.")
 
     if args.user_info:
         profile = get_profile(email=email, password=password)
