@@ -41,7 +41,7 @@ TG_API_ID = ""  # Replace with your actual API ID
 TG_API_HASH = ""  # Replace with your actual API hash
 PHONE = ""  # Replace with your phone number
 BOT_USERNAME = "SciNexBot"  # Replace with Nexus bot username
-SESSION_FILE = ""
+SESSION_FILE = ""  # Path to save the session file
 
 # Global variables for logging
 verbose_mode = False
@@ -141,7 +141,7 @@ def get_file_paths():
     default_log_file = os.path.join(log_dir, f"telegram_bot_{timestamp}.log")
     
     return {
-        "session": os.path.join(base_dir, "telegram_session"),
+        "session": os.path.join(base_dir, "telegram_session.session"),
         "credentials": os.path.join(config_dir, "credentials.json"),
         "proxy": os.path.join(config_dir, "proxy.json"),
         "log": default_log_file,
@@ -843,7 +843,7 @@ async def test_and_select_working_proxy():
         debug_print(f"Proxy testing error: {type(e).__name__}: {str(e)}")
         return None
 
-async def test_telegram_connection(api_id, api_hash, phone_number, session_file='telegram_session', proxy=None):
+async def test_telegram_connection(api_id, api_hash, phone_number, session_file=SESSION_FILE, proxy=None):
     """
     Test connection to Telegram servers with comprehensive diagnostics
     
@@ -900,13 +900,12 @@ async def test_telegram_connection(api_id, api_hash, phone_number, session_file=
     
     # Test 2: Session file validation
     print("🔧 Step 2: Checking session file...")
-    session_path = f"{session_file}.session"
     
-    if os.path.exists(session_path):
-        file_size = os.path.getsize(session_path)
-        file_age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(session_path))
+    if os.path.exists(session_file):
+        file_size = os.path.getsize(session_file)
+        file_age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(session_file))
         
-        print(f"✅ Session file exists: {session_path}")
+        print(f"✅ Session file exists: {session_file}")
         print(f"   📏 File size: {file_size} bytes")
         print(f"   📅 Last modified: {file_age.days} days ago")
         
@@ -916,7 +915,7 @@ async def test_telegram_connection(api_id, api_hash, phone_number, session_file=
             print("   ⚠️  Warning: Session file is quite old, may need re-authentication")
     else:
         print("❌ Session file not found")
-        print(f"   Expected location: {session_path}")
+        print(f"   Expected location: {session_file}")
         print("   Run with --create-session to create a new session")
         return
     
@@ -929,7 +928,7 @@ async def test_telegram_connection(api_id, api_hash, phone_number, session_file=
     proxy_config = load_proxy_config(proxy) if proxy else None
     
     # Create client
-    client = create_telegram_client(session_file, api_id, api_hash, proxy_config)
+    client = create_telegram_client(api_id, api_hash, session_file, proxy_config)
     
     try:
         # Test connection
@@ -1060,8 +1059,39 @@ async def test_telegram_connection(api_id, api_hash, phone_number, session_file=
     print("="*70)
     print("CONNECTION TEST COMPLETED")
     print("="*70)
+    
+async def decide_proxy_usage(api_id, api_hash, phone_number, session_file=SESSION_FILE, proxy_file=DEFAULT_PROXY_FILE):
+    """
+    Decide whether to use a proxy for Telegram connection.
+    If connection works without proxy, return None (no proxy).
+    If not, try with proxy_file and return proxy_file if it works.
+    Returns:
+        None if no proxy needed,
+        proxy_file if proxy is needed,
+        False if neither works.
+    """
+    info_print("Testing Telegram connection without proxy...")
+    result = await test_credentials(api_id, api_hash, phone_number, session_file, proxy=None)
+    if result.get("ok"):
+        info_print("Direct connection to Telegram works. Proxy is not needed.")
+        return None
+    else:
+        info_print("Direct connection failed. Trying with proxy...")
+        if not os.path.exists(proxy_file):
+            info_print(f"Proxy file not found: {proxy_file}")
+            working_proxy = await test_and_select_working_proxy()
+            if not working_proxy:
+                error_print("Could not find a working proxy for Telegram")
+                return False
+        result_proxy = await test_credentials(api_id, api_hash, phone_number, session_file, proxy=proxy_file)
+        if result_proxy.get("ok"):
+            info_print("Connection via proxy works. Proxy will be used.")
+            return proxy_file
+        else:
+            error_print("Connection failed with and without proxy.")
+            return False
 
-def create_telegram_client(session_file, api_id, api_hash, proxy=None):
+def create_telegram_client(api_id, api_hash, session_file=SESSION_FILE, proxy=None):
     """Create TelegramClient with or without proxy"""
     if proxy:
         debug_print(f"Using proxy: {proxy['type']}://{proxy['addr']}:{proxy['port']}")
@@ -1188,7 +1218,7 @@ async def fetch_recent_messages(client, bot_entity, sent_message):
     debug_print(f"No newer messages found among {len(seen_messages)} unique recent messages")
     return None
 
-async def click_callback_button(api_id, api_hash, phone_number, bot_username, message_id, button_data, session_file='telegram_session', proxy=None):
+async def click_callback_button(api_id, api_hash, phone_number, bot_username, message_id, button_data, session_file=SESSION_FILE, proxy=None):
     """
     Click a callback button in a bot's message
     
@@ -1213,13 +1243,12 @@ async def click_callback_button(api_id, api_hash, phone_number, bot_username, me
         return {"error": f"Error loading proxy configuration"}
     
     # Create client with or without proxy
-    client = create_telegram_client(session_file, api_id, api_hash, proxy_config)
+    client = create_telegram_client(api_id, api_hash, session_file, proxy_config)
     bot_reply = None
     
     try:
-        session_path = f"{session_file}.session"
-        if not os.path.exists(session_path):
-            error_print(f"Session file not found: {session_path}")
+        if not os.path.exists(session_file):
+            error_print(f"Session file not found: {session_file}")
             return {"error": "Session file not found. Run script interactively first to create session."}
         
         debug_print("Starting client for button click...")
@@ -1337,7 +1366,7 @@ async def click_callback_button(api_id, api_hash, phone_number, bot_username, me
         debug_print("Disconnecting client after button click...")
         await client.disconnect()
 
-async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, message, session_file='telegram_session', proxy=None, limit=None):
+async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, message, session_file=SESSION_FILE, proxy=None, limit=None):
     """
     Send a message from your user account to a Telegram bot and wait for its reply.
 
@@ -1376,17 +1405,16 @@ async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, mess
         return {"error": f"Error loading proxy configuration"}
 
     # Create client
-    client = create_telegram_client(session_file, api_id, api_hash, proxy_config)
+    client = create_telegram_client(api_id, api_hash, session_file, proxy_config)
 
     # Define all result markers
     result_markers = ["🔬 **", "🔖 **", "📚 **"]
 
     try:
         # Check if session file exists
-        session_path = f"{session_file}.session"
-        debug_print(f"Checking for session file: {session_path}")
-        if not os.path.exists(session_path):
-            error_print(f"Session file '{session_path}' not found!")
+        debug_print(f"Checking for session file: {session_file}")
+        if not os.path.exists(session_file):
+            error_print(f"Session file '{session_file}' not found!")
             info_print("You need to create a session first by running this script interactively once.")
             info_print("After that, the session will be saved and you can run without manual input.")
             return {"error": "Session file not found. Run script interactively first to create session."}
@@ -1689,7 +1717,7 @@ async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, mess
         await client.disconnect()
         debug_print("Client disconnected")
 
-async def create_session(api_id, api_hash, phone_number, session_file='telegram_session'):
+async def create_session(api_id, api_hash, phone_number, session_file=SESSION_FILE):
     """Create a new session file interactively"""
     debug_print(f"Creating new session with file: {session_file}")
     client = TelegramClient(session_file, api_id, api_hash)
@@ -1697,7 +1725,7 @@ async def create_session(api_id, api_hash, phone_number, session_file='telegram_
     try:
         debug_print("Starting client for session creation...")
         await client.start(phone_number)
-        info_print(f"Session created successfully! File saved as '{session_file}.session'")
+        info_print(f"Session created successfully! File saved as '{session_file}'")
         info_print("You can now run the script without manual input.")
         debug_print("Session creation completed successfully")
     except Exception as e:
@@ -2045,7 +2073,7 @@ async def handle_file_download_from_bot_reply(bot_reply, proxy=None):
         return {"success": False, "error": "Error loading proxy configuration"}
     
     # Create client
-    client = create_telegram_client(SESSION_FILE, TG_API_ID, TG_API_HASH, proxy_config)
+    client = create_telegram_client(TG_API_ID, TG_API_HASH, SESSION_FILE, proxy_config)
     
     try:
         # Start client
@@ -2301,7 +2329,7 @@ async def load_credentials_from_file(credentials_path):
     error_print("Failed to provide valid credentials after multiple attempts or timeout.")
     return None
     
-async def test_credentials(api_id, api_hash, phone_number, session_file='telegram_session', proxy=None):
+async def test_credentials(api_id, api_hash, phone_number, session_file=SESSION_FILE, proxy=None):
     """
     Test if the provided Telegram API credentials are correct by attempting to connect and authorize.
     Returns a dictionary with the result.
@@ -2313,7 +2341,7 @@ async def test_credentials(api_id, api_hash, phone_number, session_file='telegra
     }
     try:
         proxy_config = load_proxy_config(proxy) if proxy else None
-        client = create_telegram_client(session_file, api_id, api_hash, proxy_config)
+        client = create_telegram_client(api_id, api_hash, session_file, proxy_config)
         await client.start(phone=phone_number if phone_number else None)
         if await client.is_user_authorized():
             me = await client.get_me()
@@ -2727,7 +2755,7 @@ async def process_callback_buttons(bot_reply, proxy_to_use):
     
     info_print(f"\n--- Completed processing all {len(callback_buttons)} buttons ---")
 
-async def get_latest_messages_from_bot(api_id, api_hash, bot_username, session_file='telegram_session', limit=10, proxy=None):
+async def get_latest_messages_from_bot(api_id, api_hash, bot_username, session_file=SESSION_FILE, limit=10, proxy=None):
     """
     Get the latest messages from a bot
     
@@ -2750,13 +2778,12 @@ async def get_latest_messages_from_bot(api_id, api_hash, bot_username, session_f
         return {"error": "Error loading proxy configuration"}
     
     # Create client
-    client = create_telegram_client(session_file, api_id, api_hash, proxy_config)
+    client = create_telegram_client(api_id, api_hash, session_file, proxy_config)
     
     try:
         # Check if session file exists
-        session_path = f"{session_file}.session"
-        if not os.path.exists(session_path):
-            error_print(f"Session file not found: {session_path}")
+        if not os.path.exists(session_file):
+            error_print(f"Session file not found: {session_file}")
             return {"error": "Session file not found. Run script interactively first to create session."}
         
         debug_print("Starting client to get latest messages...")
@@ -2828,7 +2855,7 @@ async def get_latest_messages_from_bot(api_id, api_hash, bot_username, session_f
         debug_print("Disconnecting client...")
         await client.disconnect()
 
-async def get_user_profile(api_id, api_hash, phone_number, bot_username, session_file='telegram_session', proxy=None):
+async def get_user_profile(api_id, api_hash, phone_number, bot_username, session_file=SESSION_FILE, proxy=None):
     """
     Get user profile information from Nexus bot by sending /profile command
     
@@ -3125,7 +3152,7 @@ def format_messages_result(messages_result):
         logger.info("Formatting messages result for display")
         logger.info(result_text)
 
-async def fetch_and_display_recent_messages(api_id, api_hash, bot_username, session_file='telegram_session', 
+async def fetch_and_display_recent_messages(api_id, api_hash, bot_username, session_file=SESSION_FILE, 
                                             limit=10, proxy=None, display=True):
     """
     Fetch recent messages from a bot and optionally display them
@@ -3162,7 +3189,7 @@ async def fetch_and_display_recent_messages(api_id, api_hash, bot_username, sess
     
     return messages_result
 
-async def fetch_nexus_aaron_messages(api_id, api_hash, phone_number, session_file='telegram_session', 
+async def fetch_nexus_aaron_messages(api_id, api_hash, phone_number, session_file=SESSION_FILE, 
                                     limit=10, proxy=None, display=True):
     """
     Fetch recent messages from the @nexus_aaron bot specifically
@@ -3553,7 +3580,7 @@ def parse_nexus_aaron_upload(text):
     
     return upload_info
 
-async def upload_file_to_bot(api_id, api_hash, phone_number, bot_username, file_path, message="", session_file='telegram_session', proxy=None):
+async def upload_file_to_bot(api_id, api_hash, phone_number, bot_username, file_path, message="", session_file=SESSION_FILE, proxy=None):
     """
     Upload a file to a Telegram bot with optional message
     
@@ -3591,13 +3618,12 @@ async def upload_file_to_bot(api_id, api_hash, phone_number, bot_username, file_
         return {"error": "Error loading proxy configuration"}
     
     # Create client
-    client = create_telegram_client(session_file, api_id, api_hash, proxy_config)
+    client = create_telegram_client(api_id, api_hash, session_file, proxy_config)
     
     try:
         # Check if session file exists
-        session_path = f"{session_file}.session"
-        if not os.path.exists(session_path):
-            error_print(f"Session file not found: {session_path}")
+        if not os.path.exists(session_file):
+            error_print(f"Session file not found: {session_file}")
             return {"error": "Session file not found. Run script interactively first to create session."}
         
         debug_print("Starting client for file upload...")
@@ -3762,7 +3788,7 @@ def format_upload_result(upload_result):
         logger.info("Formatting upload result for display")
         logger.info(result_text)
 
-async def upload_file_to_nexus_aaron(api_id, api_hash, phone_number, file_path, message="", session_file='telegram_session', proxy=None):
+async def upload_file_to_nexus_aaron(api_id, api_hash, phone_number, file_path, message="", session_file=SESSION_FILE, proxy=None):
     """
     Upload a file to the @nexus_aaron bot specifically
     
@@ -3877,7 +3903,7 @@ def format_nexus_aaron_upload_result(upload_result):
         logger.info("Formatting nexus_aaron upload result for display")
         logger.info(result_text)
 
-async def list_and_reply_to_nexus_aaron_message(api_id, api_hash, phone_number, session_file='telegram_session', limit=10, proxy=None):
+async def list_and_reply_to_nexus_aaron_message(api_id, api_hash, phone_number, session_file=SESSION_FILE, limit=10, proxy=None):
     """
     List recent research request messages from @nexus_aaron, allow user to select one, and upload a file as reply
     
@@ -4080,13 +4106,12 @@ async def list_and_reply_to_nexus_aaron_message(api_id, api_hash, phone_number, 
     if proxy and proxy_config is None:
         return {"error": "Error loading proxy configuration"}
     
-    client = create_telegram_client(session_file, api_id, api_hash, proxy_config)
+    client = create_telegram_client(api_id, api_hash, session_file, proxy_config)
     
     try:
         # Check if session file exists
-        session_path = f"{session_file}.session"
-        if not os.path.exists(session_path):
-            error_print(f"Session file not found: {session_path}")
+        if not os.path.exists(session_file):
+            error_print(f"Session file not found: {session_file}")
             return {"error": "Session file not found. Run script interactively first to create session."}
         
         debug_print("Starting client for reply upload...")
@@ -4231,7 +4256,7 @@ def format_list_and_reply_result(result):
         logger.info("Formatting list and reply result for display")
         logger.info(result_text)
 
-async def check_doi_availability_on_nexus(api_id, api_hash, phone_number, bot_username, doi, session_file='telegram_session', proxy=None, download=False):
+async def check_doi_availability_on_nexus(api_id, api_hash, phone_number, bot_username, doi, session_file=SESSION_FILE, proxy=None, download=False):
     """
     Check if a DOI is available on Nexus by sending it to the bot and analyzing the response
     
@@ -4669,7 +4694,7 @@ def format_doi_availability_result(availability_result):
         logger.info("Formatting DOI availability result for display")
         logger.info(result_text)
 
-async def batch_check_doi_availability(api_id, api_hash, phone_number, bot_username, doi_list, session_file='telegram_session', proxy=None, delay=2, download=False):
+async def batch_check_doi_availability(api_id, api_hash, phone_number, bot_username, doi_list, session_file=SESSION_FILE, proxy=None, delay=2, download=False):
     """
     Check availability of multiple DOIs on Nexus with rate limiting and optional auto-download
     
@@ -5262,7 +5287,7 @@ def format_download_from_nexus_bot_result(download_result):
         logger.info("Formatting download result for display")
         logger.info(result_text)
 
-async def request_paper_by_doi(api_id, api_hash, phone_number, bot_username, doi, session_file='telegram_session', proxy=None):
+async def request_paper_by_doi(api_id, api_hash, phone_number, bot_username, doi, session_file=SESSION_FILE, proxy=None):
     """
     Request a paper from Nexus by DOI.
     This will send the DOI to the bot, detect if a request is needed, and click the request button if available.
@@ -5329,7 +5354,7 @@ async def request_paper_by_doi(api_id, api_hash, phone_number, bot_username, doi
             "details": click_result.get("error", "Unknown error")
         }
 
-async def batch_request_papers_by_doi(api_id, api_hash, phone_number, bot_username, doi_list, session_file='telegram_session', proxy=None, delay=2):
+async def batch_request_papers_by_doi(api_id, api_hash, phone_number, bot_username, doi_list, session_file=SESSION_FILE, proxy=None, delay=2):
     """
     Request multiple papers from Nexus by DOI.
     For each DOI, sends the DOI to the bot, detects if a request is needed, and clicks the request button if available.
@@ -5460,7 +5485,7 @@ Examples:
   %(prog)s --create-session
     Create new Telegram session interactively
   
-  %(prog)s --test-connection --proxy-config-file proxy.json
+  %(prog)s --test-connection --proxy proxy.json
     Test connection with proxy configuration
   
   %(prog)s --clear-proxy --clear-credentials
@@ -5497,7 +5522,7 @@ Examples:
                        help='Enable verbose output for debugging')
     parser.add_argument('--log', type=str, nargs='?', const=DEFAULT_LOG_FILE,
                        help=f'Save output to log file (default: {DEFAULT_LOG_FILE})')
-    parser.add_argument('--proxy-config-file', type=str, nargs='?', const=DEFAULT_PROXY_FILE,
+    parser.add_argument('--proxy', type=str, nargs='?', const=DEFAULT_PROXY_FILE,
                        help=f'Path to proxy configuration JSON file (default: {DEFAULT_PROXY_FILE}). '
                             'Example file content: {"type": "http", "addr": "127.0.0.1", "port": 8080} '
                             'or {"type": "socks5", "addr": "127.0.0.1", "port": 1080, "username": "user", "password": "pass"}')
@@ -5534,7 +5559,15 @@ Examples:
         help="Print all default paths and configuration file locations used by the script"
     )
     args = parser.parse_args()
-    
+
+    # Argument conflict checks
+    if args.proxy and args.no_proxy:
+        error_print("--proxy and --no-proxy cannot be specified at the same time.")
+        return
+    if args.proxy and args.clear_proxy:
+        error_print("--proxy and --clear-proxy cannot be specified at the same time.")
+        return
+
     # Setup logging
     setup_logging(args.log, args.verbose)
     
@@ -5650,10 +5683,13 @@ Examples:
     if args.no_proxy:
         info_print("Proxy disabled by --no-proxy flag")
         proxy_to_use = None
+    elif args.proxy:
+        # Use the proxy config file specified by --proxy
+        proxy_to_use = args.proxy
+        info_print(f"Using proxy configuration file specified by --proxy: {proxy_to_use}")
     else:
-        # Always use proxy by default
-        proxy_file = args.proxy_config_file if args.proxy_config_file is not None else DEFAULT_PROXY_FILE
-        proxy_to_use = await setup_proxy_configuration(proxy_file)
+        # Decide whether to use proxy
+        proxy_to_use = await decide_proxy_usage(TG_API_ID, TG_API_HASH, PHONE, SESSION_FILE, DEFAULT_PROXY_FILE)
         if proxy_to_use is False:  # Explicitly check for False (error case)
             return
     
