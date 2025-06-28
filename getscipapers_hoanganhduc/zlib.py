@@ -49,6 +49,7 @@ def load_credentials(credentials_path=None):
     If credentials_path is not specified, look for the config file in the default config directory.
     If credentials_path is specified, load from it and save to default location.
     Also sets global EMAIL and PASSWORD variables.
+    After loading, check if credentials can be used for login and print the result.
     """
     global EMAIL, PASSWORD
     if credentials_path is None:
@@ -64,6 +65,16 @@ def load_credentials(credentials_path=None):
             save_credentials(creds.get("zlib_email"), creds.get("zlib_password"))
         EMAIL = creds.get("zlib_email", "")
         PASSWORD = creds.get("zlib_password", "")
+        # Check login
+        if EMAIL and PASSWORD:
+            try:
+                Z = Zlibrary(email=EMAIL, password=PASSWORD)
+                if Z.isLoggedIn():
+                    print("Login successful with loaded credentials.")
+                else:
+                    print("Login failed with loaded credentials.")
+            except Exception as e:
+                print(f"Error during login check: {e}")
         return creds
     EMAIL = ""
     PASSWORD = ""
