@@ -51,6 +51,7 @@ def load_credentials(credentials_path=None):
     Also sets global EMAIL and PASSWORD variables.
     After loading, check if credentials can be used for login and print the result.
     """
+    print("Loading Z-library credentials...")
     global EMAIL, PASSWORD
     if credentials_path is None:
         path = CONFIG_FILE
@@ -76,6 +77,7 @@ def load_credentials(credentials_path=None):
             except Exception as e:
                 print(f"Error during login check: {e}")
         return creds
+    print("No credentials found.")
     EMAIL = ""
     PASSWORD = ""
     return {}
