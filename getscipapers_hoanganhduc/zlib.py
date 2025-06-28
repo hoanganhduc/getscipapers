@@ -151,8 +151,11 @@ def search_zlibrary_books(query, limit=20, email=None, password=None, sort_by_ye
     # If still not set, try loading from config
     if not zlib_email or not zlib_password:
         creds = load_credentials()
-        zlib_email = zlib_email or creds.get("zlib_email")
-        zlib_password = zlib_password or creds.get("zlib_password")
+        if isinstance(creds, list):
+            zlib_email, zlib_password = creds if len(creds) == 2 else ("", "")
+        else:
+            zlib_email = zlib_email or creds.get("zlib_email", "")
+            zlib_password = zlib_password or creds.get("zlib_password", "")
 
     # Login using credentials if available
     if zlib_email and zlib_password:
@@ -220,8 +223,11 @@ def get_profile(email=None, password=None):
     zlib_password = password if password else PASSWORD
     if not zlib_email or not zlib_password:
         creds = load_credentials()
-        zlib_email = zlib_email or creds.get("zlib_email")
-        zlib_password = zlib_password or creds.get("zlib_password")
+        if isinstance(creds, list):
+            zlib_email, zlib_password = creds if len(creds) == 2 else ("", "")
+        else:
+            zlib_email = zlib_email or creds.get("zlib_email")
+            zlib_password = zlib_password or creds.get("zlib_password")
     Z = Zlibrary(email=zlib_email, password=zlib_password)
     try:
         return Z.getProfile()
@@ -259,8 +265,11 @@ def get_user_recommended(email=None, password=None):
     zlib_password = password if password else PASSWORD
     if not zlib_email or not zlib_password:
         creds = load_credentials()
-        zlib_email = zlib_email or creds.get("zlib_email")
-        zlib_password = zlib_password or creds.get("zlib_password")
+        if isinstance(creds, list):
+            zlib_email, zlib_password = creds if len(creds) == 2 else ("", "")
+        else:
+            zlib_email = zlib_email or creds.get("zlib_email")
+            zlib_password = zlib_password or creds.get("zlib_password")
     Z = Zlibrary(email=zlib_email, password=zlib_password)
     try:
         return Z.getUserRecommended()
@@ -276,8 +285,11 @@ def get_user_saved(email=None, password=None, order=None, page=None, limit=20):
     zlib_password = password if password else PASSWORD
     if not zlib_email or not zlib_password:
         creds = load_credentials()
-        zlib_email = zlib_email or creds.get("zlib_email")
-        zlib_password = zlib_password or creds.get("zlib_password")
+        if isinstance(creds, list):
+            zlib_email, zlib_password = creds if len(creds) == 2 else ("", "")
+        else:
+            zlib_email = zlib_email or creds.get("zlib_email")
+            zlib_password = zlib_password or creds.get("zlib_password")
     Z = Zlibrary(email=zlib_email, password=zlib_password)
     try:
         return Z.getUserSaved(order=order, page=page, limit=limit)
@@ -293,8 +305,11 @@ def get_user_downloaded(email=None, password=None, order=None, page=None, limit=
     zlib_password = password if password else PASSWORD
     if not zlib_email or not zlib_password:
         creds = load_credentials()
-        zlib_email = zlib_email or creds.get("zlib_email")
-        zlib_password = zlib_password or creds.get("zlib_password")
+        if isinstance(creds, list):
+            zlib_email, zlib_password = creds if len(creds) == 2 else ("", "")
+        else:
+            zlib_email = zlib_email or creds.get("zlib_email")
+            zlib_password = zlib_password or creds.get("zlib_password")
     Z = Zlibrary(email=zlib_email, password=zlib_password)
     try:
         return Z.getUserDownloaded(order=order, page=page, limit=limit)
@@ -321,8 +336,11 @@ def download_book(book, email=None, password=None, download_dir=None):
     zlib_password = password if password else PASSWORD
     if not zlib_email or not zlib_password:
         creds = load_credentials()
-        zlib_email = zlib_email or creds.get("zlib_email")
-        zlib_password = zlib_password or creds.get("zlib_password")
+        if isinstance(creds, list):
+            zlib_email, zlib_password = creds if len(creds) == 2 else ("", "")
+        else:
+            zlib_email = zlib_email or creds.get("zlib_email")
+            zlib_password = zlib_password or creds.get("zlib_password")
     Z = Zlibrary(email=zlib_email, password=zlib_password)
     if download_dir is None:
         download_dir = DEFAULT_DOWNLOAD_DIR
@@ -365,13 +383,19 @@ def interactive_login_search_download(query=None, download_dir=None, limit=20, s
     """
     # Ensure credentials are loaded or prompt user
     creds = load_credentials()
-    email = creds.get("zlib_email")
-    password = creds.get("zlib_password")
+    if isinstance(creds, list):
+        email, password = creds if len(creds) == 2 else ("", "")
+    else:
+        email = creds.get("zlib_email", "")
+        password = creds.get("zlib_password", "")
     if not email or not password:
         prompt_and_save_credentials()
         creds = load_credentials()
-        email = creds.get("zlib_email")
-        password = creds.get("zlib_password")
+        if isinstance(creds, list):
+            email, password = creds if len(creds) == 2 else ("", "")
+        else:
+            email = creds.get("zlib_email", "")
+            password = creds.get("zlib_password", "")
 
     # Login and show profile info
     Z = Zlibrary(email=email, password=password)
