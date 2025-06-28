@@ -4,6 +4,7 @@
 #        ./set-secrets.sh --delete [owner/repo]
 #        ./set-secrets.sh --create-credentials <output_file>
 #        ./set-secrets.sh --encode-base64 <input_json> <output_file>
+#        ./set-secrets.sh --apply-credentials <credentials_json>
 
 set -e  # Exit immediately if a command exits with a non-zero status
 
@@ -85,6 +86,29 @@ decode_base64_if_needed() {
     exit 1
 }
 
+# Function to apply credentials by calling getscipapers with a credentials JSON file
+apply_credentials() {
+    CREDENTIALS_JSON="$1"
+    if [ ! -f "$CREDENTIALS_JSON" ]; then
+        echo "Credentials file $CREDENTIALS_JSON does not exist."
+        exit 1
+    fi
+    if ! jq empty "$CREDENTIALS_JSON" 2>/dev/null; then
+        echo "Credentials file $CREDENTIALS_JSON is not valid JSON."
+        exit 1
+    fi
+    if ! command -v getscipapers &> /dev/null; then
+        echo "getscipapers program is not installed or not in PATH."
+        exit 1
+    fi
+    echo "Applying credentials from $CREDENTIALS_JSON using getscipapers..."
+    for module in getpapers ablesci scinet nexus facebook zlib; do
+        echo "Applying credentials for module: $module"
+        getscipapers "$module" --credentials "$CREDENTIALS_JSON" || echo "Module $module failed, continuing..."
+    done
+    echo "Credentials applied."
+}
+
 # Handle --create-credentials option
 if [ $# -eq 2 ] && [ "$1" = "--create-credentials" ]; then
     create_credentials_json "$2"
@@ -97,12 +121,19 @@ if [ $# -eq 3 ] && [ "$1" = "--encode-base64" ]; then
     exit 0
 fi
 
+# Handle --apply-credentials option
+if [ $# -eq 2 ] && [ "$1" = "--apply-credentials" ]; then
+    apply_credentials "$2"
+    exit 0
+fi
+
 # Print usage if arguments are invalid
 if [ $# -lt 1 ] || [ $# -gt 2 ]; then
     echo "Usage: $0 <secrets.json> [owner/repo]"
     echo "       $0 --delete [owner/repo]"
     echo "       $0 --create-credentials <output_file>"
     echo "       $0 --encode-base64 <input_json> <output_file>"
+    echo "       $0 --apply-credentials <credentials_json>"
     exit 1
 fi
 
