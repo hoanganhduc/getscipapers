@@ -234,7 +234,7 @@ Examples:
     parser.add_argument(
         "--service",
         nargs="+",
-        required=True,
+        required=False,
         help="Choose one or more upload services (comma or space separated). Options: temp.sh, bashupload.com, gdrive, dropbox, libgen, nexus, scinet"
     )
     parser.add_argument(
@@ -248,9 +248,14 @@ Examples:
 
     # Flatten and normalize service list (support comma or space separated)
     raw_services = []
-    for s in args.service:
-        raw_services.extend([x.strip() for x in s.split(",") if x.strip()])
-    services = [s.lower() for s in raw_services]
+    if args.service is None:
+        services = ["temp.sh"]
+        if args.verbose:
+            print(f"{ICONS['info']} No service specified, defaulting to temp.sh")
+    else:
+        for s in args.service:
+            raw_services.extend([x.strip() for x in s.split(",") if x.strip()])
+        services = [s.lower() for s in raw_services]
 
     valid_services = {"temp.sh", "bashupload.com", "gdrive", "dropbox", "libgen", "nexus", "scinet"}
     for s in services:
