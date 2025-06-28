@@ -16,6 +16,7 @@ from selenium.webdriver.support import expected_conditions as EC
 import time
 import shutil
 import hashlib
+from . import getpapers
 
 # List of LibGen mirror domains (main alternatives)
 LIBGEN_MIRRORS = [
@@ -87,8 +88,6 @@ cache_dir = get_default_cache_dir()
 # Global default Chrome user data dir inside cache dir
 DEFAULT_CHROME_USER_DIR = os.path.join(cache_dir, "chrome_user_data")
 os.makedirs(DEFAULT_CHROME_USER_DIR, exist_ok=True)
-
-
 
 def search_libgen_by_doi(doi, limit=10):
     """
@@ -1188,6 +1187,42 @@ def fetch_libgen_edition_info(libgen_id, verbose=False):
             print(f"Error fetching edition info: {e}")
     return info
 
+# Calculate md5sum of the file
+def file_md5sum(path):
+    hash_md5 = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+def is_file_on_libgen(md5sum, verbose=False):
+    """
+    Check if a file with the given md5sum already exists in LibGen.
+
+    Args:
+        md5sum (str): The md5sum of the file.
+        verbose (bool): If True, print debug info.
+
+    Returns:
+        str or None: The file URL if it exists, else None.
+    """
+    check_url = f"https://{LIBGEN_DOMAIN}/json.php?object=f&md5={md5sum}"
+    try:
+        resp = requests.get(check_url, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, dict) and data:
+                if verbose:
+                    print("ℹ️  File already exists in LibGen (by md5sum).")
+                file_url = f"https://{LIBGEN_DOMAIN}/file.php?md5={md5sum}"
+                if verbose:
+                    print(f"🔗 File URL: {file_url}")
+                return file_url
+    except Exception as e:
+        if verbose:
+            print(f"Error checking LibGen for md5sum: {e}")
+    return None
+
 def upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbose=False):
     """
     Upload a file to ftp://ftp.libgen.gs/upload and return the file URL if successful.
@@ -1207,32 +1242,16 @@ def upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbo
     ftp_dir = "upload"
     filename = os.path.basename(filepath)
 
-    # Calculate md5sum of the file
-    def file_md5sum(path):
-        hash_md5 = hashlib.md5()
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                hash_md5.update(chunk)
-        return hash_md5.hexdigest()
-
     md5sum = file_md5sum(filepath)
     if verbose:
         print(f"MD5 sum of file: {md5sum}")
 
     # Check if file already exists in LibGen
-    check_url = f"https://{LIBGEN_DOMAIN}/json.php?object=f&md5={md5sum}"
-    try:
-        resp = requests.get(check_url, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            if isinstance(data, dict) and data:
-                print("ℹ️  File already exists in LibGen (by md5sum).")
-                file_url = f"https://{LIBGEN_DOMAIN}/file.php?md5={md5sum}"
-                print(f"🔗 File URL: {file_url}")
-                return None
-    except Exception as e:
-        if verbose:
-            print(f"Error checking LibGen for md5sum: {e}")
+    existing_url = is_file_on_libgen(md5sum, verbose=verbose)
+    if existing_url:
+        print("ℹ️  File already exists in LibGen (by md5sum).")
+        print(f"🔗 File URL: {existing_url}")
+        return None
 
     # Proceed to upload if not found
     try:
@@ -1670,7 +1689,7 @@ def _selenium_register_bibliography(driver, bib_id, local_file_path, verbose=Fal
                         break
             if final_message:
                 print(f"✅ Final response: {final_message}")
-                md5sum = _file_md5sum(local_file_path)
+                md5sum = file_md5sum(local_file_path)
                 file_url = f"https://{LIBGEN_DOMAIN}/file.php?md5={md5sum}"
                 print(f"✅ Uploaded file URL: {file_url}")
             else:
@@ -1687,12 +1706,110 @@ def _selenium_register_bibliography(driver, bib_id, local_file_path, verbose=Fal
             print("❌ Bibliography search form not found after upload:", e)
         return False
 
-def _file_md5sum(path):
-    hash_md5 = hashlib.md5()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
+def upload_and_register_to_libgen(filepath, verbose=False):
+    """
+    Upload and register a file to LibGen using Selenium automation.
+    Tries to extract DOI or ISBN from the file name. If found, registers the file with that ID.
+    If not found, uploads to FTP only (not registered in LibGen database).
+    If the file is a PDF, tries to extract DOI from the PDF using getpapers.extract_doi_from_pdf.
+
+    Args:
+        filepath (str): Path to the file to upload.
+        verbose (bool): Enable verbose/debug output.
+
+    Returns:
+        str or None: URL of the uploaded file if successful, else None.
+    """
+    if not os.path.isfile(filepath):
+        if verbose:
+            print(f"❌ File not found: {filepath}")
+        return None
+
+    # Try to extract DOI or ISBN from filename
+    filename = os.path.basename(filepath)
+    # Try to match DOI using common patterns
+    doi_patterns = [
+        r'(10\.\d{4,9}/[-._;()/:A-Z0-9]+)',  # Standard DOI
+        r'(10\.\d{4,9}/[^\s]+)',             # More permissive
+        r'(10\.\d{4,9}[.][^\s]+/[^\s]+)',    # Some publisher-specific
+        r'(10\.\d{4,9}/[-._;()/:A-Z0-9]+)',  # Uppercase DOI
+        r'(10\.\d{4,9}/[\w.\-;()/:]+)',      # Alphanumeric and common DOI chars
+    ]
+    doi_match = None
+    for pat in doi_patterns:
+        doi_match = re.search(pat, filename, re.I)
+        if doi_match:
+            break
+
+    # Try to match ISBN using common patterns
+    isbn_patterns = [
+        r'(?<!\d)(97[89][-\s]?\d{1,5}[-\s]?\d{1,7}[-\s]?\d{1,7}[-\s]?\d)',  # ISBN-13 with optional hyphens/spaces
+        r'(?<!\d)(\d{9}[\dXx])(?!\d)',                                      # ISBN-10
+        r'(?<!\d)(97[89][\d\- ]{10,16})(?!\d)',                             # ISBN-13, loose
+        r'(?<!\d)(\d{1,5}[-\s]?\d{1,7}[-\s]?\d{1,7}[-\s]?[\dXx])(?!\d)',    # ISBN-10, loose
+    ]
+    isbn_match = None
+    for pat in isbn_patterns:
+        isbn_match = re.search(pat, filename)
+        if isbn_match:
+            break
+    bib_id = ""
+    if doi_match:
+        bib_id = doi_match.group(1)
+        if verbose:
+            print(f"📄 Detected DOI in filename: {bib_id}")
+    elif isbn_match:
+        bib_id = isbn_match.group(1).replace("-", "").replace(" ", "")
+        if verbose:
+            print(f"📄 Detected ISBN in filename: {bib_id}")
+
+    # If file is PDF and no DOI found yet, try to extract DOI from PDF using getpapers
+    if not bib_id and filename.lower().endswith(".pdf"):
+        try:
+            pdf_doi = getpapers.extract_doi_from_pdf(filepath)
+            if pdf_doi:
+                bib_id = pdf_doi
+                if verbose:
+                    print(f"📄 Extracted DOI from PDF: {bib_id}")
+        except Exception as e:
+            if verbose:
+                print(f"⚠️  Could not extract DOI from PDF: {e}")
+
+    if bib_id:
+        success = selenium_libgen_upload(
+            local_file_path=filepath,
+            bib_id=bib_id,
+            username="genesis",
+            password="upload",
+            headless=True,
+            verbose=verbose
+        )
+        if success:
+            # Return the LibGen file URL if possible
+            try:
+                md5sum = file_md5sum(filepath)
+                file_url = f"https://{LIBGEN_DOMAIN}/file.php?md5={md5sum}"
+                if verbose:
+                    print(f"✅ File uploaded and registered to LibGen: {file_url}")
+                return file_url
+            except Exception:
+                if verbose:
+                    print("✅ File uploaded and registered to LibGen.")
+                return True
+        else:
+            if verbose:
+                print("❌ Upload or registration failed.")
+            return None
+    else:
+        url = upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbose=verbose)
+        if url:
+            if verbose:
+                print(f"✅ Uploaded to FTP only: {url}")
+            return url
+        else:
+            if verbose:
+                print("❌ Upload failed or file already exists in LibGen.")
+            return None
 
 def main():
     # Get the parent package name from the module's __name__

@@ -2,6 +2,8 @@ import sys
 import os
 import argparse
 import subprocess
+from . import getpapers, libgen, nexus
+
 """upload.py - A script to upload files to various services like temp.sh, bashupload.com, Google Drive, and Dropbox.
 This script allows users to upload files or directories to specified services and provides shareable links."""
 
@@ -156,6 +158,22 @@ def share_dropbox_item(dropbox_path, verbose=False):
     print(f"{ICONS['link']} Creating shareable link for {dropbox_path}...")
     shareable_link = run_command(command, verbose).strip()
     return shareable_link
+
+def upload_to_libgen(files):
+    """
+    Upload files to LibGen using the libgen module.
+    """
+    for file_path in files:
+        file_name = os.path.basename(file_path)
+        print(f"{ICONS['upload']} Uploading {file_name} to LibGen...")
+        try:
+            result = libgen.upload_and_register_to_libgen(filepath=file_path)
+            if result.get("success"):
+                print(f"{ICONS['success']} {file_name} uploaded to LibGen: {ICONS['link']} {result.get('url', 'No URL returned')}")
+            else:
+                print(f"{ICONS['error']} Failed to upload {file_name} to LibGen: {result.get('error', 'Unknown error')}")
+        except Exception as e:
+            print(f"{ICONS['error']} Exception uploading {file_name} to LibGen: {e}")
 
 def main():
     # Get the parent package name from the module's __name__

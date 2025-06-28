@@ -734,6 +734,27 @@ def extract_dois_from_file(input_file: str):
     except Exception as e:
         print(f"Failed to write DOIs to output file: {e}")
 
+def extract_dois_from_pdf(pdf_file: str) -> list:
+    """
+    Extract DOI numbers from a PDF file.
+    Returns a list containing only the first valid DOI found in the PDF, or an empty list if none found.
+    """
+    try:
+        with open(pdf_file, "rb") as f:
+            reader = PyPDF2.PdfReader(f)
+            text = ""
+            for page in reader.pages:
+                try:
+                    text += page.extract_text() or ""
+                except Exception:
+                    continue
+    except Exception as e:
+        print(f"Failed to read PDF file: {e}")
+        return []
+
+    dois = extract_dois_from_text(text)
+    return [dois[0]] if dois else []
+
 async def search_documents(query: str, limit: int = 1):
     """
     Search for documents using StcGeck, Nexus bot, and Crossref in order.
