@@ -18,6 +18,7 @@ import glob
 import platform
 from . import getpapers
 import tempfile
+import datetime
 
 USERNAME = "" # Replace with your actual username/email
 PASSWORD = "" # Replace with your actual password
@@ -2478,6 +2479,74 @@ def interactive_upload_to_active_requests(headless=True):
     else:
         print("Failed to upload file.")
 
+def check_in(headless=True):
+    """
+    Login and perform daily check-in by simulating the AJAX request used by the website.
+    Then print today's date and extract the number of consecutive check-in days.
+    """
+    today = datetime.date.today()
+    print(f"Today's date: {today}")
+    debug_print("Starting daily check-in process")
+    # Navigate to homepage for check-in
+    driver = login_and_navigate('https://www.ablesci.com', headless)
+    if driver is None:
+        print("Failed to login and navigate to homepage for check-in")
+        return False
+    try:
+        wait = WebDriverWait(driver, 10)
+        # Wait for the page to load (body element)
+        debug_print("Waiting for page body to load")
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'body')))
+        time.sleep(2)  # Give time for dynamic content to load
+        # Use JavaScript to perform the AJAX check-in request and get the response
+        debug_print("Executing AJAX check-in request via JavaScript")
+        result = driver.execute_async_script("""
+            var callback = arguments[arguments.length - 1];
+            fetch("https://www.ablesci.com/user/sign", {
+                method: "GET",
+                credentials: "include"
+            }).then(r => r.json()).then(res => callback(res)).catch(e => callback({error: e && e.message ? e.message : String(e)}));
+        """)
+        debug_print(f"AJAX check-in result: {result}")
+        if result.get("error"):
+            print(f"Check-in failed: {result['error']}")
+            return False
+        if result.get("code") == 0:
+            print("Check-in successful!")
+        elif result.get("code") == 1:
+            print(f"Already checked in today: {result.get('msg', '')}")
+        else:
+            print(f"Check-in failed: {result.get('msg', 'Unknown error')}")
+            return False
+
+        # Try to extract consecutive check-in days from the page DOM
+        signcount = None
+        try:
+            debug_print("Trying to extract consecutive check-in days from DOM")
+            signcount_elem = driver.find_element(By.CSS_SELECTOR, '#sign-count')
+            signcount = signcount_elem.text.strip()
+            if signcount.isdigit():
+                print(f"Consecutive check-in days: {signcount}")
+            else:
+                print("Could not extract consecutive check-in days from DOM.")
+        except Exception as e:
+            debug_print(f"Could not extract signcount from DOM: {e}")
+            # Fallback to AJAX response
+            signcount = result.get("data", {}).get("signcount")
+            if signcount is not None:
+                print(f"Consecutive check-in days: {signcount}")
+            else:
+                print("Could not extract consecutive check-in days.")
+
+        return True
+    except Exception as e:
+        debug_print(f"Check-in failed: {e}")
+        print("Check-in failed or already completed today.")
+        return False
+    finally:
+        debug_print("Closing check-in driver")
+        driver.quit()
+
 def print_default_paths():
     print("Default paths and settings:")
     print(f"  Cache directory: {cache_dir}")
@@ -2530,6 +2599,7 @@ def main():
     parser.add_argument('--solve-active-requests', type=int, nargs='?', const=10, metavar='LIMIT', help='Interactively select and solve active requests by uploading files (optional limit, default: 10)')
     parser.add_argument('--clear-cache', action='store_true', help='Clear cache before running')
     parser.add_argument('--print-default', action='store_true', help='Print default paths and settings')
+    parser.add_argument('--check-in', action='store_true', help='Perform daily check-in')
     args = parser.parse_args()
 
     # Validate argument conflicts
@@ -2607,6 +2677,9 @@ def main():
     if args.solve_active_requests is not None:
         print("Solving active requests...")
         interactive_upload_to_active_requests(headless=headless, limit=args.solve_active_requests)
+    if args.check_in:
+        print("Performing daily check-in...")
+        check_in(headless=headless)
 
 if __name__ == "__main__":
     main()
