@@ -526,14 +526,18 @@ def main():
         print("Error: --credentials and --clear-credentials cannot be used at the same time.")
         return
 
-    email, password = load_credentials(args.credentials if args.credentials else None)
-    if is_logged_in(email=email, password=password):
-        print(f"Already logged in as: {email}")
+    if args.credentials:
+        EMAIL, PASSWORD = load_credentials(args.credentials)
+    elif os.path.exists(CONFIG_FILE):
+        EMAIL, PASSWORD = load_credentials()
+        
+    if is_logged_in(email=EMAIL, password=PASSWORD):
+        print(f"Already logged in as: {EMAIL}")
     else:
         print("Not logged in. Some features may not work without login.")
 
     if args.user_info:
-        profile = get_profile(email=email, password=password)
+        profile = get_profile(email=EMAIL, password=PASSWORD)
         if profile.get("success", False):
             user = profile.get("user") if isinstance(profile, dict) and "user" in profile else profile
             if not user:
@@ -604,8 +608,8 @@ def main():
         results = search_zlibrary_books(
             args.search,
             limit=search_limit,
-            email=email,
-            password=password
+            email=EMAIL,
+            password=PASSWORD
         )
         if not results:
             print("No books found.")
