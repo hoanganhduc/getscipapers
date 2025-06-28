@@ -346,8 +346,11 @@ def is_logged_in(email=None, password=None):
     zlib_password = password if password else PASSWORD
     if not zlib_email or not zlib_password:
         creds = load_credentials()
-        zlib_email = zlib_email or creds.get("zlib_email")
-        zlib_password = zlib_password or creds.get("zlib_password")
+        if isinstance(creds, list):
+            zlib_email, zlib_password = creds if len(creds) == 2 else ("", "")
+        else:
+            zlib_email = zlib_email or creds.get("zlib_email")
+            zlib_password = zlib_password or creds.get("zlib_password")
     Z = Zlibrary(email=zlib_email, password=zlib_password)
     try:
         return Z.isLoggedIn()
