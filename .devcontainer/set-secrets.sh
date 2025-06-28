@@ -29,7 +29,9 @@ create_credentials_json() {
     "email": "${EMAIL}",
     "elsevier_api_key": "${ELSEVIER_API_KEY}",
     "wiley_tdm_token": "${WILEY_TDM_TOKEN}",
-    "ieee_api_key": "${IEEE_API_KEY}"
+    "ieee_api_key": "${IEEE_API_KEY}",
+    "zlib_email": "${ZLIB_EMAIL}",
+    "zlib_password": "${ZLIB_PASSWORD}"
 }
 EOF
     chmod 600 "$OUTPUT_FILE"
