@@ -17,6 +17,7 @@ import time
 import shutil
 import hashlib
 from . import getpapers
+import threading
 
 # List of LibGen mirror domains (main alternatives)
 LIBGEN_MIRRORS = [
@@ -1249,8 +1250,6 @@ def upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbo
     # Check if file already exists in LibGen
     existing_url = is_file_on_libgen(md5sum, verbose=verbose)
     if existing_url:
-        print("ℹ️  File already exists in LibGen (by md5sum).")
-        print(f"🔗 File URL: {existing_url}")
         return None
 
     # Proceed to upload if not found
@@ -1725,48 +1724,13 @@ def upload_and_register_to_libgen(filepath, verbose=False):
             print(f"❌ File not found: {filepath}")
         return None
 
-    # Try to extract DOI or ISBN from filename
     filename = os.path.basename(filepath)
-    # Try to match DOI using common patterns
-    doi_patterns = [
-        r'(10\.\d{4,9}/[-._;()/:A-Z0-9]+)',  # Standard DOI
-        r'(10\.\d{4,9}/[^\s]+)',             # More permissive
-        r'(10\.\d{4,9}[.][^\s]+/[^\s]+)',    # Some publisher-specific
-        r'(10\.\d{4,9}/[-._;()/:A-Z0-9]+)',  # Uppercase DOI
-        r'(10\.\d{4,9}/[\w.\-;()/:]+)',      # Alphanumeric and common DOI chars
-    ]
-    doi_match = None
-    for pat in doi_patterns:
-        doi_match = re.search(pat, filename, re.I)
-        if doi_match:
-            break
-
-    # Try to match ISBN using common patterns
-    isbn_patterns = [
-        r'(?<!\d)(97[89][-\s]?\d{1,5}[-\s]?\d{1,7}[-\s]?\d{1,7}[-\s]?\d)',  # ISBN-13 with optional hyphens/spaces
-        r'(?<!\d)(\d{9}[\dXx])(?!\d)',                                      # ISBN-10
-        r'(?<!\d)(97[89][\d\- ]{10,16})(?!\d)',                             # ISBN-13, loose
-        r'(?<!\d)(\d{1,5}[-\s]?\d{1,7}[-\s]?\d{1,7}[-\s]?[\dXx])(?!\d)',    # ISBN-10, loose
-    ]
-    isbn_match = None
-    for pat in isbn_patterns:
-        isbn_match = re.search(pat, filename)
-        if isbn_match:
-            break
-    bib_id = ""
-    if doi_match:
-        bib_id = doi_match.group(1)
-        if verbose:
-            print(f"📄 Detected DOI in filename: {bib_id}")
-    elif isbn_match:
-        bib_id = isbn_match.group(1).replace("-", "").replace(" ", "")
-        if verbose:
-            print(f"📄 Detected ISBN in filename: {bib_id}")
+    bib_id = None
 
     # If file is PDF and no DOI found yet, try to extract DOI from PDF using getpapers
     if not bib_id and filename.lower().endswith(".pdf"):
         try:
-            pdf_doi = getpapers.extract_doi_from_pdf(filepath)
+            pdf_doi = getpapers.extract_dois_from_pdf(filepath)
             if pdf_doi:
                 bib_id = pdf_doi
                 if verbose:
@@ -1775,7 +1739,32 @@ def upload_and_register_to_libgen(filepath, verbose=False):
             if verbose:
                 print(f"⚠️  Could not extract DOI from PDF: {e}")
 
+    # If still no bib_id, ask user to input DOI or ISBN, but timeout after 30 seconds
+    if not bib_id:
+        print("Enter DOI or ISBN to register this file (leave blank to upload to FTP only): ", end="", flush=True)
+        try:
+            user_input = []
+            def get_input():
+                user_input.append(input().strip())
+
+            t = threading.Thread(target=get_input)
+            t.daemon = True
+            t.start()
+            t.join(timeout=30)
+            if t.is_alive():
+                print("\n❌ No response after 30 seconds. Upload failed.")
+                return None
+            if user_input and user_input[0]:
+                bib_id = user_input[0]
+        except Exception:
+            print("\n❌ Error or timeout while waiting for input. Upload failed.")
+            return None
+
+    if isinstance(bib_id, list) and bib_id:
+        bib_id = bib_id[0]
+    
     if bib_id:
+        print(f"📚 Registering file with DOI/ISBN: {bib_id}")
         success = selenium_libgen_upload(
             local_file_path=filepath,
             bib_id=bib_id,
@@ -1942,12 +1931,21 @@ Examples:
             else:
                 print("❌ Upload failed or file already exists in LibGen.")
         else:
-            print(f"Uploading file to LibGen FTP only (no DOI/ISBN registration): {filepath}")
-            url = upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbose=args.verbose)
-            if url:
-                print(f"✅ Uploaded to FTP: {url}")
+            # If PDF and no DOI/ISBN, try to extract and register
+            if filepath.lower().endswith(".pdf"):
+                print(f"Uploading PDF file to LibGen and trying to extract DOI/ISBN: {filepath}")
+                url = upload_and_register_to_libgen(filepath, verbose=args.verbose)
+                if url:
+                    print(f"✅ Uploaded and registered: {url}")
+                else:
+                    print("❌ Upload failed or file already exists in LibGen.")
             else:
-                print("❌ Upload failed or file already exists in LibGen.")
+                print(f"Uploading file to LibGen FTP only (no DOI/ISBN registration): {filepath}")
+                url = upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbose=args.verbose)
+                if url:
+                    print(f"✅ Uploaded to FTP: {url}")
+                else:
+                    print("❌ Upload failed or file already exists in LibGen.")
         return
 
     # Determine download directory if --download is used

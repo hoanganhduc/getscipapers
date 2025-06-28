@@ -76,6 +76,7 @@ def get_download_directory():
 CACHE_FILE = os.path.join(get_cache_directory(), "scinet_cache.pkl")
 CACHE_DURATION_HOURS = 24  # Cache validity in hours
 DEFAULT_DOWNLOAD_DIR = get_download_directory()
+CREDENTIAL_FILE = os.path.join(get_cache_directory(), "credentials.json")
 
 # Log configuration
 LOG_FILE = "scinet.log"
@@ -441,14 +442,16 @@ def perform_login(driver, username, password):
 
 def load_credentials_from_json(json_path):
     """
-    Load login credentials from a JSON file
-    
+    Load login credentials from a JSON file.
+    If credentials exist and are not default, update the default one.
+    If the default one is not found, save it.
+
     Args:
         json_path: Path to the JSON file containing credentials
-    
+
     Returns:
         dict: Dictionary containing username and password, or None if failed
-    
+
     Expected JSON format:
     {
         "scinet_username": "your_username",
@@ -458,45 +461,70 @@ def load_credentials_from_json(json_path):
     try:
         # Expand user home directory
         json_path = os.path.expanduser(json_path)
-        
+
         if not os.path.exists(json_path):
             print(f"Credentials file not found: {json_path}")
             return None
-        
+
         # Check file permissions for security
         file_stat = os.stat(json_path)
         file_mode = stat.filemode(file_stat.st_mode)
-        
-        # Warn if file is readable by others (not secure)
         if file_stat.st_mode & (stat.S_IRGRP | stat.S_IROTH):
             print(f"Warning: Credentials file {json_path} is readable by others ({file_mode})")
-            print("Consider setting more restrictive permissions: chmod 600 {json_path}")
-        
+            print(f"Consider setting more restrictive permissions: chmod 600 {json_path}")
+
         with open(json_path, 'r', encoding='utf-8') as f:
             credentials = json.load(f)
-        
+
         # Validate required fields
         if not isinstance(credentials, dict):
             print(f"Error: Credentials file must contain a JSON object")
             return None
-        
+
         username = credentials.get('scinet_username', '').strip()
         password = credentials.get('scinet_password', '').strip()
-        
+
         if not username:
             print(f"Error: Missing or empty 'scinet_username' field in credentials file")
             return None
-        
         if not password:
             print(f"Error: Missing or empty 'scinet_password' field in credentials file")
             return None
-        
+
+        # Update or save default credentials if needed
+        default_path = CREDENTIAL_FILE
+        updated = False
+        if os.path.exists(default_path):
+            try:
+                with open(default_path, 'r', encoding='utf-8') as f:
+                    default_creds = json.load(f)
+                default_username = default_creds.get('scinet_username', '').strip()
+                default_password = default_creds.get('scinet_password', '').strip()
+                # If different, update default
+                if username != default_username or password != default_password:
+                    with open(default_path, 'w', encoding='utf-8') as f:
+                        json.dump({'scinet_username': username, 'scinet_password': password}, f, indent=2)
+                    updated = True
+            except Exception:
+                # If error reading default, overwrite it
+                with open(default_path, 'w', encoding='utf-8') as f:
+                    json.dump({'scinet_username': username, 'scinet_password': password}, f, indent=2)
+                updated = True
+        else:
+            # Default not found, save it
+            with open(default_path, 'w', encoding='utf-8') as f:
+                json.dump({'scinet_username': username, 'scinet_password': password}, f, indent=2)
+            updated = True
+
+        if updated:
+            debug_print(f"Default credentials updated at {default_path}")
+
         debug_print(f"Successfully loaded credentials for user: {username}")
         return {
             'scinet_username': username,
             'scinet_password': password
         }
-        
+
     except json.JSONDecodeError as e:
         print(f"Error: Invalid JSON format in credentials file {json_path}: {str(e)}")
         return None
@@ -953,9 +981,46 @@ def upload_pdf_to_scinet_simple(filepath, verbose=False):
     old_verbose = VERBOSE
     VERBOSE = verbose
     try:
-        # Prompt for username/password if not set
-        username = USERNAME or input("Sci-Net Username: ").strip()
-        password = PASSWORD or getpass.getpass("Sci-Net Password: ")
+        # If cache exists and is valid, skip loading credentials from default location
+        cache_data = None
+        if os.path.exists(CACHE_FILE):
+            try:
+                with open(CACHE_FILE, 'rb') as f:
+                    cache_data = pickle.load(f)
+                if isinstance(cache_data, dict) and 'timestamp' in cache_data:
+                    cache_age = datetime.now() - cache_data['timestamp']
+                    if cache_age <= timedelta(hours=CACHE_DURATION_HOURS):
+                        # Use cached username if available
+                        username = cache_data.get('username', USERNAME)
+                        password = PASSWORD  # Password not needed if cache is valid
+                        if verbose:
+                            print("Using cached login session.")
+                        result = login_and_upload_pdf(username, password, filepath, headless=True)
+                        return result
+            except Exception:
+                pass
+
+        # No valid cache, load credentials from default location
+        creds = None
+        if os.path.exists(CREDENTIAL_FILE):
+            creds = load_credentials_from_json(CREDENTIAL_FILE)
+        if creds:
+            username = creds['scinet_username']
+            password = creds['scinet_password']
+        else:
+            # Prompt user for credentials if not found
+            username = USERNAME or input("Sci-Net Username: ").strip()
+            password = PASSWORD or getpass.getpass("Sci-Net Password: ")
+            # Save to default location for future use
+            try:
+                with open(CREDENTIAL_FILE, 'w', encoding='utf-8') as f:
+                    json.dump({'scinet_username': username, 'scinet_password': password}, f, indent=2)
+                os.chmod(CREDENTIAL_FILE, stat.S_IRUSR | stat.S_IWUSR)
+                if verbose:
+                    print(f"Credentials saved to {CREDENTIAL_FILE}")
+            except Exception as e:
+                if verbose:
+                    print(f"Warning: Could not save credentials to {CREDENTIAL_FILE}: {e}")
         result = login_and_upload_pdf(username, password, filepath, headless=True)
         return result
     finally:

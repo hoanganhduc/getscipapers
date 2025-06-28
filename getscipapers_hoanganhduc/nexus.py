@@ -1055,32 +1055,62 @@ async def decide_proxy_usage(api_id, api_hash, phone_number, session_file=SESSIO
     """
     Decide whether to use a proxy for Telegram connection.
     If connection works without proxy, return None (no proxy).
-    If not, try with proxy_file and return proxy_file if it works.
+    If not, try default proxy file. If that fails, select a new proxy and try again.
     Returns:
         None if no proxy needed,
         proxy_file if proxy is needed,
         False if neither works.
     """
     info_print("Testing Telegram connection without proxy...")
-    result = await test_credentials(api_id, api_hash, phone_number, session_file, proxy=None)
-    if result.get("ok"):
-        info_print("Direct connection to Telegram works. Proxy is not needed.")
-        return None
-    else:
-        info_print("Direct connection failed. Trying with proxy...")
-        if not os.path.exists(proxy_file):
-            info_print(f"Proxy file not found: {proxy_file}")
-            working_proxy = await test_and_select_working_proxy()
-            if not working_proxy:
-                error_print("Could not find a working proxy for Telegram")
-                return False
-        result_proxy = await test_credentials(api_id, api_hash, phone_number, session_file, proxy=proxy_file)
-        if result_proxy.get("ok"):
-            info_print("Connection via proxy works. Proxy will be used.")
+    try:
+        client = create_telegram_client(api_id, api_hash, session_file, proxy=None)
+        await client.start(phone=phone_number if phone_number else None)
+        is_auth = await client.is_user_authorized()
+        await client.disconnect()
+        if is_auth:
+            info_print("Direct connection to Telegram works. Proxy is not needed.")
+            return None
+        else:
+            info_print("Direct connection failed (not authorized). Trying default proxy configuration...")
+    except Exception as e:
+        info_print(f"Direct connection failed: {e}. Trying default proxy configuration...")
+
+    # Try default proxy file if it exists
+    if os.path.exists(proxy_file):
+        try:
+            proxy_config = load_proxy_config(proxy_file)
+            client = create_telegram_client(api_id, api_hash, session_file, proxy_config)
+            await client.start(phone=phone_number if phone_number else None)
+            is_auth = await client.is_user_authorized()
+            await client.disconnect()
+            if is_auth:
+                info_print("Connection via default proxy works. Proxy will be used.")
+                return proxy_file
+            else:
+                info_print("Connection failed with default proxy (not authorized). Will try to find a new working proxy...")
+        except Exception as e:
+            info_print(f"Connection failed with default proxy: {e}. Will try to find a new working proxy...")
+
+    # Try to find a new working proxy
+    working_proxy = await test_and_select_working_proxy()
+    if not working_proxy:
+        error_print("Could not find a working proxy for Telegram")
+        return False
+    try:
+        proxy_config = load_proxy_config(proxy_file)
+        client = create_telegram_client(api_id, api_hash, session_file, proxy_config)
+        await client.start(phone=phone_number if phone_number else None)
+        is_auth = await client.is_user_authorized()
+        await client.disconnect()
+        if is_auth:
+            info_print("Connection via new proxy works. Proxy will be used.")
             return proxy_file
         else:
-            error_print("Connection failed with and without proxy.")
+            error_print("Connection failed with new proxy (not authorized).")
             return False
+    except Exception as e:
+        error_print(f"Connection failed with new proxy: {e}")
+        return False
 
 def create_telegram_client(api_id, api_hash, session_file=SESSION_FILE, proxy=None):
     """Create TelegramClient with or without proxy"""
@@ -3868,7 +3898,15 @@ async def simple_upload_to_nexus_aaron(file_path, verbose=False):
     phone = creds.get("phone")
     # Use default session file and proxy if available
     session_file = SESSION_FILE
-    proxy = await decide_proxy_usage(TG_API_ID, TG_API_HASH, PHONE, SESSION_FILE, DEFAULT_PROXY_FILE)
+    proxy = await decide_proxy_usage(api_id, api_hash, phone, SESSION_FILE, DEFAULT_PROXY_FILE)
+    
+    # Print proxy decision for debugging/visibility
+    if proxy is None:
+        info_print("Proxy decision: No proxy needed (direct connection)")
+    elif proxy is False:
+        info_print("Proxy decision: No working proxy found (connection may fail)")
+    else:
+        info_print(f"Proxy decision: Using proxy configuration: {proxy}")
 
     # If file is a PDF, try to extract DOI for caption
     caption = ""
@@ -3885,6 +3923,7 @@ async def simple_upload_to_nexus_aaron(file_path, verbose=False):
     result = await upload_file_to_nexus_aaron(
         api_id, api_hash, phone, file_path, caption, session_file, proxy
     )
+    
     if verbose:
         format_nexus_aaron_upload_result(result)
     return result
@@ -5953,10 +5992,14 @@ Examples:
         elif file_size_mb > 50:  # Warn for files over 50MB
             info_print(f"Warning: Large file ({file_size_mb:.2f} MB) may take time to upload")
         
-        # Perform the upload
-        upload_result = await upload_file_to_nexus_aaron(
+        # If the file is a PDF and no upload_message is specified, use simple_upload_to_nexus_aaron
+        if file_path.lower().endswith(".pdf") and not upload_message.strip():
+            upload_result = await simple_upload_to_nexus_aaron(file_path, verbose=args.verbose)
+        else:
+            # Perform the upload
+            upload_result = await upload_file_to_nexus_aaron(
             TG_API_ID, TG_API_HASH, PHONE, file_path, upload_message, SESSION_FILE, proxy_to_use
-        )
+            )
         
         # Display results with specialized formatting
         format_nexus_aaron_upload_result(upload_result)

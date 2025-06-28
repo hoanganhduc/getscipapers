@@ -3,6 +3,7 @@ import os
 import argparse
 import subprocess
 import requests
+import asyncio
 
 from . import getpapers, libgen, nexus, scinet
 
@@ -35,7 +36,6 @@ def get_files_from_args(paths, verbose=False):
     return files
 
 def upload_to_tempsh(files, verbose=False):
-    import requests
     for file_path in files:
         file_name = os.path.basename(file_path)
         if verbose:
@@ -161,22 +161,24 @@ def upload_to_libgen(files, verbose=False):
         if verbose:
             print(f"{ICONS['upload']} Uploading {file_name} to LibGen...")
         try:
-            result = libgen.upload_and_register_to_libgen(filepath=file_path)
-            if result.get("success"):
-                print(f"{ICONS['success']} {file_name} uploaded to LibGen: {ICONS['link']} {result.get('url', 'No URL returned')}")
+            result = libgen.upload_and_register_to_libgen(filepath=file_path, verbose=verbose)
+            if result is not None and isinstance(result, str):
+                print(f"{ICONS['success']} {file_name} uploaded to LibGen: {ICONS['link']} {result}")
             else:
-                print(f"{ICONS['error']} Failed to upload {file_name} to LibGen: {result.get('error', 'Unknown error')}")
+                print(f"{ICONS['error']} Failed to upload {file_name} to LibGen: No URL returned.")
         except Exception as e:
             print(f"{ICONS['error']} Exception uploading {file_name} to LibGen: {e}")
 
-def upload_to_nexus_aaron(files, verbose=False):
+async def upload_to_nexus_aaron(files, verbose=False):
     for file_path in files:
         file_name = os.path.basename(file_path)
         if verbose:
             print(f"{ICONS['upload']} Uploading {file_name} to nexus_aaron bot...")
         try:
-            result = nexus.simple_upload_to_nexus_aaron(file_path)
-            if result.get("success"):
+            result = await nexus.simple_upload_to_nexus_aaron(file_path)
+            if verbose:
+                print(f"{ICONS['info']} Result from nexus_aaron: {result}")
+            if result.get("ok"):
                 print(f"{ICONS['success']} {file_name} uploaded to nexus_aaron: {ICONS['link']} {result.get('url', 'No URL returned')}")
             else:
                 print(f"{ICONS['error']} Failed to upload {file_name} to nexus_aaron: {result.get('error', 'Unknown error')}")
@@ -194,10 +196,14 @@ def upload_to_scinet(files, verbose=False):
             print(f"{ICONS['upload']} Uploading {file_name} to SciNet...")
         try:
             result = scinet.upload_pdf_to_scinet_simple(file_path)
-            if result.get("success"):
+            if isinstance(result, dict) and result.get("success"):
                 print(f"{ICONS['success']} {file_name} uploaded to SciNet: {ICONS['link']} {result.get('url', 'No URL returned')}")
-            else:
+            elif isinstance(result, dict):
                 print(f"{ICONS['error']} Failed to upload {file_name} to SciNet: {result.get('error', 'Unknown error')}")
+            elif result is True:
+                print(f"{ICONS['success']} {file_name} uploaded to SciNet (no URL returned).")
+            else:
+                print(f"{ICONS['error']} Failed to upload {file_name} to SciNet: Unexpected result type ({type(result).__name__})")
         except Exception as e:
             print(f"{ICONS['error']} Exception uploading {file_name} to SciNet: {e}")
 
@@ -270,8 +276,6 @@ Examples:
     files = get_files_from_args(input_paths, args.verbose)
     if not files:
         print(f"{ICONS['error']} No valid files found to upload.")
-        sys.exit(1)
-
     for service in services:
         if service == "temp.sh":
             upload_to_tempsh(files, args.verbose)
@@ -284,7 +288,9 @@ Examples:
         elif service == "libgen":
             upload_to_libgen(files, args.verbose)
         elif service == "nexus":
-            upload_to_nexus_aaron(files, args.verbose)
+            asyncio.run(upload_to_nexus_aaron(files, args.verbose))
+        elif service == "scinet":
+            upload_to_scinet(files, args.verbose)
         elif service == "scinet":
             upload_to_scinet(files, args.verbose)
 
