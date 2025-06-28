@@ -524,6 +524,8 @@ def main():
         creds = load_credentials(args.credentials)
         email = creds.get("zlib_email")
         password = creds.get("zlib_password")
+        if email and password:
+            print("Credentials loaded from:", args.credentials)
     else:
         creds = load_credentials()
         email = creds.get("zlib_email")
@@ -533,6 +535,8 @@ def main():
             creds = load_credentials()
             email = creds.get("zlib_email")
             password = creds.get("zlib_password")
+        if email and password:
+            print("Credentials loaded from:", CONFIG_FILE)
 
     if args.user_info:
         profile = get_profile(email=email, password=password)
