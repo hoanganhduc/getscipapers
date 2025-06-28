@@ -937,6 +937,29 @@ def login_and_upload_pdf(username, password, pdf_path, headless=False):
     finally:
         print("PDF upload process completed, closing browser.")
         driver.quit()
+        
+def upload_pdf_to_scinet_simple(filepath, verbose=False):
+    """
+    Upload a PDF file to sci-net.xyz with minimal arguments.
+
+    Args:
+        filepath (str): Path to the PDF file to upload.
+        verbose (bool): If True, enable verbose debug output.
+
+    Returns:
+        bool: True if upload succeeded, False otherwise.
+    """
+    global VERBOSE
+    old_verbose = VERBOSE
+    VERBOSE = verbose
+    try:
+        # Prompt for username/password if not set
+        username = USERNAME or input("Sci-Net Username: ").strip()
+        password = PASSWORD or getpass.getpass("Sci-Net Password: ")
+        result = login_and_upload_pdf(username, password, filepath, headless=True)
+        return result
+    finally:
+        VERBOSE = old_verbose
 
 def login_and_upload_directory_pdfs(username, password, directory_path, recursive=False, headless=False):
     """

@@ -2,12 +2,10 @@ import sys
 import os
 import argparse
 import subprocess
-from . import getpapers, libgen, nexus
+import requests
 
-"""upload.py - A script to upload files to various services like temp.sh, bashupload.com, Google Drive, and Dropbox.
-This script allows users to upload files or directories to specified services and provides shareable links."""
+from . import getpapers, libgen, nexus, scinet
 
-# Icons for prettier messages
 ICONS = {
     'info': 'ℹ️',
     'success': '✅',
@@ -19,10 +17,12 @@ ICONS = {
     'sync': '🔄',
 }
 
-def get_files_from_args(paths):
+def get_files_from_args(paths, verbose=False):
     files = []
     for path in paths:
         if os.path.isdir(path):
+            if verbose:
+                print(f"{ICONS['info']} Scanning directory: {path}")
             for entry in os.listdir(path):
                 full_path = os.path.join(path, entry)
                 if os.path.isfile(full_path):
@@ -30,14 +30,16 @@ def get_files_from_args(paths):
         elif os.path.isfile(path):
             files.append(path)
         else:
-            print(f"{ICONS['warning']} Warning: {path} is not a valid file or directory, skipping.")
+            if verbose:
+                print(f"{ICONS['warning']} Warning: {path} is not a valid file or directory, skipping.")
     return files
 
-def upload_to_tempsh(files):
+def upload_to_tempsh(files, verbose=False):
     import requests
     for file_path in files:
         file_name = os.path.basename(file_path)
-        print(f"{ICONS['upload']} Uploading {file_name} to temp.sh...")
+        if verbose:
+            print(f"{ICONS['upload']} Uploading {file_name} to temp.sh...")
         with open(file_path, "rb") as f:
             files_param = {'file': (file_name, f)}
             resp = requests.post(
@@ -49,11 +51,11 @@ def upload_to_tempsh(files):
         else:
             print(f"{ICONS['error']} Failed to upload {file_name} to temp.sh: {resp.text}")
 
-def upload_to_bashupload(files):
-    import requests
+def upload_to_bashupload(files, verbose=False):
     for file_path in files:
         file_name = os.path.basename(file_path)
-        print(f"{ICONS['upload']} Uploading {file_name} to bashupload.com...")
+        if verbose:
+            print(f"{ICONS['upload']} Uploading {file_name} to bashupload.com...")
         with open(file_path, "rb") as f:
             files_param = {'file': (file_name, f)}
             resp = requests.post(
@@ -66,7 +68,6 @@ def upload_to_bashupload(files):
             print(f"{ICONS['error']} Failed to upload {file_name} to bashupload.com: {resp.text}")
 
 def run_command(command, verbose=False):
-    """Run a shell command and return its output"""
     if verbose:
         print(f"{ICONS['info']} Executing: {' '.join(command)}")
     try:
@@ -76,20 +77,20 @@ def run_command(command, verbose=False):
         return result.stdout
     except subprocess.CalledProcessError as e:
         print(f"{ICONS['error']} Error executing command: {' '.join(command)}")
-        print(f"{ICONS['error']} Error message: {e.stderr}")
+        if verbose:
+            print(f"{ICONS['error']} Error message: {e.stderr}")
         sys.exit(1)
 
 def upload_to_gdrive(files, remote_path=None, verbose=False):
-    """Sync files to Google Drive using rclone and print shareable links."""
-    print(f"{ICONS['info']} Note: This function requires rclone to be installed and configured with your Google account.")
-    print(f"{ICONS['info']} See https://rclone.org/drive/ for setup instructions.")
+    if verbose:
+        print(f"{ICONS['info']} Note: This function requires rclone to be installed and configured with your Google account.")
+        print(f"{ICONS['info']} See https://rclone.org/drive/ for setup instructions.")
     for file_path in files:
         if verbose:
             print(f"{ICONS['check']} Checking if {file_path} exists...")
         if not os.path.exists(file_path):
             print(f"{ICONS['error']} Error: {file_path} does not exist")
             continue
-        # If no remote path is specified, use the basename of the local path
         if remote_path is None:
             remote = os.path.basename(file_path)
             if verbose:
@@ -97,39 +98,36 @@ def upload_to_gdrive(files, remote_path=None, verbose=False):
         else:
             remote = remote_path
         destination = f"gdrive:{remote}"
-        print(f"{ICONS['sync']} Syncing {file_path} to Google Drive as {remote}...")
-        print(f"{ICONS['warning']} Warning: Files/folders in destination that don't exist in source will be deleted.")
+        if verbose:
+            print(f"{ICONS['sync']} Syncing {file_path} to Google Drive as {remote}...")
+            print(f"{ICONS['warning']} Warning: Files/folders in destination that don't exist in source will be deleted.")
         run_command(["rclone", "sync", file_path, destination, "--progress"], verbose)
         if verbose:
             print(f"{ICONS['success']} Sync to {destination} completed")
-        # Share the file/folder and get the link
         shareable_link = share_gdrive_item(destination, verbose)
         print(f"{ICONS['success']} Upload complete!")
         print(f"{ICONS['link']} Shareable link: {shareable_link}")
 
 def share_gdrive_item(gdrive_path, verbose=False):
-    """Share a Google Drive item and return the shareable link"""
-    # Remove 'gdrive:' prefix if present
     gdrive_path = gdrive_path.replace("gdrive:", "", 1)
     if verbose:
         print(f"{ICONS['info']} Preparing to share: {gdrive_path}")
-    # Create a shareable link
     command = ["rclone", "link", f"gdrive:{gdrive_path}"]
-    print(f"{ICONS['link']} Creating shareable link for {gdrive_path}...")
+    if verbose:
+        print(f"{ICONS['link']} Creating shareable link for {gdrive_path}...")
     shareable_link = run_command(command, verbose).strip()
     return shareable_link
 
 def upload_to_dropbox(files, remote_path=None, verbose=False):
-    """Sync files to Dropbox using rclone and print shareable links."""
-    print(f"{ICONS['info']} Note: This function requires rclone to be installed and configured with your Dropbox account.")
-    print(f"{ICONS['info']} See https://rclone.org/dropbox/ for setup instructions.")
+    if verbose:
+        print(f"{ICONS['info']} Note: This function requires rclone to be installed and configured with your Dropbox account.")
+        print(f"{ICONS['info']} See https://rclone.org/dropbox/ for setup instructions.")
     for file_path in files:
         if verbose:
             print(f"{ICONS['check']} Checking if {file_path} exists...")
         if not os.path.exists(file_path):
             print(f"{ICONS['error']} Error: {file_path} does not exist")
             continue
-        # If no remote path is specified, use the basename of the local path
         if remote_path is None:
             remote = os.path.basename(file_path)
             if verbose:
@@ -137,35 +135,31 @@ def upload_to_dropbox(files, remote_path=None, verbose=False):
         else:
             remote = remote_path
         destination = f"dropbox:{remote}"
-        print(f"{ICONS['sync']} Syncing {file_path} to Dropbox as {remote}...")
-        print(f"{ICONS['warning']} Warning: Files/folders in destination that don't exist in source will be deleted.")
+        if verbose:
+            print(f"{ICONS['sync']} Syncing {file_path} to Dropbox as {remote}...")
+            print(f"{ICONS['warning']} Warning: Files/folders in destination that don't exist in source will be deleted.")
         run_command(["rclone", "sync", file_path, destination, "--progress"], verbose)
         if verbose:
             print(f"{ICONS['success']} Sync to {destination} completed")
-        # Share the file/folder and get the link
         shareable_link = share_dropbox_item(destination, verbose)
         print(f"{ICONS['success']} Upload complete!")
         print(f"{ICONS['link']} Shareable link: {shareable_link}")
 
 def share_dropbox_item(dropbox_path, verbose=False):
-    """Share a Dropbox item and return the shareable link"""
-    # Remove 'dropbox:' prefix if present
     dropbox_path = dropbox_path.replace("dropbox:", "", 1)
     if verbose:
         print(f"{ICONS['info']} Preparing to share: {dropbox_path}")
-    # Create a shareable link
     command = ["rclone", "link", f"dropbox:{dropbox_path}"]
-    print(f"{ICONS['link']} Creating shareable link for {dropbox_path}...")
+    if verbose:
+        print(f"{ICONS['link']} Creating shareable link for {dropbox_path}...")
     shareable_link = run_command(command, verbose).strip()
     return shareable_link
 
-def upload_to_libgen(files):
-    """
-    Upload files to LibGen using the libgen module.
-    """
+def upload_to_libgen(files, verbose=False):
     for file_path in files:
         file_name = os.path.basename(file_path)
-        print(f"{ICONS['upload']} Uploading {file_name} to LibGen...")
+        if verbose:
+            print(f"{ICONS['upload']} Uploading {file_name} to LibGen...")
         try:
             result = libgen.upload_and_register_to_libgen(filepath=file_path)
             if result.get("success"):
@@ -175,27 +169,62 @@ def upload_to_libgen(files):
         except Exception as e:
             print(f"{ICONS['error']} Exception uploading {file_name} to LibGen: {e}")
 
+def upload_to_nexus_aaron(files, verbose=False):
+    for file_path in files:
+        file_name = os.path.basename(file_path)
+        if verbose:
+            print(f"{ICONS['upload']} Uploading {file_name} to nexus_aaron bot...")
+        try:
+            result = nexus.simple_upload_to_nexus_aaron(file_path)
+            if result.get("success"):
+                print(f"{ICONS['success']} {file_name} uploaded to nexus_aaron: {ICONS['link']} {result.get('url', 'No URL returned')}")
+            else:
+                print(f"{ICONS['error']} Failed to upload {file_name} to nexus_aaron: {result.get('error', 'Unknown error')}")
+        except Exception as e:
+            print(f"{ICONS['error']} Exception uploading {file_name} to nexus_aaron: {e}")
+
+def upload_to_scinet(files, verbose=False):
+    for file_path in files:
+        if not file_path.lower().endswith('.pdf'):
+            if verbose:
+                print(f"{ICONS['warning']} Skipping non-PDF file: {os.path.basename(file_path)}")
+            continue
+        file_name = os.path.basename(file_path)
+        if verbose:
+            print(f"{ICONS['upload']} Uploading {file_name} to SciNet...")
+        try:
+            result = scinet.upload_pdf_to_scinet_simple(file_path)
+            if result.get("success"):
+                print(f"{ICONS['success']} {file_name} uploaded to SciNet: {ICONS['link']} {result.get('url', 'No URL returned')}")
+            else:
+                print(f"{ICONS['error']} Failed to upload {file_name} to SciNet: {result.get('error', 'Unknown error')}")
+        except Exception as e:
+            print(f"{ICONS['error']} Exception uploading {file_name} to SciNet: {e}")
+
 def main():
-    # Get the parent package name from the module's __name__
     parent_package = __name__.split('.')[0] if '.' in __name__ else None
 
     if parent_package is None:
         program_name = 'upload'
     elif '_' in parent_package:
-        # If the parent package has an underscore, strip it
         parent_package = parent_package[:parent_package.index('_')]
         program_name = f"{parent_package} upload"
         
     parser = argparse.ArgumentParser(
         prog=program_name, 
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Upload files to temp.sh, bashupload.com, Google Drive, or Dropbox",
+        description="Upload files to temp.sh, bashupload.com, Google Drive, Dropbox, LibGen, Nexus, or SciNet",
         epilog="""
 Examples:
   %(prog)s myfile.txt --service temp.sh
   %(prog)s "folder1,file2.pdf" --service bashupload.com
   %(prog)s myfolder --service gdrive --remote-path backup/myfolder
   %(prog)s file.txt --service dropbox --remote-path shared/file.txt -v
+  %(prog)s paper.pdf --service libgen
+  %(prog)s file.pdf --service nexus
+  %(prog)s paper.pdf --service scinet
+  %(prog)s file.pdf --service temp.sh,libgen
+  %(prog)s file.pdf --service temp.sh libgen
 """
     )
     parser.add_argument(
@@ -204,36 +233,55 @@ Examples:
     )
     parser.add_argument(
         "--service",
-        choices=["temp.sh", "bashupload.com", "gdrive", "dropbox"],
-        default="temp.sh",
-        help="Choose upload service (default: temp.sh)"
+        nargs="+",
+        required=True,
+        help="Choose one or more upload services (comma or space separated). Options: temp.sh, bashupload.com, gdrive, dropbox, libgen, nexus, scinet"
     )
     parser.add_argument(
         "--remote-path",
         help="Destination path in Google Drive/Dropbox (only for gdrive/dropbox service)"
     )
     parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Print detailed progress information (gdrive/dropbox only)"
+        "-v", "--verbose", action="store_true", help="Print detailed progress information"
     )
     args = parser.parse_args()
 
-    if args.service in ["gdrive", "dropbox"]:
+    # Flatten and normalize service list (support comma or space separated)
+    raw_services = []
+    for s in args.service:
+        raw_services.extend([x.strip() for x in s.split(",") if x.strip()])
+    services = [s.lower() for s in raw_services]
+
+    valid_services = {"temp.sh", "bashupload.com", "gdrive", "dropbox", "libgen", "nexus", "scinet"}
+    for s in services:
+        if s not in valid_services:
+            print(f"{ICONS['error']} Invalid service: {s}")
+            sys.exit(1)
+
+    if any(s in ["gdrive", "dropbox"] for s in services) and args.verbose:
         print(f"{ICONS['info']} Note: Google Drive and Dropbox services require rclone to be installed and configured. See https://rclone.org/ for instructions.")
 
     input_paths = [p.strip() for p in args.paths.split(",") if p.strip()]
-    files = get_files_from_args(input_paths)
+    files = get_files_from_args(input_paths, args.verbose)
     if not files:
         print(f"{ICONS['error']} No valid files found to upload.")
         sys.exit(1)
 
-    if args.service == "temp.sh":
-        upload_to_tempsh(files)
-    elif args.service == "bashupload.com":
-        upload_to_bashupload(files)
-    elif args.service == "gdrive":
-        upload_to_gdrive(files, args.remote_path, args.verbose)
-    elif args.service == "dropbox":
-        upload_to_dropbox(files, args.remote_path, args.verbose)
+    for service in services:
+        if service == "temp.sh":
+            upload_to_tempsh(files, args.verbose)
+        elif service == "bashupload.com":
+            upload_to_bashupload(files, args.verbose)
+        elif service == "gdrive":
+            upload_to_gdrive(files, args.remote_path, args.verbose)
+        elif service == "dropbox":
+            upload_to_dropbox(files, args.remote_path, args.verbose)
+        elif service == "libgen":
+            upload_to_libgen(files, args.verbose)
+        elif service == "nexus":
+            upload_to_nexus_aaron(files, args.verbose)
+        elif service == "scinet":
+            upload_to_scinet(files, args.verbose)
 
 if __name__ == "__main__":
     main()

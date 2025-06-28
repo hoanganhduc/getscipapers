@@ -3837,6 +3837,58 @@ async def upload_file_to_nexus_aaron(api_id, api_hash, phone_number, file_path, 
     
     return upload_result
 
+async def simple_upload_to_nexus_aaron(file_path, verbose=False):
+    """
+    Upload a file to the @nexus_aaron bot with minimal input.
+    If the file is a PDF, try to extract the DOI using getpapers.
+    Args:
+        file_path (str): Path to the file to upload.
+        verbose (bool): If True, enable verbose output.
+    Returns:
+        dict: Upload result.
+    """
+    # Optionally enable verbose mode and logging
+    if verbose:
+        setup_logging(DEFAULT_LOG_FILE, verbose=True)
+        info_print("Verbose mode enabled for simple upload.")
+
+    # Load credentials from default location
+    if not os.path.exists(CREDENTIALS_FILE):
+        error_print("Credentials file not found. Please run the script interactively to set up credentials.")
+        return {"error": "Credentials file not found."}
+    creds = None
+    try:
+        with open(CREDENTIALS_FILE, "r") as f:
+            creds = json.load(f)
+    except Exception as e:
+        error_print(f"Failed to load credentials: {e}")
+        return {"error": f"Failed to load credentials: {e}"}
+    api_id = creds.get("tg_api_id")
+    api_hash = creds.get("tg_api_hash")
+    phone = creds.get("phone")
+    # Use default session file and proxy if available
+    session_file = SESSION_FILE
+    proxy = await decide_proxy_usage(TG_API_ID, TG_API_HASH, PHONE, SESSION_FILE, DEFAULT_PROXY_FILE)
+
+    # If file is a PDF, try to extract DOI for caption
+    caption = ""
+    if file_path.lower().endswith(".pdf"):
+        try:
+            doi = getpapers.extract_dois_from_pdf(file_path)
+            if doi:
+                caption = f"DOI: {doi}"
+                info_print(f"Extracted DOI from PDF: {doi}")
+        except Exception as e:
+            debug_print(f"Could not extract DOI from PDF: {e}")
+
+    # Call upload_file_to_nexus_aaron
+    result = await upload_file_to_nexus_aaron(
+        api_id, api_hash, phone, file_path, caption, session_file, proxy
+    )
+    if verbose:
+        format_nexus_aaron_upload_result(result)
+    return result
+
 def format_nexus_aaron_upload_result(upload_result):
     """Format the nexus_aaron upload result with specialized formatting"""
     output = []
