@@ -734,10 +734,10 @@ def extract_dois_from_file(input_file: str):
     except Exception as e:
         print(f"Failed to write DOIs to output file: {e}")
 
-def extract_dois_from_pdf(pdf_file: str) -> list:
+def extract_doi_from_pdf(pdf_file: str) -> str:
     """
-    Extract DOI numbers from a PDF file.
-    Returns a list containing only the first valid DOI found in the PDF, or an empty list if none found.
+    Extract the first DOI found in a PDF file.
+    Returns the DOI string if found, else None.
     """
     try:
         with open(pdf_file, "rb") as f:
@@ -750,10 +750,10 @@ def extract_dois_from_pdf(pdf_file: str) -> list:
                     continue
     except Exception as e:
         print(f"Failed to read PDF file: {e}")
-        return []
+        return None
 
     dois = extract_dois_from_text(text)
-    return [dois[0]] if dois else []
+    return dois[0] if dois else None
 
 async def search_documents(query: str, limit: int = 1):
     """
