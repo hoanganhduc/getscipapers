@@ -21,18 +21,19 @@ ICONS = {
 def get_files_from_args(paths, verbose=False):
     files = []
     for path in paths:
-        if os.path.isdir(path):
+        abs_path = os.path.abspath(path)
+        if os.path.isdir(abs_path):
             if verbose:
-                print(f"{ICONS['info']} Scanning directory: {path}")
-            for entry in os.listdir(path):
-                full_path = os.path.join(path, entry)
+                print(f"{ICONS['info']} Scanning directory: {abs_path}")
+            for entry in os.listdir(abs_path):
+                full_path = os.path.join(abs_path, entry)
                 if os.path.isfile(full_path):
-                    files.append(full_path)
-        elif os.path.isfile(path):
-            files.append(path)
+                    files.append(os.path.abspath(full_path))
+        elif os.path.isfile(abs_path):
+            files.append(abs_path)
         else:
             if verbose:
-                print(f"{ICONS['warning']} Warning: {path} is not a valid file or directory, skipping.")
+                print(f"{ICONS['warning']} Warning: {abs_path} is not a valid file or directory, skipping.")
     return files
 
 def upload_to_tempsh(files, verbose=False):
