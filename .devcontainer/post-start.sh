@@ -26,7 +26,7 @@ declare -A volume_map=(
 )
 
 for volume_name in "${!volume_map[@]}"; do
-  source="$HOME/${volume_map[$volume_name]}"
+  source="/workspaces/${volume_map[$volume_name]}"
   mkdir -p "$source"
   docker volume create "$volume_name" \
     --driver "local" \
@@ -56,8 +56,8 @@ sudo ufw allow 5001
 
 # Set up environment variables for IPFS data and staging directories
 echo "Setting up IPFS data and staging directories..."
-export ipfs_staging="$HOME/.ipfs"
-export ipfs_data="$HOME/.ipfs"
+export ipfs_staging="/workspaces/.ipfs"
+export ipfs_data="/workspaces/.ipfs"
 
 # Start the IPFS Kubo container with volume mounts and port mappings
 echo "Starting IPFS Kubo container..."
