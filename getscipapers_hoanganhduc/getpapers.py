@@ -2021,6 +2021,13 @@ async def download_from_anna_archive(doi: str, download_folder: str = DEFAULT_DO
     return False
 
 async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER, db: str = "all", no_download: bool = False):
+    # Extract DOI from input if possible (handles cases where input is a URL or contains a DOI)
+    dois = extract_dois_from_text(doi)
+    if dois:
+        doi = dois[0]
+    else:
+        print(f"Input does not appear to be a valid DOI or DOI-containing string: {doi}")
+        return False
     vprint(f"Starting download_by_doi for DOI: {doi}, folder: {download_folder}, db: {db}, no_download: {no_download}")
     results = await search_documents(doi, 1)
     
