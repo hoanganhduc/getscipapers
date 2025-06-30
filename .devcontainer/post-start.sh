@@ -28,6 +28,7 @@ declare -A volume_map=(
 for volume_name in "${!volume_map[@]}"; do
   source="/workspaces/${volume_map[$volume_name]}"
   mkdir -p "$source"
+  sudo chown -R 1000:1000 "$source"  # Ensure the directory is owned by user ID 1000 (vscode user)
   docker volume create "$volume_name" \
     --driver "local" \
     --opt "type=none" \
