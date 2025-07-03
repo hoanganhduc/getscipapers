@@ -737,7 +737,7 @@ def extract_dois_from_file(input_file: str):
 def extract_doi_from_pdf(pdf_file: str) -> str:
     """
     Extract the first DOI found in a PDF file.
-    Returns the DOI string if found, else None.
+    Returns the DOI string if found and valid (resolves at doi.org), else None.
     """
     try:
         with open(pdf_file, "rb") as f:
@@ -753,7 +753,22 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
         return None
 
     dois = extract_dois_from_text(text)
-    return dois[0] if dois else None
+    if not dois:
+        return None
+
+    doi = dois[0]
+    # Check if DOI resolves at doi.org
+    try:
+        url = f"https://doi.org/{doi}"
+        resp = requests.head(url, allow_redirects=True, timeout=10)
+        if resp.status_code in (200, 301, 302):
+            return doi
+        else:
+            print(f"DOI {doi} does not resolve at doi.org (HTTP {resp.status_code})")
+            return None
+    except Exception as e:
+        print(f"Error checking DOI at doi.org: {e}")
+        return None
 
 async def search_documents(query: str, limit: int = 1):
     """
