@@ -703,8 +703,11 @@ def extract_dois_from_text(text: str) -> list:
     for doi in unique_dois:
         try:
             url = f"https://doi.org/{doi}"
-            resp = requests.head(url, allow_redirects=True, timeout=10)
+            resp = requests.head(url, allow_redirects=True, timeout=20)
             if resp.status_code in (200, 301, 302):
+                valid_dois.append(doi)
+            elif resp.status_code == 403:
+                vprint(f"DOI {doi} returned 403 Forbidden at doi.org, treating as valid (may be rate-limited)")
                 valid_dois.append(doi)
             else:
                 vprint(f"DOI {doi} does not resolve at doi.org (HTTP {resp.status_code})")
