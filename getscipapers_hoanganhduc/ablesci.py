@@ -993,7 +993,7 @@ def download_file_from_fulfilled_request(detail_url, download_folder=None, headl
     First navigates to the detail page to extract the actual download URL,
     then downloads the file (can be PDF or other formats).
     Only handles files with extensions like pdf, txt, mp4, pptx, doc, docx, xlsx, and similar.
-    Renames the downloaded file to <request_article_title>.<extension>.
+    Renames the downloaded file to <request_article_title>.<extension>, but strips to first 3-4 words if too long.
     
     Args:
         detail_url: URL of the fulfilled request detail page
@@ -1141,6 +1141,12 @@ def download_file_from_fulfilled_request(detail_url, download_folder=None, headl
         # Clean up title for filesystem
         safe_title = re.sub(r'[\\/*?:"<>|]', '_', article_title)
         safe_title = safe_title.strip()
+        # If title is too long, strip to first 3-4 words
+        max_title_len = 60
+        if len(safe_title) > max_title_len:
+            words = safe_title.split()
+            safe_title = '_'.join(words[:4]) if len(words) >= 4 else '_'.join(words)
+            safe_title = safe_title[:max_title_len]
         # Get list of existing files before download
         existing_files = set(os.listdir(abs_download_path))
         debug_print(f"Found {len(existing_files)} existing files")
