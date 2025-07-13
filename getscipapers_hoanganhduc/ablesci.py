@@ -993,6 +993,7 @@ def download_file_from_fulfilled_request(detail_url, download_folder=None, headl
     First navigates to the detail page to extract the actual download URL,
     then downloads the file (can be PDF or other formats).
     Only handles files with extensions like pdf, txt, mp4, pptx, doc, docx, xlsx, and similar.
+    Renames the downloaded file to <request_article_title>.<extension>.
     
     Args:
         detail_url: URL of the fulfilled request detail page
@@ -1001,7 +1002,6 @@ def download_file_from_fulfilled_request(detail_url, download_folder=None, headl
     """
     debug_print(f"Starting to download file from: {detail_url}")
     
-    # Define allowed file extensions
     allowed_extensions = {
         '.pdf', '.txt', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx',
         '.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm',
@@ -1011,38 +1011,28 @@ def download_file_from_fulfilled_request(detail_url, download_folder=None, headl
         '.rtf', '.odt', '.odp', '.ods'
     }
     
-    # Set up download folder
     if download_folder is None:
         download_folder = DEFAULT_DOWNLOAD_FOLDER
-    
-    # Ensure download folder exists
     os.makedirs(download_folder, exist_ok=True)
     abs_download_path = os.path.abspath(download_folder)
     print(f"Download directory: {abs_download_path}")
     debug_print(f"Download folder set to: {abs_download_path}")
     
-    # Retry logic for driver creation and download
     max_retries = 3
     for attempt in range(max_retries):
         debug_print(f"Attempt {attempt + 1} of {max_retries}")
-        
-        # Create Chrome driver with download preferences
         options = webdriver.ChromeOptions()
         if headless:
             options.add_argument('--headless=new')
             options.add_argument('--disable-gpu')
-        
-        # Configure download preferences
         prefs = {
             "download.default_directory": abs_download_path,
             "download.prompt_for_download": False,
             "download.directory_upgrade": True,
             "safebrowsing.enabled": True,
-            "plugins.always_open_pdf_externally": True  # Prevent PDF from opening in browser
+            "plugins.always_open_pdf_externally": True
         }
         options.add_experimental_option("prefs", prefs)
-        
-        # Suppress Chrome messages and improve stability
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-logging')
@@ -1060,14 +1050,11 @@ def download_file_from_fulfilled_request(detail_url, download_folder=None, headl
         options.add_argument("--disable-background-timer-throttling")
         options.add_argument("--disable-backgrounding-occluded-windows")
         options.add_argument("--disable-renderer-backgrounding")
-        
-        # Set page load and script timeouts
         options.page_load_strategy = 'normal'
-        
         try:
             driver = webdriver.Chrome(options=options)
-            driver.set_page_load_timeout(180)  # 3 minutes timeout
-            driver.implicitly_wait(30)  # 30 seconds implicit wait
+            driver.set_page_load_timeout(180)
+            driver.implicitly_wait(30)
             debug_print("Chrome driver created with download preferences")
             break
         except Exception as e:
@@ -1075,13 +1062,10 @@ def download_file_from_fulfilled_request(detail_url, download_folder=None, headl
             if attempt == max_retries - 1:
                 print(f"Failed to create Chrome driver after {max_retries} attempts: {e}")
                 return False
-            time.sleep(5)  # Wait before retry
-    
+            time.sleep(5)
     try:
         debug_print("Navigating to homepage to load cache")
         driver.get('https://www.ablesci.com')
-        
-        # Load cache
         if os.path.exists(CACHE_FILE):
             debug_print(f"Loading cache from {CACHE_FILE}")
             with open(CACHE_FILE, 'rb') as f:
@@ -1091,140 +1075,115 @@ def download_file_from_fulfilled_request(detail_url, download_folder=None, headl
             debug_print(f"Loaded {len(cache)} cache")
         else:
             debug_print("No cache file found")
-        
-        # Navigate to the detail page first
         debug_print(f"Navigating to detail page: {detail_url}")
         driver.get(detail_url)
-        
         wait = WebDriverWait(driver, 10)
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'body')))
-        time.sleep(3)  # Wait for page to fully load
-        
-        # Extract download URL and file size from the page
+        time.sleep(3)
+        # Extract download link and file size
         debug_print("Looking for download link and file size")
         download_link = driver.find_element(By.CSS_SELECTOR, 'a.able-link.name[href*="/assist/download"]')
         download_href = download_link.get_attribute('href')
         filename = download_link.text.strip()
-        
-        # Check if filename has an allowed extension
         file_extension = os.path.splitext(filename)[1].lower()
         if file_extension not in allowed_extensions:
             print(f"Skipping file with unsupported extension: {filename} ({file_extension})")
             print(f"Supported extensions: {', '.join(sorted(allowed_extensions))}")
             return False
-        
         debug_print(f"File has supported extension: {file_extension}")
-        
-        # Extract file size from the span.size element
         file_size_text = "Unknown"
         file_size_mb = 0
         try:
             size_span = driver.find_element(By.CSS_SELECTOR, 'span.size')
             file_size_text = size_span.text.strip()
             debug_print(f"Extracted file size: {file_size_text}")
-            
-            # Parse file size to estimate download time
-            # Extract numeric value and unit (e.g., "12.5 MB", "2.3 GB", "567 KB")
             size_match = re.search(r'(\d+\.?\d*)\s*(MB|GB|KB|mb|gb|kb)', file_size_text)
             if size_match:
                 size_value = float(size_match.group(1))
                 size_unit = size_match.group(2).upper()
-                
-                # Convert to MB for calculation
                 if size_unit == 'GB':
                     file_size_mb = size_value * 1024
                 elif size_unit == 'MB':
                     file_size_mb = size_value
                 elif size_unit == 'KB':
                     file_size_mb = size_value / 1024
-                
                 debug_print(f"Parsed file size: {file_size_mb:.2f} MB")
-            
         except Exception as e:
             debug_print(f"Could not extract file size: {e}")
-        
-        # Calculate max wait time based on file size
-        # Assume average download speed of 1 MB/s and add buffer
         if file_size_mb > 0:
-            # Base time: file_size_mb seconds + 50% buffer, minimum 60s, maximum 600s (10 minutes)
             max_wait_time = max(60, min(600, int(file_size_mb * 1.5)))
         else:
-            max_wait_time = 120  # Default 2 minutes if size unknown
-        
+            max_wait_time = 120
         debug_print(f"Setting max wait time to {max_wait_time} seconds based on file size")
         print(f"File size: {file_size_text}, estimated max wait time: {max_wait_time} seconds")
-        
         if not download_href:
             print("Could not find download link on the detail page")
             return False
-        
-        # Extract the id parameter from the href
         debug_print(f"Raw download href: {download_href}")
-        
-        # Parse the id from href like "/assist/download?id=8Q7a3j"
         if '?id=' in download_href:
             download_id = download_href.split('?id=')[1]
-            # Remove any additional parameters after the id
             if '&' in download_id:
                 download_id = download_id.split('&')[0]
         else:
             print("Could not find id parameter in download link")
             return False
-            
-        # Construct the full download URL
         download_url = f"https://www.ablesci.com/assist/download?id={download_id}"
-        
         debug_print(f"Extracted download ID: {download_id}")
         debug_print(f"Constructed download URL: {download_url}")
         debug_print(f"Filename: {filename}")
-        
+        # Extract article title for renaming
+        try:
+            title_elem = driver.find_element(By.CSS_SELECTOR, '.assist-detail .assist-title, .assist-detail .fly-detail-title')
+            article_title = title_elem.text.strip()
+        except Exception:
+            # Fallback: try to extract from page title or use filename without extension
+            article_title = os.path.splitext(filename)[0]
+        # Clean up title for filesystem
+        safe_title = re.sub(r'[\\/*?:"<>|]', '_', article_title)
+        safe_title = safe_title.strip()
         # Get list of existing files before download
-        existing_files = set()
-        for file in os.listdir(abs_download_path):
-            existing_files.add(file)
+        existing_files = set(os.listdir(abs_download_path))
         debug_print(f"Found {len(existing_files)} existing files")
-        
-        # Navigate to the download URL - this will trigger the download automatically
         debug_print(f"Navigating to download URL: {download_url}")
         driver.get(download_url)
-        
-        # Wait for download to complete
         debug_print(f"Waiting for download to complete (max {max_wait_time}s)")
-        check_interval = 2  # Check every 2 seconds
+        check_interval = 2
         waited_time = 0
-        
         downloaded_file = None
         while waited_time < max_wait_time:
             time.sleep(check_interval)
             waited_time += check_interval
-            
-            # Check for new files with allowed extensions
-            current_files = set()
-            for file in os.listdir(abs_download_path):
-                current_files.add(file)
-            
+            current_files = set(os.listdir(abs_download_path))
             new_files = current_files - existing_files
             if new_files:
-                # Check if any new file is not a .crdownload and has allowed extension
                 complete_files = []
                 for f in new_files:
                     if not f.endswith('.crdownload'):
                         file_ext = os.path.splitext(f)[1].lower()
                         if file_ext in allowed_extensions:
                             complete_files.append(f)
-                
                 if complete_files:
-                    downloaded_file = complete_files[0]  # Get the first complete file
+                    downloaded_file = complete_files[0]
                     break
-            
-            if waited_time % 10 == 0:  # Print progress every 10 seconds
+            if waited_time % 10 == 0:
                 debug_print(f"Waiting for download... ({waited_time}s/{max_wait_time}s)")
-        
         if downloaded_file:
             downloaded_path = os.path.join(abs_download_path, downloaded_file)
             actual_size = os.path.getsize(downloaded_path)
             file_extension = os.path.splitext(downloaded_file)[1].lower()
-            print(f"File downloaded successfully: {downloaded_path}")
+            # Rename file to <request_article_title>.<extension>
+            new_filename = f"{safe_title}{file_extension}"
+            new_path = os.path.join(abs_download_path, new_filename)
+            try:
+                if downloaded_path != new_path:
+                    os.rename(downloaded_path, new_path)
+                    print(f"File renamed to: {new_path}")
+                else:
+                    print(f"File already named: {new_path}")
+            except Exception as e:
+                print(f"Failed to rename file: {e}")
+                new_path = downloaded_path
+            print(f"File downloaded successfully: {new_path}")
             print(f"File type: {file_extension if file_extension else 'Unknown'}")
             print(f"Actual file size: {actual_size} bytes ({actual_size/1024/1024:.2f} MB)")
             return True
@@ -1232,7 +1191,6 @@ def download_file_from_fulfilled_request(detail_url, download_folder=None, headl
             print(f"Download timeout or failed after {max_wait_time} seconds")
             print(f"Download URL: {download_url}")
             return False
-            
     except Exception as e:
         debug_print(f"Error downloading file: {e}")
         print(f"Failed to download file from: {detail_url} ({e})")
