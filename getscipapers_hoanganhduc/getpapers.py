@@ -1938,7 +1938,7 @@ async def download_from_nexus_bot(doi: str, download_folder: str = DEFAULT_DOWNL
 async def download_from_scihub(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER):
     safe_doi = doi.replace('/', '_')
     filename = f"{safe_doi}_scihub.pdf"
-    filepath = f"{download_folder}/{filename}"
+    filepath = os.path.join(download_folder, filename)
     sci_hub_domains = [
         "https://sci-hub.se",
         "https://sci-hub.st",
@@ -1949,6 +1949,13 @@ async def download_from_scihub(doi: str, download_folder: str = DEFAULT_DOWNLOAD
         "https://sci-net.ru"
     ]
     for domain in sci_hub_domains:
+        # Use different filename for sci-net domains
+        if "sci-net" in domain:
+            filename = f"{safe_doi}_scinet.pdf"
+            filepath = os.path.join(download_folder, filename)
+        else:
+            filename = f"{safe_doi}_scihub.pdf"
+            filepath = os.path.join(download_folder, filename)
         sci_hub_url = f"{domain}/{doi}"
         vprint(f"Trying Sci-Hub domain: {sci_hub_url}")
         try:
@@ -1970,7 +1977,7 @@ async def download_from_scihub(doi: str, download_folder: str = DEFAULT_DOWNLOAD
                                 if pdf_resp.status == 200:
                                     with open(filepath, "wb") as f:
                                         f.write(await pdf_resp.read())
-                                    print(f"Downloaded PDF from Sci-Hub: {filepath}")
+                                    print(f"Downloaded PDF from {domain}: {filepath}")
                                     return True
         except Exception as e:
             print(f"Error accessing Sci-Hub at {domain}: {e}")
@@ -1979,7 +1986,7 @@ async def download_from_scihub(doi: str, download_folder: str = DEFAULT_DOWNLOAD
 async def download_from_anna_archive(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER):
     safe_doi = doi.replace('/', '_')
     filename = f"{safe_doi}_anna.pdf"
-    filepath = f"{download_folder}/{filename}"
+    filepath = os.path.join(download_folder, filename)
     anna_domains = [
         "https://annas-archive.li",
         "https://annas-archive.se",
