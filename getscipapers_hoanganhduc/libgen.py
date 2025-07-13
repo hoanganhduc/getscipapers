@@ -1273,7 +1273,7 @@ def upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbo
             print(f"FTP upload failed: {e}")
         return None
     
-def create_chrome_driver(headless=False, extra_prefs=None):
+def create_chrome_driver(headless=True, extra_prefs=None):
     """
     Create and return a Selenium Chrome WebDriver with default user data directory and options.
     """
@@ -1313,7 +1313,7 @@ def create_chrome_driver(headless=False, extra_prefs=None):
     options.add_argument("--disable-save-password-bubble")
     return webdriver.Chrome(options=options)
 
-def selenium_libgen_login(username="genesis", password="upload", headless=False, verbose=False):
+def selenium_libgen_login(username="genesis", password="upload", headless=True, verbose=False):
     """
     Open Chrome with Selenium, load http://librarian.libgen.gs/librarian.php,
     find and follow the login link if present, and login with phpBB forum settings.
@@ -1439,7 +1439,7 @@ def selenium_libgen_login(username="genesis", password="upload", headless=False,
             driver.quit()
         return False
 
-def selenium_libgen_upload(local_file_path, bib_id, username="genesis", password="upload", headless=False, verbose=False):
+def selenium_libgen_upload(local_file_path, bib_id, username="genesis", password="upload", headless=True, verbose=False):
     """
     Upload a local file to http://librarian.libgen.gs/librarian.php after logging in with Selenium.
     Fills the FTP path in the upload form and clicks the Upload button.
@@ -1783,7 +1783,7 @@ def upload_and_register_to_libgen(filepath, verbose=False):
             bib_id=bib_id,
             username="genesis",
             password="upload",
-            headless=False,
+            headless=True,
             verbose=verbose
         )
         if success:
@@ -1910,7 +1910,7 @@ Examples:
     # Handle login option
     if getattr(args, "login", False):
         print("Attempting to login to LibGen with default credentials...")
-        success = selenium_libgen_login(username="genesis", password="upload", headless=False, verbose=args.verbose)
+        success = selenium_libgen_login(username="genesis", password="upload", headless=True, verbose=args.verbose)
         if success:
             print("✅ Login successful.")
         else:
@@ -1936,7 +1936,7 @@ Examples:
                 bib_id=upload_id,
                 username="genesis",
                 password="upload",
-                headless=False,
+                headless=True,
                 verbose=args.verbose
             )
             if success:
