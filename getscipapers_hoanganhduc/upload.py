@@ -86,28 +86,28 @@ def upload_to_gdrive(files, remote_path=None, verbose=False):
     if verbose:
         print(f"{ICONS['info']} Note: This function requires rclone to be installed and configured with your Google account.")
         print(f"{ICONS['info']} See https://rclone.org/drive/ for setup instructions.")
+    # Ensure 'getscipapers' folder exists in Google Drive root
+    folder_name = "getscipapers"
+    folder_path = f"gdrive:{folder_name}"
+    run_command(["rclone", "mkdir", folder_path], verbose)
     for file_path in files:
         if verbose:
             print(f"{ICONS['check']} Checking if {file_path} exists...")
         if not os.path.exists(file_path):
             print(f"{ICONS['error']} Error: {file_path} does not exist")
             continue
-        if remote_path is None:
-            remote = os.path.basename(file_path)
-            if verbose:
-                print(f"{ICONS['info']} No remote path specified, using: {remote}")
-        else:
-            remote = remote_path
-        destination = f"gdrive:{remote}"
+        # Always upload directly to getscipapers folder, no subfolders
+        remote = os.path.basename(file_path)
+        destination = f"{folder_path}"
         if verbose:
-            print(f"{ICONS['sync']} Syncing {file_path} to Google Drive as {remote}...")
-            print(f"{ICONS['warning']} Warning: Files/folders in destination that don't exist in source will be deleted.")
-        run_command(["rclone", "sync", file_path, destination, "--progress"], verbose)
+            print(f"{ICONS['sync']} Uploading {file_path} to Google Drive folder '{folder_name}' as {remote}...")
+        run_command(["rclone", "copy", file_path, destination, "--progress"], verbose)
         if verbose:
-            print(f"{ICONS['success']} Sync to {destination} completed")
-        shareable_link = share_gdrive_item(destination, verbose)
+            print(f"{ICONS['success']} Upload to {destination} completed")
+        # Share the link to the uploaded file, not the folder
+        shareable_link = share_gdrive_item(f"{folder_name}/{remote}", verbose)
         print(f"{ICONS['success']} Upload complete!")
-        print(f"{ICONS['link']} Shareable link: {shareable_link}")
+        print(f"{ICONS['link']} Shareable link to file: {shareable_link}")
 
 def share_gdrive_item(gdrive_path, verbose=False):
     gdrive_path = gdrive_path.replace("gdrive:", "", 1)
@@ -123,26 +123,25 @@ def upload_to_dropbox(files, remote_path=None, verbose=False):
     if verbose:
         print(f"{ICONS['info']} Note: This function requires rclone to be installed and configured with your Dropbox account.")
         print(f"{ICONS['info']} See https://rclone.org/dropbox/ for setup instructions.")
+    # Ensure 'getscipapers' folder exists in Dropbox root
+    folder_name = "getscipapers"
+    folder_path = f"dropbox:{folder_name}"
+    run_command(["rclone", "mkdir", folder_path], verbose)
     for file_path in files:
         if verbose:
             print(f"{ICONS['check']} Checking if {file_path} exists...")
         if not os.path.exists(file_path):
             print(f"{ICONS['error']} Error: {file_path} does not exist")
             continue
-        if remote_path is None:
-            remote = os.path.basename(file_path)
-            if verbose:
-                print(f"{ICONS['info']} No remote path specified, using: {remote}")
-        else:
-            remote = remote_path
-        destination = f"dropbox:{remote}"
+        # Always upload directly to getscipapers folder, no subfolders
+        remote = os.path.basename(file_path)
+        destination = f"{folder_path}"
         if verbose:
-            print(f"{ICONS['sync']} Syncing {file_path} to Dropbox as {remote}...")
-            print(f"{ICONS['warning']} Warning: Files/folders in destination that don't exist in source will be deleted.")
-        run_command(["rclone", "sync", file_path, destination, "--progress"], verbose)
+            print(f"{ICONS['sync']} Uploading {file_path} to Dropbox folder '{folder_name}' as {remote}...")
+        run_command(["rclone", "copy", file_path, destination, "--progress"], verbose)
         if verbose:
-            print(f"{ICONS['success']} Sync to {destination} completed")
-        shareable_link = share_dropbox_item(destination, verbose)
+            print(f"{ICONS['success']} Upload to {destination} completed")
+        shareable_link = share_dropbox_item(f"{folder_name}/{remote}", verbose)
         print(f"{ICONS['success']} Upload complete!")
         print(f"{ICONS['link']} Shareable link: {shareable_link}")
 
