@@ -626,26 +626,25 @@ def extract_dois_from_text(text: str) -> list:
     """
     Extract DOI numbers from text content.
     Returns a list of unique, valid paper DOIs.
+    Only keeps DOIs that resolve at https://doi.org/<doi> (HTTP 200, 301, 302).
     """
     dois = []
-    
+
     # Extract direct DOIs from text
-    # Common DOI patterns (strict and relaxed), allow brackets in DOI suffix
     doi_patterns = [
-        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',  # Standard DOI
-        r'\b10\.\d{4,9}\s*/\s*[^\s"\'<>#{}()[\],;:?!&]+',  # DOI with spaces around slash
-        r'\bdoi:\s*10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',  # doi: prefix
-        r'\bhttps?://doi\.org/(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',  # DOI in URL
-        r'\bhttps?://dx\.doi\.org/(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',  # dx.doi.org
-        r'\bdoi\s*=\s*["\']?(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',  # BibTeX style
-        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&\]]+',  # Allow closing bracket at end
-        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&\)]+',  # Allow closing parenthesis at end
+        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',
+        r'\b10\.\d{4,9}\s*/\s*[^\s"\'<>#{}()[\],;:?!&]+',
+        r'\bdoi:\s*10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',
+        r'\bhttps?://doi\.org/(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',
+        r'\bhttps?://dx\.doi\.org/(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',
+        r'\bdoi\s*=\s*["\']?(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',
+        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&\]]+',
+        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&\)]+',
     ]
     for pattern in doi_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         if matches:
             if isinstance(matches[0], tuple):
-                # If pattern uses a capturing group, flatten
                 matches = [m[0] for m in matches]
             dois.extend(matches)
 
@@ -655,10 +654,8 @@ def extract_dois_from_text(text: str) -> list:
     # Extract DOIs from URLs
     url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+[^\s<>"{}|\\^`\[\].,;:!?]'
     urls = re.findall(url_pattern, text)
-    
+
     for url in urls:
-        # Skip URLs that already contain DOIs (already extracted above)
-        # Accept both strict and relaxed DOI patterns
         already_has_doi = False
         for pattern in [
             r'10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',
@@ -669,7 +666,7 @@ def extract_dois_from_text(text: str) -> list:
                 break
         if already_has_doi:
             continue
-            
+
         # Handle ScienceDirect URLs with PIIs
         if "sciencedirect.com" in url or "kidney-international.org" in url or "journal.chestnet.org" in url:
             pii_match = re.search(r'/(?:pii|article)/([S][A-Z0-9()-]+)', url, re.IGNORECASE)
@@ -684,27 +681,37 @@ def extract_dois_from_text(text: str) -> list:
             else:
                 vprint(f"No PII found in ScienceDirect URL: {url}")
             continue
-        
+
         # Handle MDPI URLs
         if "mdpi.com" in url:
             mdpi_doi = extract_mdpi_doi_from_url(url)
             if mdpi_doi:
                 dois.append(mdpi_doi)
             continue
-        
+
         # For other URLs, try to fetch and extract DOIs from the page using all patterns
         vprint(f"Checking URL for DOI: {url}")
         for doi_pattern in doi_patterns:
             page_dois = fetch_dois_from_url(url, doi_pattern)
             dois.extend(page_dois)
-    
+
     # Remove duplicates while preserving order
     unique_dois = list(dict.fromkeys(dois))
-    
-    # # # Filter to keep only valid paper DOIs
-    # filtered_dois = filter_paper_dois(unique_dois)
-    
-    return unique_dois
+
+    # Filter: Only keep DOIs that resolve at doi.org (HTTP 200, 301, 302)
+    valid_dois = []
+    for doi in unique_dois:
+        try:
+            url = f"https://doi.org/{doi}"
+            resp = requests.head(url, allow_redirects=True, timeout=10)
+            if resp.status_code in (200, 301, 302):
+                valid_dois.append(doi)
+            else:
+                vprint(f"DOI {doi} does not resolve at doi.org (HTTP {resp.status_code})")
+        except Exception as e:
+            vprint(f"Error checking DOI at doi.org: {doi}: {e}")
+
+    return valid_dois
 
 def extract_dois_from_file(input_file: str):
     """Extract DOI numbers from a text file and write them to a new file"""
