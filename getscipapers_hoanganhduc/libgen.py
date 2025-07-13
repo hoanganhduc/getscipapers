@@ -1273,7 +1273,7 @@ def upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbo
             print(f"FTP upload failed: {e}")
         return None
     
-def create_chrome_driver(headless=True, extra_prefs=None):
+def create_chrome_driver(headless=False, extra_prefs=None):
     """
     Create and return a Selenium Chrome WebDriver with default user data directory and options.
     """
@@ -1285,14 +1285,27 @@ def create_chrome_driver(headless=True, extra_prefs=None):
     options.add_argument(f"--user-data-dir={DEFAULT_CHROME_USER_DIR}")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument('--ignore-certificate-errors')          # Ignore SSL certificate errors
+    options.add_argument('--ignore-ssl-errors')                 # Additional flag for SSL errors
+    options.add_argument('--allow-running-insecure-content')    # Allow insecure content
+    options.add_argument('--disable-web-security')              # Disable web security for broader bypass
+    # Option to not automatically change to https
+    options.add_argument('--allow-insecure-localhost')
+    options.add_argument('--unsafely-treat-insecure-origin-as-secure=http://librarian.libgen.gs')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-features=UpgradeInsecureRequests')
+    options.add_argument('--disable-features=BlockInsecurePrivateNetworkRequests')
+    options.add_argument('--disable-features=IsolateOrigins,site-per-process')
+    options.add_argument('--disable-site-isolation-trials')
+    # If you want to force http only, you can add:
+    # options.add_argument('--disable-features=UpgradeInsecureRequests')
     prefs = {
         "profile.default_content_setting_values.notifications": 2,
         "credentials_enable_service": False,
         "profile.password_manager_enabled": False,
         "profile.default_content_setting_values.automatic_downloads": 1,
         "profile.default_content_setting_values.popups": 0,
-        "safebrowsing.enabled": True,
-        "safebrowsing.protection_level": 0,
+        "safebrowsing.enabled": False
     }
     if extra_prefs:
         prefs.update(extra_prefs)
@@ -1300,7 +1313,7 @@ def create_chrome_driver(headless=True, extra_prefs=None):
     options.add_argument("--disable-save-password-bubble")
     return webdriver.Chrome(options=options)
 
-def selenium_libgen_login(username="genesis", password="upload", headless=True, verbose=False):
+def selenium_libgen_login(username="genesis", password="upload", headless=False, verbose=False):
     """
     Open Chrome with Selenium, load http://librarian.libgen.gs/librarian.php,
     find and follow the login link if present, and login with phpBB forum settings.
@@ -1426,7 +1439,7 @@ def selenium_libgen_login(username="genesis", password="upload", headless=True, 
             driver.quit()
         return False
 
-def selenium_libgen_upload(local_file_path, bib_id, username="genesis", password="upload", headless=True, verbose=False):
+def selenium_libgen_upload(local_file_path, bib_id, username="genesis", password="upload", headless=False, verbose=False):
     """
     Upload a local file to http://librarian.libgen.gs/librarian.php after logging in with Selenium.
     Fills the FTP path in the upload form and clicks the Upload button.
@@ -1770,7 +1783,7 @@ def upload_and_register_to_libgen(filepath, verbose=False):
             bib_id=bib_id,
             username="genesis",
             password="upload",
-            headless=True,
+            headless=False,
             verbose=verbose
         )
         if success:
@@ -1897,7 +1910,7 @@ Examples:
     # Handle login option
     if getattr(args, "login", False):
         print("Attempting to login to LibGen with default credentials...")
-        success = selenium_libgen_login(username="genesis", password="upload", headless=True, verbose=args.verbose)
+        success = selenium_libgen_login(username="genesis", password="upload", headless=False, verbose=args.verbose)
         if success:
             print("✅ Login successful.")
         else:
@@ -1923,7 +1936,7 @@ Examples:
                 bib_id=upload_id,
                 username="genesis",
                 password="upload",
-                headless=True,
+                headless=False,
                 verbose=args.verbose
             )
             if success:

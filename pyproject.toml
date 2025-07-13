@@ -18,7 +18,7 @@ dependencies = [
   "aiosumma==2.47.0",
   "argcomplete==3.5.2",
   "beautifulsoup4==4.13.4",
-  "crossrefapi @ git+https://github.com/fabiobatalha/crossrefapi.git@master",
+  "crossrefapi @ git+https://github.com/fabiobatalha/crossrefapi.git@bce414d32fb8ccc394fd859381d64bed544dc332",
   "izihawa-utils==1.2.3",
   "libstc_geck==2.1.7",
   "numpy==2.2.6",
