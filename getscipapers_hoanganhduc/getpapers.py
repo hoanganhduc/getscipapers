@@ -700,10 +700,31 @@ def extract_dois_from_text(text: str) -> list:
 
     # Filter: Only keep DOIs that resolve at doi.org (HTTP 200, 301, 302)
     valid_dois = []
+    # Use browser-like headers to reduce blocking/rate-limiting
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.67"
+        ),
+        "Accept": (
+            "text/html,application/xhtml+xml,application/xml;"
+            "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,"
+            "application/signed-exchange;v=b3;q=0.7"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "DNT": "1",
+        "Referer": "https://doi.org/",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+    }
     for doi in unique_dois:
         try:
             url = f"https://doi.org/{doi}"
-            resp = requests.head(url, allow_redirects=True, timeout=20)
+            resp = requests.head(url, allow_redirects=True, timeout=20, headers=headers)
             if resp.status_code in (200, 301, 302):
                 valid_dois.append(doi)
             elif resp.status_code == 403:
