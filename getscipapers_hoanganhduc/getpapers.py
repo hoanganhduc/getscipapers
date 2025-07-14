@@ -631,15 +631,15 @@ def extract_dois_from_text(text: str) -> list:
     dois = []
 
     # Extract direct DOIs from text
+    # Accepts DOIs with parentheses, hyphens, and other valid chars
     doi_patterns = [
-        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',
-        r'\b10\.\d{4,9}\s*/\s*[^\s"\'<>#{}()[\],;:?!&]+',
-        r'\bdoi:\s*10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',
-        r'\bhttps?://doi\.org/(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',
-        r'\bhttps?://dx\.doi\.org/(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',
-        r'\bdoi\s*=\s*["\']?(10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+)',
-        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&\]]+',
-        r'\b10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&\)]+',
+        r'\b10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
+        r'\b10\.\d{4,9}\s*/\s*[A-Za-z0-9\-._;()/:]+',
+        r'\bdoi:\s*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
+        r'\bhttps?://doi\.org/(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
+        r'\bhttps?://dx\.doi\.org/(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
+        r'\bdoi\s*=\s*["\']?(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
+        r'\b10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
     ]
     for pattern in doi_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
@@ -658,8 +658,8 @@ def extract_dois_from_text(text: str) -> list:
     for url in urls:
         already_has_doi = False
         for pattern in [
-            r'10\.\d{4,9}/[^\s"\'<>#{}()[\],;:?!&]+',
-            r'10\.\d{4,9}\s*/\s*[^\s"\'<>#{}()[\],;:?!&]+'
+            r'10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
+            r'10\.\d{4,9}\s*/\s*[A-Za-z0-9\-._;()/:]+'
         ]:
             if re.search(pattern, url):
                 already_has_doi = True
