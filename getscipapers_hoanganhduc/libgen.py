@@ -1743,6 +1743,7 @@ def upload_and_register_to_libgen(filepath, verbose=False):
     # If file is PDF and no DOI found yet, try to extract DOI from PDF using getpapers
     if not bib_id and filename.lower().endswith(".pdf"):
         try:
+            print(f"📄 Attempting to extract DOI from PDF: {filename}")
             pdf_doi = getpapers.extract_doi_from_pdf(filepath)
             if pdf_doi:
                 bib_id = pdf_doi

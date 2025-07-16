@@ -699,8 +699,8 @@ def extract_dois_from_text(text: str) -> list:
     unique_dois = list(dict.fromkeys(dois))
 
     # Filter: Only keep DOIs that resolve at doi.org (HTTP 200, 301, 302)
+    # or are found in Crossref
     valid_dois = []
-    # Use browser-like headers to reduce blocking/rate-limiting
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -731,7 +731,17 @@ def extract_dois_from_text(text: str) -> list:
                 vprint(f"DOI {doi} returned 403 Forbidden at doi.org, treating as valid (may be rate-limited)")
                 valid_dois.append(doi)
             else:
-                vprint(f"DOI {doi} does not resolve at doi.org (HTTP {resp.status_code})")
+                # Try Crossref as fallback
+                works = Works()
+                try:
+                    result = works.doi(doi)
+                    if result:
+                        vprint(f"DOI {doi} found in Crossref, treating as valid")
+                        valid_dois.append(doi)
+                    else:
+                        vprint(f"DOI {doi} does not resolve at doi.org and not found in Crossref")
+                except Exception as e:
+                    vprint(f"Error checking DOI in Crossref: {doi}: {e}")
         except Exception as e:
             vprint(f"Error checking DOI at doi.org: {doi}: {e}")
 
@@ -788,18 +798,7 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
         return None
 
     doi = dois[0]
-    # Check if DOI resolves at doi.org
-    try:
-        url = f"https://doi.org/{doi}"
-        resp = requests.head(url, allow_redirects=True, timeout=10)
-        if resp.status_code in (200, 301, 302):
-            return doi
-        else:
-            print(f"DOI {doi} does not resolve at doi.org (HTTP {resp.status_code})")
-            return None
-    except Exception as e:
-        print(f"Error checking DOI at doi.org: {e}")
-        return None
+    return doi
 
 async def search_documents(query: str, limit: int = 1):
     """
