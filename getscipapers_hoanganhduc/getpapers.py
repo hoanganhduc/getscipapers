@@ -630,15 +630,44 @@ def extract_dois_from_text(text: str) -> list:
     """
     dois = []
 
+    # Add more common DOI patterns from publishers
+    ieee_doi_pattern = r'\b10\.1109/[A-Z]+(?:\.[0-9]{4})+\.[0-9]+'
+    springer_doi_pattern = r'\b10\.1007/[A-Za-z0-9\-._;()/:]+'
+    wiley_doi_pattern = r'\b10\.1002/[A-Za-z0-9\-._;()/:]+'
+    elsevier_doi_pattern = r'\b10\.1016/[A-Za-z0-9\-._;()/:]+'
+    nature_doi_pattern = r'\b10\.1038/[A-Za-z0-9\-._;()/:]+'
+    acs_doi_pattern = r'\b10\.1021/[A-Za-z0-9\-._;()/:]+'
+    rsc_doi_pattern = r'\b10\.1039/[A-Za-z0-9\-._;()/:]+'
+    taylor_doi_pattern = r'\b10\.1080/[A-Za-z0-9\-._;()/:]+'
+    cambridge_doi_pattern = r'\b10\.1017/[A-Za-z0-9\-._;()/:]+'
+    sage_doi_pattern = r'\b10\.1177/[A-Za-z0-9\-._;()/:]+'
+    mdpi_doi_pattern = r'\b10\.3390/[A-Za-z0-9\-._;()/:]+'
+    cell_doi_pattern = r'\b10\.1016/j\.cell\.[A-Za-z0-9\-._;()/:]+'
     # Extract direct DOIs from text
     # Accepts DOIs with parentheses, hyphens, and other valid chars
+    # Also matches "Digital Object Identifier" and similar prefixes
     doi_patterns = [
+        ieee_doi_pattern,
+        springer_doi_pattern,
+        wiley_doi_pattern,
+        elsevier_doi_pattern,
+        nature_doi_pattern,
+        acs_doi_pattern,
+        rsc_doi_pattern,
+        taylor_doi_pattern,
+        cambridge_doi_pattern,
+        sage_doi_pattern,
+        mdpi_doi_pattern,
+        cell_doi_pattern,
         r'\b10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
         r'\b10\.\d{4,9}\s*/\s*[A-Za-z0-9\-._;()/:]+',
         r'\bdoi:\s*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
         r'\bhttps?://doi\.org/(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
         r'\bhttps?://dx\.doi\.org/(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
         r'\bdoi\s*=\s*["\']?(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
+        r'\bDigital Object Identifier[:\s]*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
+        r'\bDOI Identifier[:\s]*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
+        r'\bDOI\s*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
         r'\b10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
     ]
     for pattern in doi_patterns:
@@ -658,6 +687,7 @@ def extract_dois_from_text(text: str) -> list:
     for url in urls:
         already_has_doi = False
         for pattern in [
+            ieee_doi_pattern,
             r'10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
             r'10\.\d{4,9}\s*/\s*[A-Za-z0-9\-._;()/:]+'
         ]:
@@ -779,16 +809,20 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
     """
     Extract the first DOI found in a PDF file.
     Returns the DOI string if found and valid (resolves at doi.org), else None.
+    Tries to preserve newlines when extracting text from PDF.
     """
     try:
         with open(pdf_file, "rb") as f:
             reader = PyPDF2.PdfReader(f)
-            text = ""
+            text_chunks = []
             for page in reader.pages:
                 try:
-                    text += page.extract_text() or ""
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_chunks.append(page_text)
                 except Exception:
                     continue
+            text = "\n".join(text_chunks)
     except Exception as e:
         print(f"Failed to read PDF file: {e}")
         return None
@@ -2322,6 +2356,7 @@ async def main():
             "  %(prog)s --doi 10.1002/anie.201915678 --credentials mycredentials.json\n"
             "  %(prog)s --clear-credentials\n"
             "  %(prog)s --print-default\n"
+            "  %(prog)s --extract-doi-from-pdf mypaper.pdf\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         prog=program_name
@@ -2363,6 +2398,11 @@ async def main():
         action="store_true",
         help="Print all default paths and configuration file locations used by the script"
     )
+    argparser.add_argument(
+        "--extract-doi-from-pdf",
+        type=str,
+        help="Extract the first valid DOI from a PDF file"
+    )
     args = argparser.parse_args()
 
     # Initialize Unpywall cache
@@ -2388,9 +2428,9 @@ async def main():
         sys.exit(0)
 
     # Check that mutually exclusive options are not specified together
-    exclusive_options = [args.doi, args.doi_file, args.search]
+    exclusive_options = [args.doi, args.doi_file, args.search, args.extract_doi_from_pdf]
     if sum(bool(opt) for opt in exclusive_options) > 1:
-        print("Error: Only one of --doi, --doi-file, or --search can be specified at a time.")
+        print("Error: Only one of --doi, --doi-file, --search, or --extract-doi-from-pdf can be specified at a time.")
         sys.exit(1)
 
     # Set global verbose flag
@@ -2404,18 +2444,25 @@ async def main():
     load_credentials(credentials_file)
 
     # If only --credentials is specified, exit after loading credentials
-    if args.credentials and not (args.doi or args.doi_file or args.search):
+    if args.credentials and not (args.doi or args.doi_file or args.search or args.extract_doi_from_pdf):
         print(f"Loaded credentials from file: {credentials_file}")
         sys.exit(0)
 
-    if args.doi:
+    if args.extract_doi_from_pdf:
+        pdf_file = args.extract_doi_from_pdf
+        doi = extract_doi_from_pdf(pdf_file)
+        if doi:
+            print(f"Extracted DOI from PDF: {doi}")
+        else:
+            print(f"No valid DOI found in PDF: {pdf_file}")
+    elif args.doi:
         await download_by_doi(args.doi, download_folder=args.download_folder, db=args.db, no_download=args.no_download)
     elif args.search:
         await search_and_print(args.search, args.limit)
     elif args.doi_file:
         await download_by_doi_list(args.doi_file, download_folder=args.download_folder, db=args.db, no_download=args.no_download)
     else:
-        print("Please specify --search <keyword|doi>, --doi <doi>, or --doi-file <file>.")
+        print("Please specify --search <keyword|doi>, --doi <doi>, --doi-file <file>, or --extract-doi-from-pdf <pdf>.")
 
 if __name__ == "__main__":
     # Use the recommended event loop policy for Windows
