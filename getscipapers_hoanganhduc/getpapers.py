@@ -647,6 +647,16 @@ def extract_dois_from_text(text: str) -> list:
     # Accepts DOIs with parentheses, hyphens, and other valid chars
     # Also matches "Digital Object Identifier" and similar prefixes
     doi_patterns = [
+        r'\b10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
+        r'\b10\.\d{4,9}\s*/\s*[A-Za-z0-9\-._;()/:]+',
+        r'\bdoi:\s*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
+        r'\bhttps?://doi\.org/(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
+        r'\bhttps?://dx\.doi\.org/(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
+        r'\bdoi\s*=\s*["\']?(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
+        r'\bDigital Object Identifier[:\s]*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
+        r'\bDOI Identifier[:\s]*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
+        r'\bDOI\s*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
+        r'\b10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
         ieee_doi_pattern,
         springer_doi_pattern,
         wiley_doi_pattern,
@@ -659,16 +669,6 @@ def extract_dois_from_text(text: str) -> list:
         sage_doi_pattern,
         mdpi_doi_pattern,
         cell_doi_pattern,
-        r'\b10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
-        r'\b10\.\d{4,9}\s*/\s*[A-Za-z0-9\-._;()/:]+',
-        r'\bdoi:\s*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
-        r'\bhttps?://doi\.org/(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
-        r'\bhttps?://dx\.doi\.org/(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
-        r'\bdoi\s*=\s*["\']?(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
-        r'\bDigital Object Identifier[:\s]*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
-        r'\bDOI Identifier[:\s]*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
-        r'\bDOI\s*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
-        r'\b10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
     ]
     for pattern in doi_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
