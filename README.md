@@ -21,7 +21,7 @@
 
 * **(Optional)** Obtain free API keys from [Elsevier](https://dev.elsevier.com/), [Wiley](https://onlinelibrary.wiley.com/library-info/resources/text-and-datamining), or [IEEE](https://developer.ieee.org/getting_started) (IEEE support not yet implemented).
 
-* **(Optional)** Create accounts at [Sci-Net](https://sci-net.xyz), [AbleSci](https://ablesci.com), [Science Hub Mutual Aid](https://www.pidantuan.com/) (not yet implemented), [Z-Library](https://z-library.sk/) or [Facebook](https://www.facebook.com/) to request or download papers/books. For Facebook, join the relevant group after creating your account.
+* **(Optional)** Create accounts at [Sci-Net](https://sci-net.xyz), [AbleSci](https://ablesci.com), [Science Hub Mutual Aid](https://www.pidantuan.com/), [Z-Library](https://z-library.sk/) or [Facebook](https://www.facebook.com/) to request or download papers/books. For Facebook, join the relevant group after creating your account.
 
 * Install [Python](https://www.python.org) (version 3.10 or later).
 
