@@ -1662,6 +1662,23 @@ def request_by_doi(doi, headless=True):
         driver.quit()
         return False
 
+def request_multiple_dois(dois, headless=True):
+    """
+    Request multiple papers by DOI.
+    Accepts a list of DOIs (strings), calls request_by_doi for each.
+    Returns a dict mapping DOI to True/False for success.
+    """
+    results = {}
+    for doi in dois:
+        info_print(f"Requesting DOI: {doi}")
+        result = request_by_doi(doi, headless=headless)
+        results[doi] = result
+        if result:
+            success_print(f"Successfully posted request for DOI: {doi}")
+        else:
+            error_print(f"Failed to post request for DOI: {doi}")
+    return results
+
 def is_post_finished(post_url, headless=True, driver=None):
     """
     Open the given post URL in a new tab and check if the post is finished (closed or marked as fulfilled).
@@ -2724,6 +2741,7 @@ Examples:
   %(prog)s --get-fulfilled-requests
   %(prog)s --download-fulfilled-requests
   %(prog)s --request-doi 10.1234/abcd.efgh
+  %(prog)s --doi-file /path/to/dois.txt
   %(prog)s --accept-fulfilled-requests
   %(prog)s --reject-fulfilled-requests
 """,
@@ -2745,6 +2763,7 @@ Examples:
     parser.add_argument('--get-fulfilled-requests', action='store_true', help='List your fulfilled requests (with replies, not closed)')
     parser.add_argument('--download-fulfilled-requests', action='store_true', help='Download attachments from fulfilled requests')
     parser.add_argument('--request-doi', type=str, help='Request a paper by DOI')
+    parser.add_argument('--doi-file', type=str, help='Request multiple papers by DOI from a text file')
     parser.add_argument('--accept-fulfilled-requests', action='store_true', help='Accept replies for fulfilled requests')
     parser.add_argument('--reject-fulfilled-requests', action='store_true', help='Reject replies for fulfilled requests')
     args = parser.parse_args()
@@ -2852,6 +2871,29 @@ Examples:
             success_print("Request by DOI posted successfully.")
         else:
             error_print("Failed to post request by DOI.")
+        return
+
+    if args.doi_file:
+        debug_print(f"Request multiple DOIs from file: {args.doi_file}")
+        if not os.path.isfile(args.doi_file):
+            error_print(f"DOI file not found: {args.doi_file}")
+            return
+        try:
+            with open(args.doi_file, "r", encoding="utf-8") as f:
+                text = f.read()
+            dois = getpapers.extract_dois_from_text(text)
+            if not dois:
+                error_print("No DOIs found in the provided file.")
+                return
+            info_print(f"Found {len(dois)} DOIs in file. Requesting all...")
+            results = request_multiple_dois(dois, headless=not args.no_headless)
+            for doi, result in results.items():
+                if result:
+                    success_print(f"Successfully posted request for DOI: {doi}")
+                else:
+                    error_print(f"Failed to post request for DOI: {doi}")
+        except Exception as e:
+            error_print(f"Failed to process DOI file: {e}")
         return
 
     if args.accept_fulfilled_requests:
