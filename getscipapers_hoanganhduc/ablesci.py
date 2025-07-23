@@ -162,7 +162,10 @@ def load_credentials_from_file(filepath):
 
 def get_chrome_driver(headless=True):
     debug_print(f"Creating Chrome driver (headless={headless})")
+    # Suppress DevTools logging
     options = webdriver.ChromeOptions()
+    # Suppress DevTools logging
+    options.add_experimental_option('excludeSwitches', ['enable-logging'])
     if headless:
         options.add_argument('--headless=new')
         options.add_argument('--disable-gpu')
@@ -2565,6 +2568,17 @@ def main():
     parser.add_argument('--print-default', action='store_true', help='Print default paths and settings')
     parser.add_argument('--check-in', action='store_true', help='Perform daily check-in')
     args = parser.parse_args()
+    
+    # Suppress ChromeDriver and Selenium warnings/logs
+    os.environ["WDM_LOG_LEVEL"] = "0"
+    os.environ["PYTHONWARNINGS"] = "ignore"
+    os.environ["SELENIUM_MANAGER_LOG_LEVEL"] = "OFF"
+    os.environ["SELOG_LEVEL"] = "OFF"
+    os.environ["ABSL_LOG_LEVEL"] = "0"
+    os.environ["ABSL_LOG_TO_STDERR"] = "0"
+    os.environ["ABSL_LOG_TO_STDOUT"] = "0"
+    os.environ["ABSL_LOG_TO_FILE"] = "0"
+    os.environ["ABSL_LOG_STREAM"] = "none"
 
     # Validate argument conflicts
     if args.by_points and args.get_active_requests is None:

@@ -129,6 +129,8 @@ class FacebookScraper:
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option("useAutomationExtension", False)
+        # Suppress DevTools logging
+        options.add_experimental_option('excludeSwitches', ['enable-logging'])
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument("--disable-notifications")
         options.add_argument("--disable-popup-blocking")
@@ -2028,6 +2030,17 @@ Examples:
     parser.add_argument('--print-default', action='store_true',
                        help='Print default cache and download directory paths and exit')
     args = parser.parse_args()
+    
+    # Suppress ChromeDriver and Selenium warnings/logs
+    os.environ["WDM_LOG_LEVEL"] = "0"
+    os.environ["PYTHONWARNINGS"] = "ignore"
+    os.environ["SELENIUM_MANAGER_LOG_LEVEL"] = "OFF"
+    os.environ["SELOG_LEVEL"] = "OFF"
+    os.environ["ABSL_LOG_LEVEL"] = "0"
+    os.environ["ABSL_LOG_TO_STDERR"] = "0"
+    os.environ["ABSL_LOG_TO_STDOUT"] = "0"
+    os.environ["ABSL_LOG_TO_FILE"] = "0"
+    os.environ["ABSL_LOG_STREAM"] = "none"
     
     # Handle --print-default before anything else
     if args.print_default:

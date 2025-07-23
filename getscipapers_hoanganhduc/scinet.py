@@ -539,6 +539,8 @@ def login_to_scinet(username, password, headless=False):
     """
     # Setup webdriver
     options = webdriver.ChromeOptions()
+    # Suppress DevTools logging
+    options.add_experimental_option('excludeSwitches', ['enable-logging'])
     if headless:
         options.add_argument("--headless")
         debug_print("Running in headless mode")
@@ -6647,6 +6649,17 @@ def main():
         print("Then run: activate-global-python-argcomplete --user")
     
     args = parser.parse_args()
+    
+    # Suppress ChromeDriver and Selenium warnings/logs
+    os.environ["WDM_LOG_LEVEL"] = "0"
+    os.environ["PYTHONWARNINGS"] = "ignore"
+    os.environ["SELENIUM_MANAGER_LOG_LEVEL"] = "OFF"
+    os.environ["SELOG_LEVEL"] = "OFF"
+    os.environ["ABSL_LOG_LEVEL"] = "0"
+    os.environ["ABSL_LOG_TO_STDERR"] = "0"
+    os.environ["ABSL_LOG_TO_STDOUT"] = "0"
+    os.environ["ABSL_LOG_TO_FILE"] = "0"
+    os.environ["ABSL_LOG_STREAM"] = "none"
     
     # Set global verbose flag
     VERBOSE = args.verbose

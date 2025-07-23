@@ -32,7 +32,9 @@ create_credentials_json() {
     "wiley_tdm_token": "${WILEY_TDM_TOKEN}",
     "ieee_api_key": "${IEEE_API_KEY}",
     "zlib_email": "${ZLIB_EMAIL}",
-    "zlib_password": "${ZLIB_PASSWORD}"
+    "zlib_password": "${ZLIB_PASSWORD}",
+    "wosonhj_username": "${WOSONHJ_USERNAME}",
+    "wosonhj_password": "${WOSONHJ_PASSWORD}"
 }
 EOF
     chmod 600 "$OUTPUT_FILE"

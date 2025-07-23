@@ -1278,6 +1278,8 @@ def create_chrome_driver(headless=True, extra_prefs=None):
     Create and return a Selenium Chrome WebDriver with default user data directory and options.
     """
     options = webdriver.ChromeOptions()
+    # Suppress DevTools logging
+    options.add_experimental_option('excludeSwitches', ['enable-logging'])
     if headless:
         options.add_argument("--headless=new")
         options.add_argument("--disable-gpu")
@@ -1897,6 +1899,17 @@ Examples:
         help="Download after search (interactive for --search, auto for --check-doi). Optionally specify download directory."
     )
     args = parser.parse_args()
+    
+    # Suppress ChromeDriver and Selenium warnings/logs
+    os.environ["WDM_LOG_LEVEL"] = "0"
+    os.environ["PYTHONWARNINGS"] = "ignore"
+    os.environ["SELENIUM_MANAGER_LOG_LEVEL"] = "OFF"
+    os.environ["SELOG_LEVEL"] = "OFF"
+    os.environ["ABSL_LOG_LEVEL"] = "0"
+    os.environ["ABSL_LOG_TO_STDERR"] = "0"
+    os.environ["ABSL_LOG_TO_STDOUT"] = "0"
+    os.environ["ABSL_LOG_TO_FILE"] = "0"
+    os.environ["ABSL_LOG_STREAM"] = "none"
 
     # Handle clear-cache option
     if getattr(args, "clear_cache", False):
