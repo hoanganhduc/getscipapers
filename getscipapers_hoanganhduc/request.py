@@ -15,6 +15,7 @@ def request_dois(dois, verbose=False, service=None):
     """
     Post DOI numbers to one or more services and ask for help obtaining the papers.
     If service is a list, aggregate results from all specified services.
+    If service is "all", use all available services.
     """
     if isinstance(dois, str):
         dois = [dois]
@@ -24,9 +25,16 @@ def request_dois(dois, verbose=False, service=None):
     if service is None:
         service_list = ["nexus"]
     elif isinstance(service, str):
-        service_list = [service]
+        if service.lower() == "all":
+            service_list = SERVICE_LIST
+        else:
+            service_list = [service]
     else:
-        service_list = list(service)
+        # If "all" is in the list, use all services
+        if any(s.lower() == "all" for s in service):
+            service_list = SERVICE_LIST
+        else:
+            service_list = list(service)
 
     for svc in service_list:
         svc_results = {}
@@ -125,9 +133,10 @@ def parse_doi_argument(doi_arg):
 def parse_service_argument(service_arg):
     """
     Parse the --service argument, which can be:
+    - "all" (case-insensitive)
     - a single service string
     - a comma/semicolon/space separated list of services
-    Returns a list of valid services.
+    Returns a list of valid services or "all".
     """
     if service_arg is None:
         return ["nexus"]
@@ -141,6 +150,9 @@ def parse_service_argument(service_arg):
                 break
         else:
             services = service_arg.split()
+    # Handle "all" (case-insensitive)
+    if any(s.lower() == "all" for s in services):
+        return "all"
     # Filter only valid services
     valid_services = [svc for svc in services if svc in SERVICE_LIST]
     if not valid_services:
@@ -177,6 +189,7 @@ def main():
             "  %(prog)s --doi '10.1000/xyz123,10.1000/abc456' --service nexus,ablesci\n"
             "  %(prog)s --doi mydois.txt --service wosonhj scinet\n"
             "  %(prog)s --doi 'Here are some DOIs: 10.1000/xyz123 10.1000/abc456' --service facebook\n"
+            "  %(prog)s --doi '10.1000/xyz123' --service all\n"
         ),
         formatter_class=argparse.RawTextHelpFormatter
     )
@@ -188,7 +201,7 @@ def main():
     parser.add_argument(
         "--service",
         default="nexus",
-        help=f"Service(s) to use for requesting DOIs (comma, semicolon, or space separated). Available: {service_list_str}"
+        help=f"Service(s) to use for requesting DOIs (comma, semicolon, space separated, or 'all'). Available: {service_list_str}"
     )
     parser.add_argument(
         "--verbose",
@@ -202,6 +215,7 @@ def main():
         print("⚠️  No valid DOIs found in the input.")
         return
 
+    # Parse the service argument using the updated function
     services = parse_service_argument(args.service)
     result = request_dois(dois, verbose=args.verbose, service=services)
     for doi, data in result.items():
