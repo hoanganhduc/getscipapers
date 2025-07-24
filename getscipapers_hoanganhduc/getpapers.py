@@ -809,13 +809,16 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
     """
     Extract the first DOI found in a PDF file.
     Returns the DOI string if found and valid (resolves at doi.org), else None.
+    Only considers the first three pages of the PDF.
     Tries to preserve newlines when extracting text from PDF.
     """
     try:
         with open(pdf_file, "rb") as f:
             reader = PyPDF2.PdfReader(f)
             text_chunks = []
-            for page in reader.pages:
+            for i, page in enumerate(reader.pages):
+                if i >= 3:
+                    break
                 try:
                     page_text = page.extract_text()
                     if page_text:
