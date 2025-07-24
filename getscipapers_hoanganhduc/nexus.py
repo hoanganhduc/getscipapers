@@ -3912,6 +3912,7 @@ async def simple_upload_to_nexus_aaron(file_path, verbose=False):
     caption = ""
     if file_path.lower().endswith(".pdf"):
         try:
+            info_print(f"Attempting to extract DOI from PDF: {file_path}")
             doi = getpapers.extract_doi_from_pdf(file_path)
             if doi:
                 caption = f"DOI: {doi}"
