@@ -1879,6 +1879,30 @@ class FacebookScraper:
             self.driver.quit()
             self.log("Browser closed successfully")
 
+def request_multiple_dois(dois, group_id="188053074599163", extra_message=None):
+    """
+    Request help for multiple DOIs by posting to a Facebook group.
+    Args:
+        dois (list or str): List of DOI strings or a single DOI string.
+        group_id (str): Facebook group ID to post in.
+        extra_message (str): Optional extra message to include.
+    Returns:
+        list: List of (doi, success) tuples.
+    """
+    scraper = FacebookScraper(
+        USERNAME,
+        PASSWORD,
+        verbose=False,
+        headless=True
+    )
+    try:
+        scraper.initialize_driver()
+        scraper.login()
+        results = scraper.request_help_for_multiple_dois(dois, group_id=group_id, extra_message=extra_message)
+    finally:
+        scraper.close()
+    return results
+
 def main():
     """Main function to handle command line arguments and execute Facebook scraper operations"""
     # Get the parent package name from the module's __name__

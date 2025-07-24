@@ -1512,6 +1512,38 @@ def login_and_request_multiple_dois(username, password, dois, wait_seconds=50, r
         print("Multiple DOI request process completed, closing browser.")
         driver.quit()
 
+def login_and_request_multiple_dois_simple(dois, wait_seconds=50, reward_tokens=1, headless=True):
+    """
+    Login to sci-net.xyz and request multiple papers by DOIs (all with same reward_tokens).
+    Username and password are loaded from credentials file or cache.
+    Args:
+        dois: List of DOI strings to request
+        wait_seconds: Seconds to wait for each DOI search results
+        reward_tokens: Number of reward tokens to offer for each request
+        headless: Whether to run browser in headless mode (default: True)
+    Returns:
+        dict: Summary of request results, or None if login failed
+    """
+    # Try to load credentials from default location
+    creds = None
+    if os.path.exists(CREDENTIAL_FILE):
+        creds = load_credentials_from_json(CREDENTIAL_FILE)
+    if creds:
+        username = creds['scinet_username']
+        password = creds['scinet_password']
+    else:
+        username = USERNAME or input("Sci-Net Username: ").strip()
+        password = PASSWORD or getpass.getpass("Sci-Net Password: ")
+    driver = login_to_scinet(username, password, headless)
+    if not driver:
+        return None
+    try:
+        summary = request_multiple_papers_by_dois(driver, dois, wait_seconds, reward_tokens)
+        return summary
+    finally:
+        print("Multiple DOI request process completed, closing browser.")
+        driver.quit()
+
 def login_and_request_multiple_dois_with_rewards(username, password, doi_reward_pairs, wait_seconds=50, headless=False):
     """
     Login to sci-net.xyz and request multiple papers by DOIs with individual reward tokens

@@ -5503,6 +5503,51 @@ async def batch_request_papers_by_doi(api_id, api_hash, phone_number, bot_userna
     info_print(f"Batch request completed: {requested} requested, {skipped} skipped, {errors} errors")
     return summary
 
+async def request_papers_by_doi_list(doi_list):
+    """
+    Request one or more papers by DOI using the Nexus bot.
+    Attempts direct connection first, falls back to proxy if needed.
+
+    Args:
+        doi_list (list): List of DOI strings.
+
+    Returns:
+        dict: Summary of request results.
+    """
+    if not doi_list or not isinstance(doi_list, list):
+        return {"error": "Input must be a non-empty list of DOIs"}
+
+    # Load credentials from default location
+    if not os.path.exists(CREDENTIALS_FILE):
+        return {"error": "Credentials file not found. Please set up credentials first."}
+    try:
+        with open(CREDENTIALS_FILE, "r") as f:
+            creds = json.load(f)
+        api_id = creds.get("tg_api_id")
+        api_hash = creds.get("tg_api_hash")
+        phone = creds.get("phone")
+        bot_username = creds.get("bot_username", BOT_USERNAME)
+    except Exception as e:
+        return {"error": f"Failed to load credentials: {e}"}
+
+    # Try direct connection first
+    proxy_to_use = None
+    try:
+        client = create_telegram_client(api_id, api_hash, SESSION_FILE, proxy=None)
+        await client.start(phone=phone if phone else None)
+        is_auth = await client.is_user_authorized()
+        await client.disconnect()
+        if not is_auth:
+            proxy_to_use = await decide_proxy_usage(api_id, api_hash, phone, SESSION_FILE, DEFAULT_PROXY_FILE)
+    except Exception:
+        proxy_to_use = await decide_proxy_usage(api_id, api_hash, phone, SESSION_FILE, DEFAULT_PROXY_FILE)
+
+    # Use batch_request_papers_by_doi for all DOIs
+    result = await batch_request_papers_by_doi(
+        api_id, api_hash, phone, bot_username, doi_list, SESSION_FILE, proxy_to_use
+    )
+    return result
+
 def print_default_paths():
     """Print all default file and directory paths used by the script."""
     print("\n" + "="*50)
