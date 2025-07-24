@@ -1832,9 +1832,14 @@ class FacebookScraper:
         Returns:
             list: List of (doi, success) tuples (all DOIs share the same status).
         """
+        if not dois:
+            self.log("❌ No valid DOIs provided for help request.")
+            return [(None, False)]
         if isinstance(dois, str):
             dois = [dois]
-        dois = [d for d in dois if d]
+        elif not isinstance(dois, list):
+            dois = list(dois) if dois is not None else []
+        dois = [d for d in dois if d is not None and str(d).strip()]
         if not dois:
             self.log("❌ No valid DOIs provided for help request.")
             return [(None, False)]

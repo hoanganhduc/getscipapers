@@ -531,7 +531,7 @@ def request_paper_by_doi(doi, headless=True):
             
             debug_print(f"JavaScript result: {result}")
             
-            if result['success']:
+            if result and result.get('success'):
                 paper_info = result['paperInfo']
                 print(f"\nPaper information for DOI: {doi}")
                 print(f"  Title: {paper_info.get('title', 'N/A')}")
@@ -549,7 +549,7 @@ def request_paper_by_doi(doi, headless=True):
                     def get_user_response():
                         try:
                             if hasattr(signal, 'SIGALRM'):
-                                def timeout_handler(signum, frame):
+                                def timeout_handler(_, __):
                                     raise TimeoutError("Input timeout")
                                 
                                 signal.signal(signal.SIGALRM, timeout_handler)
