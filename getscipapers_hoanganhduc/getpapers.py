@@ -632,17 +632,17 @@ def extract_dois_from_text(text: str) -> list:
 
     # Add more common DOI patterns from publishers
     ieee_doi_pattern = r'\b10\.1109/[A-Z]+(?:\.[0-9]{4})+\.[0-9]+'
-    springer_doi_pattern = r'\b10\.1007/[A-Za-z0-9\-._;()/:]+'
-    wiley_doi_pattern = r'\b10\.1002/[A-Za-z0-9\-._;()/:]+'
-    elsevier_doi_pattern = r'\b10\.1016/[A-Za-z0-9\-._;()/:]+'
-    nature_doi_pattern = r'\b10\.1038/[A-Za-z0-9\-._;()/:]+'
-    acs_doi_pattern = r'\b10\.1021/[A-Za-z0-9\-._;()/:]+'
-    rsc_doi_pattern = r'\b10\.1039/[A-Za-z0-9\-._;()/:]+'
-    taylor_doi_pattern = r'\b10\.1080/[A-Za-z0-9\-._;()/:]+'
-    cambridge_doi_pattern = r'\b10\.1017/[A-Za-z0-9\-._;()/:]+'
-    sage_doi_pattern = r'\b10\.1177/[A-Za-z0-9\-._;()/:]+'
-    mdpi_doi_pattern = r'\b10\.3390/[A-Za-z0-9\-._;()/:]+'
-    cell_doi_pattern = r'\b10\.1016/j\.cell\.[A-Za-z0-9\-._;()/:]+'
+    # springer_doi_pattern = r'\b10\.1007/[A-Za-z0-9\-._;()/:]+'
+    # wiley_doi_pattern = r'\b10\.1002/[A-Za-z0-9\-._;()/:]+'
+    # elsevier_doi_pattern = r'\b10\.1016/[A-Za-z0-9\-._;()/:]+'
+    # nature_doi_pattern = r'\b10\.1038/[A-Za-z0-9\-._;()/:]+'
+    # acs_doi_pattern = r'\b10\.1021/[A-Za-z0-9\-._;()/:]+'
+    # rsc_doi_pattern = r'\b10\.1039/[A-Za-z0-9\-._;()/:]+'
+    # taylor_doi_pattern = r'\b10\.1080/[A-Za-z0-9\-._;()/:]+'
+    # cambridge_doi_pattern = r'\b10\.1017/[A-Za-z0-9\-._;()/:]+'
+    # sage_doi_pattern = r'\b10\.1177/[A-Za-z0-9\-._;()/:]+'
+    # mdpi_doi_pattern = r'\b10\.3390/[A-Za-z0-9\-._;()/:]+'
+    # cell_doi_pattern = r'\b10\.1016/j\.cell\.[A-Za-z0-9\-._;()/:]+'
     # Extract direct DOIs from text
     # Accepts DOIs with parentheses, hyphens, and other valid chars
     # Also matches "Digital Object Identifier" and similar prefixes
