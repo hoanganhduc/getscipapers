@@ -22,14 +22,15 @@ jobs:
           python -m venv .venv
           source .venv/bin/activate
 
-      - name: Cache Python packages
+      - name: Cache Python packages and Chrome user data
         uses: actions/cache@v4
         with:
           path: |
             .venv
-          key: ${{ runner.os }}-venv-${{ hashFiles('**/requirements.txt') }}
+            $HOME/.config/chrome_user_data
+          key: ${{ runner.os }}-venv-chrome-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
-            ${{ runner.os }}-venv-
+            ${{ runner.os }}-venv-chrome-
 
       - name: Install dependencies
         run: |
