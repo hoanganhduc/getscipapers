@@ -26,12 +26,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            .venv
             $HOME/.config/getscipapers/ablesci/chrome_user_data
             $HOME/.config/getscipapers/wosonhj/chrome_user_data
-              key: ${{ runner.os }}-venv-${{ hashFiles('requirements.txt') }}
-              restore-keys: |
-            ${{ runner.os }}-venv-
+          key: ${{ runner.os }}-chrome-user-data-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-chrome-user-data-
 
       - name: Install dependencies if cache is missed
         if: steps.cache.outputs.cache-hit != 'true'
