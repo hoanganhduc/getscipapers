@@ -9,9 +9,6 @@
 
 set -e  # Exit immediately if a command exits with a non-zero status
 
-# MODULES="getpapers ablesci scinet nexus facebook zlib wosonhj"
-MODULES="ablesci wosonhj"
-
 # Function to create a credentials JSON file from environment variables
 create_credentials_json() {
     OUTPUT_FILE="$1"
@@ -120,6 +117,7 @@ fi
 
 # Handle --apply-credentials option
 if [ $# -eq 2 ] && [ "$1" = "--apply-credentials" ]; then
+    MODULES="getpapers ablesci scinet nexus facebook zlib wosonhj"
     apply_credentials "$2"
     exit 0
 fi
@@ -128,6 +126,7 @@ fi
 if [ $# -eq 2 ] && [ "$1" = "--apply-credentials-base64" ]; then
     TMP_CRED_FILE=$(mktemp /tmp/cred.XXXXXX.json)
     decode_base64_to_json "$2" "$TMP_CRED_FILE"
+    MODULES="ablesci wosonhj"
     apply_credentials "$TMP_CRED_FILE"
     secure_delete_file "$TMP_CRED_FILE"
     exit 0
