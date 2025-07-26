@@ -36,7 +36,7 @@ jobs:
 
       - name: Load credentials
         run: |
-          bash .devcontainer/set-secrets.sh --apply-credentials-base64 ${{ secrets.CREDS }}
+          bash .devcontainer/set-secrets.sh --apply-credentials-base64 "${{ secrets.CREDS }}"
 
       - name: Run daily check-in
         run: |
