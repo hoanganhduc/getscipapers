@@ -17,27 +17,33 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Create and activate virtual environment
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+
       - name: Cache Python packages
-        id: cache-pip
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+            .venv
+          key: ${{ runner.os }}-venv-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-venv-
 
       - name: Install dependencies
-        if: steps.cache-pip.outputs.cache-hit != 'true'
         run: |
-          python3 -m pip install --upgrade pip
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -e .
 
       - name: Load credentials
         run: |
+          source .venv/bin/activate
           bash .devcontainer/set-secrets.sh --apply-credentials-base64 "${{ secrets.CREDS }}"
 
       - name: Run daily check-in
         run: |
+          source .venv/bin/activate
           getscipapers checkin all
