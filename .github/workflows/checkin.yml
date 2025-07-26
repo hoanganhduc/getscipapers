@@ -34,6 +34,10 @@ jobs:
           pip install -r requirements.txt
           pip install -e .
 
+      - name: Load credentials
+        run: |
+          bash .devcontainer/set-secrets.sh
+
       - name: Run daily check-in
         run: |
           getscipapers checkin all

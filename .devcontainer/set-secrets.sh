@@ -41,7 +41,7 @@ EOF
     echo "Created credentials file at $OUTPUT_FILE"
 }
 
-# Function to encode a JSON file to base64 and write to output file
+# Function to encode the content of a JSON file to base64 and write to output file
 encode_json_base64() {
     INPUT_JSON="$1"
     OUTPUT_FILE="$2"
@@ -53,39 +53,20 @@ encode_json_base64() {
         echo "Input file $INPUT_JSON is not valid JSON."
         exit 1
     fi
-    base64 "$INPUT_JSON" > "$OUTPUT_FILE"
+    cat "$INPUT_JSON" | base64 > "$OUTPUT_FILE"
     echo "Base64-encoded JSON written to $OUTPUT_FILE"
 }
 
-# Function to decode base64-encoded JSON if needed, otherwise copy as is
-decode_base64_if_needed() {
-    INPUT="$1"
-    OUTPUT="$2"
-    # Check if input is a file and exists
-    if [ -f "$INPUT" ]; then
-        # If file is valid JSON, copy it
-        if jq empty "$INPUT" 2>/dev/null; then
-            cp "$INPUT" "$OUTPUT"
-            return
-        fi
-        # If not valid JSON, try to decode as base64 and check if result is JSON
-        if base64 -d "$INPUT" 2>/dev/null | jq empty 2>/dev/null; then
-            base64 -d "$INPUT" > "$OUTPUT"
-            return
-        fi
-    else
-        # If input is not a file, treat as string
-        if echo "$INPUT" | jq empty 2>/dev/null; then
-            echo "$INPUT" > "$OUTPUT"
-            return
-        fi
-        if echo "$INPUT" | base64 -d 2>/dev/null | jq empty 2>/dev/null; then
-            echo "$INPUT" | base64 -d > "$OUTPUT"
-            return
-        fi
+# Function to decode a base64 string and save as JSON
+decode_base64_to_json() {
+    BASE64_STRING="$1"
+    OUTPUT_JSON="$2"
+    echo "$BASE64_STRING" | base64 -d > "$OUTPUT_JSON"
+    if ! jq empty "$OUTPUT_JSON" 2>/dev/null; then
+        echo "Decoded output is not valid JSON."
+        exit 1
     fi
-    echo "Input is not valid JSON or base64-encoded JSON."
-    exit 1
+    echo "Decoded JSON saved to $OUTPUT_JSON"
 }
 
 # Function to apply credentials by calling getscipapers with a credentials JSON file
