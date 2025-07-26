@@ -9,6 +9,9 @@
 
 set -e  # Exit immediately if a command exits with a non-zero status
 
+# MODULES="getpapers ablesci scinet nexus facebook zlib wosonhj"
+MODULES="ablesci wosonhj"
+
 # Function to create a credentials JSON file from environment variables
 create_credentials_json() {
     OUTPUT_FILE="$1"
@@ -86,7 +89,7 @@ apply_credentials() {
         exit 1
     fi
     echo "Applying credentials from $CREDENTIALS_JSON using getscipapers..."
-    for module in getpapers ablesci scinet nexus facebook zlib; do
+    for module in $MODULES; do
         echo "Applying credentials for module: $module"
         getscipapers "$module" --credentials "$CREDENTIALS_JSON" || echo "Module $module failed, continuing..."
     done
