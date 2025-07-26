@@ -4,12 +4,12 @@ from . import ablesci, wosonhj
 def checkin_ablesci():
     ablesci.check_in()
 
-def checkin_woson():
+def checkin_wosonhj():
     wosonhj.checkin_wosonhj()
 
 SERVICES = {
     'ablesci': checkin_ablesci,
-    'wosonhj': checkin_woson,
+    'wosonhj': checkin_wosonhj,
 }
 
 def main():
