@@ -2749,7 +2749,7 @@ Examples:
         prog=program_name,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument('--config', type=str, help='Path to JSON config file containing credentials')
+    parser.add_argument('--credentials', type=str, help='Path to JSON config file containing credentials')
     parser.add_argument('--no-headless', action='store_true', help='Disable headless mode for Chrome')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose debug output')
     parser.add_argument('--clear-cache', action='store_true', help='Clear cached login and credentials')
@@ -2790,9 +2790,9 @@ Examples:
         return
 
     # Load credentials from specified config file or default
-    if args.config:
-        debug_print(f"Loading credentials from config file: {args.config}")
-        load_credentials_from_file(args.config)
+    if args.credentials:
+        debug_print(f"Loading credentials from credentials file: {args.credentials}")
+        load_credentials_from_file(args.credentials)
     else:
         debug_print(f"Loading credentials from default file: {CREDENTIALS_FILE}")
         load_credentials_from_file(CREDENTIALS_FILE)
