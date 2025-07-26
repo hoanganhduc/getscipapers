@@ -1171,6 +1171,7 @@ def checkin_wosonhj(headless=True):
     Login to Wosonhj and perform daily check-in by accessing the check-in URL.
     Returns True if check-in is successful, False otherwise.
     """
+    print("Starting daily check-in process for Wosonhj...")
     checkin_url = f"{WOSONHJ_HOME_URL}/plugin.php?id=are_sign:getaward&typeid=1"
     debug_print(f"Check-in URL: {checkin_url}")
     driver = login_and_navigate_wosonhj(checkin_url, headless=headless)
