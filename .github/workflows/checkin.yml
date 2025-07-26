@@ -27,8 +27,10 @@ jobs:
         with:
           path: |
             .venv
-          key: ${{ runner.os }}-venv-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
+            $HOME/.config/getscipapers/ablesci/chrome_user_data
+            $HOME/.config/getscipapers/wosonhj/chrome_user_data
+              key: ${{ runner.os }}-venv-${{ hashFiles('requirements.txt') }}
+              restore-keys: |
             ${{ runner.os }}-venv-
 
       - name: Install dependencies if cache is missed
