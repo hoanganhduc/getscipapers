@@ -5,6 +5,7 @@
 #        ./set-secrets.sh --create-credentials <output_file>
 #        ./set-secrets.sh --encode-base64 <input_json> <output_file>
 #        ./set-secrets.sh --apply-credentials <credentials_json>
+#        ./set-secrets.sh --apply-credentials-base64 <base64_string>
 
 set -e  # Exit immediately if a command exits with a non-zero status
 
@@ -92,6 +93,16 @@ apply_credentials() {
     echo "Credentials applied."
 }
 
+# Function to securely delete a file
+secure_delete_file() {
+    FILE="$1"
+    if [ -f "$FILE" ]; then
+        # Overwrite file with random data before deleting
+        dd if=/dev/urandom of="$FILE" bs=1 count=$(stat --format=%s "$FILE") conv=notrunc 2>/dev/null || true
+        rm -f "$FILE"
+    fi
+}
+
 # Handle --create-credentials option
 if [ $# -eq 2 ] && [ "$1" = "--create-credentials" ]; then
     create_credentials_json "$2"
@@ -110,6 +121,15 @@ if [ $# -eq 2 ] && [ "$1" = "--apply-credentials" ]; then
     exit 0
 fi
 
+# Handle --apply-credentials-base64 option
+if [ $# -eq 2 ] && [ "$1" = "--apply-credentials-base64" ]; then
+    TMP_CRED_FILE=$(mktemp /tmp/cred.XXXXXX.json)
+    decode_base64_to_json "$2" "$TMP_CRED_FILE"
+    apply_credentials "$TMP_CRED_FILE"
+    secure_delete_file "$TMP_CRED_FILE"
+    exit 0
+fi
+
 # Print usage if arguments are invalid
 if [ $# -lt 1 ] || [ $# -gt 2 ]; then
     echo "Usage: $0 <secrets.json> [owner/repo]"
@@ -117,6 +137,7 @@ if [ $# -lt 1 ] || [ $# -gt 2 ]; then
     echo "       $0 --create-credentials <output_file>"
     echo "       $0 --encode-base64 <input_json> <output_file>"
     echo "       $0 --apply-credentials <credentials_json>"
+    echo "       $0 --apply-credentials-base64 <base64_string>"
     exit 1
 fi
 
