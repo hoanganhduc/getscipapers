@@ -2719,6 +2719,167 @@ def reject_fulfilled_requests(headless=True):
 
         report_reply_for_post(req.get('link', ''), reply_id, headless=headless)
 
+def cancel_waiting_requests(headless=True):
+    """
+    List all waiting requests, prompt user to select requests to cancel (close), then for each,
+    go to the request page and click the close button.
+    After clicking close, handle confirmation box and click submit to confirm.
+    Then reload the post page and check if it is closed.
+    Default is all requests if no response after 60 seconds. Allow user to quit.
+    """
+    requests = get_waiting_requests(headless=headless)
+    if not requests:
+        error_print("No waiting requests found.")
+        return
+
+    print_requests(requests, header="📄 === Waiting Requests ===")
+    print("Select request(s) to cancel (e.g. 1,3-5). Type 'q' or 'quit' to exit (default: all after 60s timeout):")
+
+    selected_indices = []
+
+    def parse_indices(response):
+        items = [item.strip() for item in response.split(",") if item.strip()]
+        for item in items:
+            if item.lower() in ("q", "quit"):
+                return "quit"
+            if "-" in item:
+                try:
+                    start, end = map(int, item.split("-", 1))
+                    for i in range(start, end + 1):
+                        if 1 <= i <= len(requests):
+                            selected_indices.append(i - 1)
+                except Exception:
+                    warning_print(f"Invalid range: {item}")
+            elif item.isdigit():
+                idx = int(item)
+                if 1 <= idx <= len(requests):
+                    selected_indices.append(idx - 1)
+            else:
+                warning_print(f"Invalid selection: {item}")
+
+    response = [None]
+
+    def ask():
+        try:
+            response[0] = input("Request(s): ").strip()
+        except Exception:
+            response[0] = None
+
+    t = threading.Thread(target=ask)
+    t.daemon = True
+    t.start()
+    t.join(60)
+    if t.is_alive():
+        info_print("No response within 60 seconds. Cancelling all requests.")
+        selected_indices = list(range(len(requests)))
+    elif not response[0]:
+        info_print("No selection made. Cancelling all requests.")
+        selected_indices = list(range(len(requests)))
+    else:
+        quit_flag = parse_indices(response[0])
+        if quit_flag == "quit":
+            info_print("Quitting as requested by user.")
+            return
+
+    if not selected_indices:
+        info_print("No valid request selected.")
+        return
+
+    for idx in selected_indices:
+        req = requests[idx]
+        info_print(f"Cancelling request: {req.get('title', '')} ({req.get('link', '')})")
+        driver = login_and_navigate_wosonhj(req.get('link', ''), headless=headless)
+        if driver is None:
+            error_print("Failed to open request page for cancellation.")
+            continue
+        try:
+            time.sleep(3)
+            close_btn = None
+            # Try to find close button by common patterns
+            try:
+                close_btn = driver.find_element(By.ID, "rewardclose")
+            except Exception:
+                pass
+            if not close_btn:
+                btns = driver.find_elements(By.CSS_SELECTOR, "a, button")
+                for btn in btns:
+                    btn_text = btn.text.strip().lower()
+                    if "关闭" in btn_text or "close" in btn_text:
+                        close_btn = btn
+                        break
+            if not close_btn:
+                btns = driver.find_elements(By.XPATH, "//*[contains(@onclick, 'close')]")
+                for btn in btns:
+                    if btn.is_displayed():
+                        close_btn = btn
+                        break
+            if close_btn:
+                driver.execute_script("arguments[0].scrollIntoView(true);", close_btn)
+                driver.execute_script("arguments[0].click();", close_btn)
+                info_print("Clicked close button. Waiting for confirmation box...")
+
+                # Wait for confirmation box to appear and click submit
+                confirmed = False
+                for _ in range(10):
+                    try:
+                        # The confirmation box may have a submit button with text "确定" or "Submit"
+                        submit_btns = driver.find_elements(By.CSS_SELECTOR, "button, input[type='submit']")
+                        for btn in submit_btns:
+                            btn_text = btn.text.strip().lower()
+                            if "确定" in btn_text or "submit" in btn_text or "确认" in btn_text or "return reward" in btn_text:
+                                driver.execute_script("arguments[0].click();", btn)
+                                info_print("Clicked submit button in confirmation box.")
+                                confirmed = True
+                                break
+                        if confirmed:
+                            break
+                    except Exception:
+                        pass
+                    time.sleep(1)
+                if not confirmed:
+                    warning_print("Could not find or click submit button in confirmation box.")
+
+                # Handle confirmation alert if present
+                try:
+                    WebDriverWait(driver, 5).until(EC.alert_is_present())
+                    alert = driver.switch_to.alert
+                    info_print(f"Alert Text: {alert.text}")
+                    alert.accept()
+                    info_print("Accepted confirmation alert.")
+                except Exception:
+                    debug_print("No confirmation alert appeared after clicking close button.")
+
+                time.sleep(3)
+
+                # Reload the post page and check if it is closed
+                driver.get(req.get('link', ''))
+                time.sleep(2)
+                page_source = driver.page_source
+                closed = False
+                # Check for "已关闭" or "closed" in page source
+                if "已关闭" in page_source or "closed" in page_source.lower():
+                    closed = True
+                else:
+                    # Try to find status in <span class="xg1">已关闭</span>
+                    try:
+                        closed_spans = driver.find_elements(By.CSS_SELECTOR, "span.xg1")
+                        for span in closed_spans:
+                            if "已关闭" in span.text or "closed" in span.text.lower():
+                                closed = True
+                                break
+                    except Exception:
+                        pass
+                if closed:
+                    success_print(f"Request cancelled and verified closed: {req.get('title', '')}")
+                else:
+                    warning_print(f"Request may not have been cancelled: {req.get('title', '')}")
+            else:
+                error_print("Close button not found on the page.")
+        except Exception as e:
+            error_print(f"Failed to cancel request: {e}")
+        finally:
+            driver.quit()
+
 def main():
     global verbose
     # Get the parent package name from the module's __name__
@@ -2748,6 +2909,7 @@ Examples:
   %(prog)s --doi-file /path/to/dois.txt
   %(prog)s --accept-fulfilled-requests
   %(prog)s --reject-fulfilled-requests
+  %(prog)s --cancel-waiting-requests
 """,
         prog=program_name,
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -2770,6 +2932,7 @@ Examples:
     parser.add_argument('--doi-file', type=str, help='Request multiple papers by DOI from a text file')
     parser.add_argument('--accept-fulfilled-requests', action='store_true', help='Accept replies for fulfilled requests')
     parser.add_argument('--reject-fulfilled-requests', action='store_true', help='Reject replies for fulfilled requests')
+    parser.add_argument('--cancel-waiting-requests', action='store_true', help='Cancel (close) your waiting requests')
     args = parser.parse_args()
     
     # Suppress ChromeDriver and Selenium warnings/logs
@@ -2908,6 +3071,11 @@ Examples:
     if args.reject_fulfilled_requests:
         debug_print("Reject fulfilled requests option selected")
         reject_fulfilled_requests(headless=not args.no_headless)
+        return
+
+    if args.cancel_waiting_requests:
+        debug_print("Cancel waiting requests option selected")
+        cancel_waiting_requests(headless=not args.no_headless)
         return
 
     # Default: standard login
