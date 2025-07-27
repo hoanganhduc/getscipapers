@@ -2453,7 +2453,7 @@ def check_in(headless=True):
     """
     today = datetime.date.today()
     print(f"Today's date: {today}")
-    debug_print("Starting daily check-in process for AbleSci")
+    print("Starting daily check-in process for AbleSci")
     # Navigate to homepage for check-in
     driver = login_and_navigate('https://www.ablesci.com', headless)
     if driver is None:
