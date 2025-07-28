@@ -622,6 +622,91 @@ def fetch_dois_from_url(url: str, doi_pattern: str) -> list:
 #             vprint(f"Ignored non-paper DOI: {doi}")
 #     return filtered
 
+def is_valid_doi(doi: str) -> bool:
+    """
+    Check if a single DOI is valid (resolves at doi.org or found in Crossref).
+    """
+    browser_headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.67"
+        ),
+        "Accept": (
+            "text/html,application/xhtml+xml,application/xml;"
+            "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,"
+            "application/signed-exchange;v=b3;q=0.9"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "DNT": "1",
+        "Referer": "https://doi.org/",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-User": "?1",
+    }
+    json_headers = {
+        "User-Agent": browser_headers["User-Agent"],
+        "Accept": "application/json",
+        "Referer": "https://doi.org/",
+        "DNT": "1",
+    }
+    try:
+        url = f"https://doi.org/{doi}"
+        resp = requests.head(url, allow_redirects=True, timeout=20, headers=browser_headers)
+        browser_ok = resp.status_code in (200, 301, 302)
+        forbidden = resp.status_code == 403
+        json_ok = False
+        try:
+            json_resp = requests.get(url, headers=json_headers, timeout=20)
+            if json_resp.status_code == 200:
+                try:
+                    data = json_resp.json()
+                    if "publisher" in data or "title" in data:
+                        json_ok = True
+                except Exception:
+                    pass
+            elif json_resp.status_code == 403:
+                vprint(f"DOI {doi} returned 403 for JSON metadata, may be rate-limited, treating as valid")
+                json_ok = True
+        except Exception as e:
+            vprint(f"Error fetching machine-readable metadata for DOI {doi}: {e}")
+
+        if browser_ok and json_ok:
+            return True
+        elif browser_ok or json_ok or forbidden:
+            vprint(f"DOI {doi} partially valid (browser_ok={browser_ok}, json_ok={json_ok}, forbidden={forbidden}), treating as valid")
+            return True
+        else:
+            works = Works()
+            try:
+                result = works.doi(doi)
+                if result:
+                    vprint(f"DOI {doi} found in Crossref, treating as valid")
+                    return True
+                else:
+                    vprint(f"DOI {doi} does not resolve at doi.org and not found in Crossref")
+            except Exception as e:
+                vprint(f"Error checking DOI in Crossref: {doi}: {e}")
+    except Exception as e:
+        vprint(f"Error checking DOI at doi.org: {doi}: {e}")
+    return False
+
+def validate_dois(dois: list) -> list:
+    """
+    Given a list of DOIs, return only those that are valid (resolve at doi.org or found in Crossref).
+    """
+    valid_dois = []
+    for doi in dois:
+        if is_valid_doi(doi):
+            valid_dois.append(doi)
+    return valid_dois
+
 def extract_dois_from_text(text: str) -> list:
     """
     Extract DOI numbers from text content.
@@ -630,22 +715,7 @@ def extract_dois_from_text(text: str) -> list:
     """
     dois = []
 
-    # Add more common DOI patterns from publishers
     ieee_doi_pattern = r'\b10\.1109/[A-Z]+(?:\.[0-9]{4})+\.[0-9]+'
-    # springer_doi_pattern = r'\b10\.1007/[A-Za-z0-9\-._;()/:]+'
-    # wiley_doi_pattern = r'\b10\.1002/[A-Za-z0-9\-._;()/:]+'
-    # elsevier_doi_pattern = r'\b10\.1016/[A-Za-z0-9\-._;()/:]+'
-    # nature_doi_pattern = r'\b10\.1038/[A-Za-z0-9\-._;()/:]+'
-    # acs_doi_pattern = r'\b10\.1021/[A-Za-z0-9\-._;()/:]+'
-    # rsc_doi_pattern = r'\b10\.1039/[A-Za-z0-9\-._;()/:]+'
-    # taylor_doi_pattern = r'\b10\.1080/[A-Za-z0-9\-._;()/:]+'
-    # cambridge_doi_pattern = r'\b10\.1017/[A-Za-z0-9\-._;()/:]+'
-    # sage_doi_pattern = r'\b10\.1177/[A-Za-z0-9\-._;()/:]+'
-    # mdpi_doi_pattern = r'\b10\.3390/[A-Za-z0-9\-._;()/:]+'
-    # cell_doi_pattern = r'\b10\.1016/j\.cell\.[A-Za-z0-9\-._;()/:]+'
-    # Extract direct DOIs from text
-    # Accepts DOIs with parentheses, hyphens, and other valid chars
-    # Also matches "Digital Object Identifier" and similar prefixes
     doi_patterns = [
         r'\b10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
         r'\b10\.\d{4,9}\s*/\s*[A-Za-z0-9\-._;()/:]+',
@@ -658,17 +728,6 @@ def extract_dois_from_text(text: str) -> list:
         r'\bDOI\s*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
         r'\b10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
         ieee_doi_pattern,
-        # springer_doi_pattern,
-        # wiley_doi_pattern,
-        # elsevier_doi_pattern,
-        # nature_doi_pattern,
-        # acs_doi_pattern,
-        # rsc_doi_pattern,
-        # taylor_doi_pattern,
-        # cambridge_doi_pattern,
-        # sage_doi_pattern,
-        # mdpi_doi_pattern,
-        # cell_doi_pattern,
     ]
     for pattern in doi_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
@@ -677,10 +736,8 @@ def extract_dois_from_text(text: str) -> list:
                 matches = [m[0] for m in matches]
             dois.extend(matches)
 
-    # Remove duplicates while preserving order
     dois = list(dict.fromkeys(dois))
 
-    # Extract DOIs from URLs
     url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+[^\s<>"{}|\\^`\[\].,;:!?]'
     urls = re.findall(url_pattern, text)
 
@@ -697,7 +754,6 @@ def extract_dois_from_text(text: str) -> list:
         if already_has_doi:
             continue
 
-        # Handle ScienceDirect URLs with PIIs
         if "sciencedirect.com" in url or "kidney-international.org" in url or "journal.chestnet.org" in url:
             pii_match = re.search(r'/(?:pii|article)/([S][A-Z0-9()-]+)', url, re.IGNORECASE)
             if pii_match:
@@ -712,96 +768,19 @@ def extract_dois_from_text(text: str) -> list:
                 vprint(f"No PII found in ScienceDirect URL: {url}")
             continue
 
-        # Handle MDPI URLs
         if "mdpi.com" in url:
             mdpi_doi = extract_mdpi_doi_from_url(url)
             if mdpi_doi:
                 dois.append(mdpi_doi)
             continue
 
-        # For other URLs, try to fetch and extract DOIs from the page using all patterns
         vprint(f"Checking URL for DOI: {url}")
         for doi_pattern in doi_patterns:
             page_dois = fetch_dois_from_url(url, doi_pattern)
             dois.extend(page_dois)
 
-    # Remove duplicates while preserving order
     unique_dois = list(dict.fromkeys(dois))
-
-    # Improved DOI validation: check both browser redirect and machine-readable metadata
-    valid_dois = []
-    browser_headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.67"
-        ),
-        "Accept": (
-            "text/html,application/xhtml+xml,application/xml;"
-            "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,"
-            "application/signed-exchange;v=b3;q=0.7"
-        ),
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "DNT": "1",
-        "Referer": "https://doi.org/",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-    }
-    json_headers = {
-        "User-Agent": browser_headers["User-Agent"],
-        "Accept": "application/json",
-        "Referer": "https://doi.org/",
-        "DNT": "1",
-    }
-    for doi in unique_dois:
-        try:
-            url = f"https://doi.org/{doi}"
-            # 1. Check browser redirect
-            resp = requests.head(url, allow_redirects=True, timeout=20, headers=browser_headers)
-            browser_ok = resp.status_code in (200, 301, 302)
-            forbidden = resp.status_code == 403
-            # 2. Check machine-readable metadata
-            json_ok = False
-            try:
-                json_resp = requests.get(url, headers=json_headers, timeout=20)
-                if json_resp.status_code == 200:
-                    # Accept only if response is valid JSON and contains publisher/title
-                    try:
-                        data = json_resp.json()
-                        if "publisher" in data or "title" in data:
-                            json_ok = True
-                    except Exception:
-                        pass
-                elif json_resp.status_code == 403:
-                    vprint(f"DOI {doi} returned 403 for JSON metadata, may be rate-limited, treating as valid")
-                    json_ok = True
-            except Exception as e:
-                vprint(f"Error fetching machine-readable metadata for DOI {doi}: {e}")
-
-            if browser_ok and json_ok:
-                valid_dois.append(doi)
-            elif browser_ok or json_ok or forbidden:
-                vprint(f"DOI {doi} partially valid (browser_ok={browser_ok}, json_ok={json_ok}, forbidden={forbidden}), treating as valid")
-                valid_dois.append(doi)
-            else:
-                # Try Crossref as fallback
-                works = Works()
-                try:
-                    result = works.doi(doi)
-                    if result:
-                        vprint(f"DOI {doi} found in Crossref, treating as valid")
-                        valid_dois.append(doi)
-                    else:
-                        vprint(f"DOI {doi} does not resolve at doi.org and not found in Crossref")
-                except Exception as e:
-                    vprint(f"Error checking DOI in Crossref: {doi}: {e}")
-        except Exception as e:
-            vprint(f"Error checking DOI at doi.org: {doi}: {e}")
-
-    return valid_dois
+    return validate_dois(unique_dois)
 
 def extract_dois_from_file(input_file: str):
     """Extract DOI numbers from a text file and write them to a new file"""

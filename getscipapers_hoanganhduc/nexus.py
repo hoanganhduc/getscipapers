@@ -5091,45 +5091,48 @@ def format_batch_doi_results(batch_results):
 async def download_from_nexus_bot(doi, download_dir=None, bot_username=None):
     """
     Download a paper from Nexus based on DOI
-    
+
     Args:
         doi: DOI string to search and download (e.g., "10.1038/nature12373")
         download_dir: Target directory to save the file (optional, uses default if None)
         bot_username: Bot username to use (optional, uses global BOT_USERNAME if None)
-        
+
     Returns:
         Dictionary with download result and file information
     """
     if not doi or not isinstance(doi, str):
         return {"success": False, "error": "Invalid DOI: DOI must be a non-empty string"}
-    
-    # Clean and validate DOI format
+
     doi = doi.strip()
     if not re.match(r'^10\.\d+/.+', doi):
         return {"success": False, "error": f"Invalid DOI format: {doi}. DOI should start with '10.' followed by digits and a slash"}
-    
-    # Use global bot username if not specified
+
     target_bot = bot_username or BOT_USERNAME
-    
+
     info_print(f"Downloading from Nexus - DOI: {doi}")
     debug_print(f"Target bot: {target_bot}")
     debug_print(f"Download directory: {download_dir or 'default'}")
-    
+
     try:
-        # Step 1: Check DOI availability with auto-download enabled
-        info_print("Step 1: Checking DOI availability on Nexus...")
-        
-        # Load proxy configuration if available
+        # Step 1: Decide proxy usage (try direct connection first)
         proxy_to_use = None
-        if os.path.exists(DEFAULT_PROXY_FILE):
-            proxy_to_use = DEFAULT_PROXY_FILE
-            debug_print(f"Using proxy configuration: {DEFAULT_PROXY_FILE}")
-        
+        try:
+            client = create_telegram_client(TG_API_ID, TG_API_HASH, SESSION_FILE, proxy=None)
+            await client.start(phone=PHONE if PHONE else None)
+            is_auth = await client.is_user_authorized()
+            await client.disconnect()
+            if not is_auth:
+                proxy_to_use = await decide_proxy_usage(TG_API_ID, TG_API_HASH, PHONE, SESSION_FILE, DEFAULT_PROXY_FILE)
+        except Exception:
+            proxy_to_use = await decide_proxy_usage(TG_API_ID, TG_API_HASH, PHONE, SESSION_FILE, DEFAULT_PROXY_FILE)
+
+        # Step 2: Check DOI availability with auto-download enabled
+        info_print("Step 1: Checking DOI availability on Nexus...")
         availability_result = await check_doi_availability_on_nexus(
-            TG_API_ID, TG_API_HASH, PHONE, target_bot, 
+            TG_API_ID, TG_API_HASH, PHONE, target_bot,
             doi, SESSION_FILE, proxy_to_use, download=True
         )
-        
+
         if "error" in availability_result:
             error_print(f"DOI availability check failed: {availability_result['error']}")
             return {
@@ -5137,13 +5140,12 @@ async def download_from_nexus_bot(doi, download_dir=None, bot_username=None):
                 "error": f"DOI availability check failed: {availability_result['error']}",
                 "doi": doi
             }
-        
-        # Step 2: Analyze availability result
+
         status = availability_result.get("status", "unknown")
         available = availability_result.get("available", False)
-        
+
         debug_print(f"DOI status: {status}, Available: {available}")
-        
+
         if not available:
             if status == "not_available_requestable":
                 info_print("Paper is not available on Nexus but can be requested")
@@ -5170,10 +5172,9 @@ async def download_from_nexus_bot(doi, download_dir=None, bot_username=None):
                     "doi": doi,
                     "status": status
                 }
-        
-        # Step 3: Check if auto-download was successful
+
         download_result = availability_result.get("download_result")
-        
+
         if not download_result:
             error_print("Paper is available but no download was attempted")
             return {
@@ -5182,7 +5183,7 @@ async def download_from_nexus_bot(doi, download_dir=None, bot_username=None):
                 "doi": doi,
                 "status": "available_no_download"
             }
-        
+
         if not download_result.get("success"):
             error_print(f"Download failed: {download_result.get('error', 'Unknown download error')}")
             return {
@@ -5191,13 +5192,12 @@ async def download_from_nexus_bot(doi, download_dir=None, bot_username=None):
                 "doi": doi,
                 "status": "download_failed"
             }
-        
-        # Step 4: Get downloaded file information
+
         downloaded_file_path = download_result.get("file_path")
         file_name = download_result.get("file_name") or download_result.get("filename")
         file_size = download_result.get("file_size", 0)
         file_size_mb = file_size / (1024 * 1024) if file_size else 0
-        
+
         if not downloaded_file_path or not os.path.exists(downloaded_file_path):
             error_print("Downloaded file not found on disk")
             return {
@@ -5206,29 +5206,21 @@ async def download_from_nexus_bot(doi, download_dir=None, bot_username=None):
                 "doi": doi,
                 "status": "file_missing"
             }
-        
+
         info_print(f"✓ File downloaded successfully: {file_name}")
         info_print(f"File size: {file_size_mb:.2f} MB")
         debug_print(f"Downloaded to: {downloaded_file_path}")
-        
-        # Step 5: Move file to specified directory if requested
+
         final_file_path = downloaded_file_path
-        
+
         if download_dir:
-            # Expand and create target directory
             target_dir = os.path.expanduser(download_dir.strip())
             target_dir = os.path.abspath(target_dir)
-            
             debug_print(f"Target directory specified: {target_dir}")
-            
             try:
                 os.makedirs(target_dir, exist_ok=True)
                 debug_print(f"Target directory created/verified: {target_dir}")
-                
-                # Generate target file path
                 target_file_path = os.path.join(target_dir, file_name)
-                
-                # Handle file name conflicts
                 if os.path.exists(target_file_path):
                     base_name, ext = os.path.splitext(file_name)
                     counter = 1
@@ -5236,26 +5228,17 @@ async def download_from_nexus_bot(doi, download_dir=None, bot_username=None):
                         new_name = f"{base_name}_{counter}{ext}"
                         target_file_path = os.path.join(target_dir, new_name)
                         counter += 1
-                    
                     info_print(f"File name conflict resolved: {os.path.basename(target_file_path)}")
                     debug_print(f"Original file exists, using: {target_file_path}")
-                
-                # Move file to target directory
-                debug_print(f"Moving file from {downloaded_file_path} to {target_file_path}")
-                
                 shutil.move(downloaded_file_path, target_file_path)
-                
                 final_file_path = target_file_path
                 info_print(f"✓ File moved to: {target_file_path}")
                 debug_print("File move operation completed successfully")
-                
             except Exception as move_error:
                 error_print(f"Warning: Could not move file to specified directory: {str(move_error)}")
                 debug_print(f"File move exception: {type(move_error).__name__}: {str(move_error)}")
                 info_print(f"File remains at: {downloaded_file_path}")
-                # Don't fail the entire operation, just use original location
-        
-        # Step 6: Return success result
+
         result = {
             "success": True,
             "doi": doi,
@@ -5270,23 +5253,21 @@ async def download_from_nexus_bot(doi, download_dir=None, bot_username=None):
             "target_directory": download_dir,
             "status": "downloaded"
         }
-        
-        # Add file size information from availability check if available
+
         details = availability_result.get("details", {})
         if details.get("file_size_mb"):
             result["expected_file_size_mb"] = details["file_size_mb"]
             result["file_size_unit"] = details.get("file_size_unit", "MB")
-        
+
         info_print(f"✓ Download completed successfully!")
         info_print(f"Final location: {final_file_path}")
         debug_print(f"Download result: {result}")
-        
+
         return result
-        
+
     except Exception as e:
         error_print(f"Error in download_from_nexus: {str(e)}")
         debug_print(f"Download function exception: {type(e).__name__}: {str(e)}")
-        
         return {
             "success": False,
             "error": f"Download operation failed: {str(e)}",
