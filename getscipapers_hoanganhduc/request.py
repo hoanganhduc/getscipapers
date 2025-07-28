@@ -160,7 +160,7 @@ def parse_service_argument(service_arg):
     return valid_services
 
 def print_result_with_icons(doi, data):
-    if "error" in data:
+    if isinstance(data, dict) and "error" in data:
         print(f"❌ DOI: {doi}\n   Error: {data['error']}\n")
     else:
         print(f"✅ DOI: {doi}\n   Result: {data}\n")
