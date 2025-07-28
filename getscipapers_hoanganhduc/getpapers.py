@@ -728,10 +728,9 @@ def extract_dois_from_text(text: str) -> list:
     # Remove duplicates while preserving order
     unique_dois = list(dict.fromkeys(dois))
 
-    # Filter: Only keep DOIs that resolve at doi.org (HTTP 200, 301, 302)
-    # or are found in Crossref
+    # Improved DOI validation: check both browser redirect and machine-readable metadata
     valid_dois = []
-    headers = {
+    browser_headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -751,14 +750,41 @@ def extract_dois_from_text(text: str) -> list:
         "Cache-Control": "no-cache",
         "Pragma": "no-cache",
     }
+    json_headers = {
+        "User-Agent": browser_headers["User-Agent"],
+        "Accept": "application/json",
+        "Referer": "https://doi.org/",
+        "DNT": "1",
+    }
     for doi in unique_dois:
         try:
             url = f"https://doi.org/{doi}"
-            resp = requests.head(url, allow_redirects=True, timeout=20, headers=headers)
-            if resp.status_code in (200, 301, 302):
+            # 1. Check browser redirect
+            resp = requests.head(url, allow_redirects=True, timeout=20, headers=browser_headers)
+            browser_ok = resp.status_code in (200, 301, 302)
+            forbidden = resp.status_code == 403
+            # 2. Check machine-readable metadata
+            json_ok = False
+            try:
+                json_resp = requests.get(url, headers=json_headers, timeout=20)
+                if json_resp.status_code == 200:
+                    # Accept only if response is valid JSON and contains publisher/title
+                    try:
+                        data = json_resp.json()
+                        if "publisher" in data or "title" in data:
+                            json_ok = True
+                    except Exception:
+                        pass
+                elif json_resp.status_code == 403:
+                    vprint(f"DOI {doi} returned 403 for JSON metadata, may be rate-limited, treating as valid")
+                    json_ok = True
+            except Exception as e:
+                vprint(f"Error fetching machine-readable metadata for DOI {doi}: {e}")
+
+            if browser_ok and json_ok:
                 valid_dois.append(doi)
-            elif resp.status_code == 403:
-                vprint(f"DOI {doi} returned 403 Forbidden at doi.org, treating as valid (may be rate-limited)")
+            elif browser_ok or json_ok or forbidden:
+                vprint(f"DOI {doi} partially valid (browser_ok={browser_ok}, json_ok={json_ok}, forbidden={forbidden}), treating as valid")
                 valid_dois.append(doi)
             else:
                 # Try Crossref as fallback
