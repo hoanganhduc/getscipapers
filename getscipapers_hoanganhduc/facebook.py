@@ -74,36 +74,81 @@ class FacebookScraper:
         self.verbose = verbose
         self.headless = headless
         
-    def load_credentials(self, json_file_path=None):
-        """Load username and password from a JSON file"""
+    def load_credentials(self, json_file_path=None, save_to_cache=True):
+        """Load username and password from a JSON file and optionally save to cache directory for default use"""
+        # Default credential file is always in cache directory
+        default_cred_file = os.path.join(_CACHE_DIR, 'credentials.json')
+        
         if json_file_path is None:
-            # Look for credentials file in the same directory as the script
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            json_file_path = os.path.join(script_dir, 'credentials.json')
+            # Look for credentials file in the default location
+            json_file_path = default_cred_file
         
         try:
-            if os.path.exists(json_file_path):
-                self.log(f"Loading credentials from: {json_file_path}")
-                with open(json_file_path, 'r') as f:
-                    credentials = json.load(f)
-                
-                # Update instance variables with loaded credentials
-                if 'fb_username' in credentials or 'fb_email' in credentials:
-                    self.email = credentials.get('fb_username', credentials.get('fb_email', self.email))
-                    self.log("Username/email loaded from file")
-
-                if 'fb_password' in credentials:
-                    self.password = credentials['fb_password']
-                    self.log("Password loaded from file")
-                
-                return True
+            # Check if default credential file exists
+            if os.path.exists(default_cred_file):
+                # Check if input file path is the same as default file path
+                if os.path.abspath(json_file_path) == os.path.abspath(default_cred_file):
+                    self.log(f"Input file is same as default credentials file: {default_cred_file}")
+                    # Load from default file
+                    with open(default_cred_file, 'r') as f:
+                        credentials = json.load(f)
+                    self.log("Loading credentials from default file")
+                else:
+                    # Input file path is different from default file path
+                    if os.path.exists(json_file_path):
+                        self.log(f"Input file path differs from default credentials file")
+                        # Load from input file
+                        with open(json_file_path, 'r') as f:
+                            credentials = json.load(f)
+                        self.log(f"Loading credentials from input file: {json_file_path}")
+                        
+                        # Save copy to default location
+                        if save_to_cache:
+                            try:
+                                with open(default_cred_file, 'w') as f:
+                                    json.dump(credentials, f, indent=2)
+                                self.log(f"Updated default credentials file: {default_cred_file}")
+                            except Exception as e:
+                                self.log(f"Warning: Could not update default credentials file: {e}")
+                    else:
+                        # Input file doesn't exist, use default file
+                        with open(default_cred_file, 'r') as f:
+                            credentials = json.load(f)
+                        self.log("Loading credentials from default file (input file not found)")
             else:
-                self.log(f"Credentials file not found at: {json_file_path}")
-                self.log("Create a credentials.json file with format: {\"fb_username\": \"your_email\", \"fb_password\": \"your_password\"}")
-                return False
+                # No default file exists
+                if os.path.exists(json_file_path):
+                    self.log(f"Loading credentials from input file: {json_file_path}")
+                    with open(json_file_path, 'r') as f:
+                        credentials = json.load(f)
+                    
+                    # Save copy to default location
+                    if save_to_cache:
+                        try:
+                            with open(default_cred_file, 'w') as f:
+                                json.dump(credentials, f, indent=2)
+                            self.log(f"Created default credentials file: {default_cred_file}")
+                        except Exception as e:
+                            self.log(f"Warning: Could not create default credentials file: {e}")
+                else:
+                    self.log(f"No credentials file found at: {json_file_path}")
+                    self.log(f"No default credentials file found at: {default_cred_file}")
+                    self.log("Create a credentials.json file with format: {\"fb_username\": \"your_email\", \"fb_password\": \"your_password\"}")
+                    return False
+            
+            # Update instance variables with loaded credentials
+            if 'fb_username' in credentials or 'fb_email' in credentials:
+                self.email = credentials.get('fb_username', credentials.get('fb_email', self.email))
+                self.log("Username/email loaded from file")
+
+            if 'fb_password' in credentials:
+                self.password = credentials['fb_password']
+                self.log("Password loaded from file")
+            
+            return True
                 
         except Exception as e:
-            self.log(f"Error loading credentials from {json_file_path}: {e}")
+            self.log(f"Error loading credentials: {e}")
             return False
 
     def log(self, message):
@@ -270,6 +315,31 @@ class FacebookScraper:
         self.log("Navigating to Facebook login page...")
         self.driver.get("https://www.facebook.com/login")
 
+        # Check for default credentials file
+        default_cred_file = os.path.join(_CACHE_DIR, 'credentials.json')
+
+        if os.path.exists(default_cred_file):
+            self.log(f"Found default credentials file: {default_cred_file}")
+            try:
+                with open(default_cred_file, 'r') as f:
+                    default_credentials = json.load(f)
+                
+                # Update instance variables with loaded credentials
+                if 'fb_username' in default_credentials or 'fb_email' in default_credentials:
+                    self.email = default_credentials.get('fb_username', default_credentials.get('fb_email', self.email))
+                    self.log("Username/email loaded from default credentials file")
+
+                if 'fb_password' in default_credentials:
+                    self.password = default_credentials['fb_password']
+                    self.log("Password loaded from default credentials file")
+                    
+                self.log("Default credentials loaded successfully")
+                
+            except Exception as e:
+                self.log(f"Error loading default credentials file: {e}")
+        else:
+            self.log(f"No default credentials file found at: {default_cred_file}")
+        
         # Prompt for email and password if not provided
         if not self.email or not self.password:
             def get_input_with_timeout(prompt, timeout=30):
