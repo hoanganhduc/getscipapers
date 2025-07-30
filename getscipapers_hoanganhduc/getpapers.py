@@ -1964,45 +1964,44 @@ async def download_from_nexus_bot(doi: str, download_folder: str = DEFAULT_DOWNL
     """
     Download a PDF by DOI using the Nexus bot (via .nexus module).
     Returns True if successful, else False.
-    Tries first without proxy, then with proxy if it fails.
+    Uses decide_proxy_usage function to determine whether to use proxy.
     """
     safe_doi = doi.replace('/', '_')
     filename = f"{safe_doi}_nexusbot.pdf"
     filepath = os.path.join(download_folder, filename)
     try:
         TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME = await nexus.load_credentials_from_file(nexus.CREDENTIALS_FILE)
-        # Try without proxy first
-        for proxy in [None, nexus.DEFAULT_PROXY_FILE]:
-            try:
-                pdf_bytes = await nexus.check_doi_availability_on_nexus(
-                    api_id=TG_API_ID,
-                    api_hash=TG_API_HASH,
-                    phone_number=PHONE,
-                    bot_username=BOT_USERNAME,
-                    doi=doi,
-                    session_file=nexus.SESSION_FILE,
-                    proxy=proxy,
-                    download=True
-                )
-                download_result = pdf_bytes.get('download_result', {})
-                if download_result.get("success"):
-                    nexus_bot_download_file = download_result.get('file_path')
-                    if nexus_bot_download_file and os.path.exists(nexus_bot_download_file):
-                        shutil.move(nexus_bot_download_file, filepath)
-                        print(f"Downloaded PDF from Nexus bot: {filepath}")
-                        return True
-                    else:
-                        print(f"Downloaded file not found at {nexus_bot_download_file}.")
-                        return False
-                else:
-                    # Only print this message on the last attempt
-                    if proxy == nexus.DEFAULT_PROXY_FILE:
-                        print(f"PDF file is not available from Nexus bot for DOI: {doi}.")
-            except Exception as e:
-                if proxy == nexus.DEFAULT_PROXY_FILE:
-                    print(f"Error downloading PDF from Nexus bot for DOI {doi}: {e}")
-                # Try next proxy (with proxy) if this was the first attempt
-                continue
+        
+        # Use decide_proxy_usage to determine if proxy should be used
+        proxy_result = await nexus.decide_proxy_usage(TG_API_ID, TG_API_HASH, PHONE, nexus.SESSION_FILE, nexus.DEFAULT_PROXY_FILE)
+        if proxy_result is False:
+            print("Error: Could not establish connection to Telegram (neither direct nor via proxy)")
+            return False
+        proxy = proxy_result if proxy_result else None
+        
+        pdf_bytes = await nexus.check_doi_availability_on_nexus(
+            api_id=TG_API_ID,
+            api_hash=TG_API_HASH,
+            phone_number=PHONE,
+            bot_username=BOT_USERNAME,
+            doi=doi,
+            session_file=nexus.SESSION_FILE,
+            proxy=proxy,
+            download=True
+        )
+        download_result = pdf_bytes.get('download_result', {})
+        if download_result.get("success"):
+            nexus_bot_download_file = download_result.get('file_path')
+            if nexus_bot_download_file and os.path.exists(nexus_bot_download_file):
+                shutil.move(nexus_bot_download_file, filepath)
+                print(f"Downloaded PDF from Nexus bot: {filepath}")
+                return True
+            else:
+                print(f"Downloaded file not found at {nexus_bot_download_file}.")
+                return False
+        else:
+            print(f"PDF file is not available from Nexus bot for DOI: {doi}.")
+            return False
     except Exception as e:
         print(f"Error downloading PDF from Nexus bot for DOI {doi}: {e}")
     return False
@@ -2278,7 +2277,7 @@ async def download_by_doi_list(doi_file: str, download_folder: str = DEFAULT_DOW
             # Check if the extracted DOI file exists
             if not os.path.exists(doi_file):
                 print(f"Error: DOI numbers cannot be extracted from {base_name}.txt.")
-                return
+                return {}
             
             vprint(f"Using extracted DOI file: {doi_file}")
             
@@ -2290,11 +2289,9 @@ async def download_by_doi_list(doi_file: str, download_folder: str = DEFAULT_DOW
             
     except Exception as e:
         print(f"Failed to read DOI file: {e}")
-        return
+        return {}
 
-    successful_downloads = []
-    failed_downloads = []
-    # Track open access status for each DOI
+    download_results = {}
     successful_downloads = []
     failed_downloads = []
     
@@ -2307,10 +2304,48 @@ async def download_by_doi_list(doi_file: str, download_folder: str = DEFAULT_DOW
         result = await download_by_doi(doi, download_folder=download_folder, db=db, no_download=no_download)
         
         if result is True:
+            # Find the downloaded file
+            safe_doi = doi.replace('/', '_')
+            # Check for various possible filenames
+            possible_files = [
+                f"{safe_doi}_unpaywall.pdf",
+                f"{safe_doi}_unpaywall_1.pdf",
+                f"{safe_doi}_unpaywall_elsevier.pdf",
+                f"{safe_doi}_elsevier.pdf",
+                f"{safe_doi}_wiley.pdf",
+                f"{safe_doi}_nexus.pdf",
+                f"{safe_doi}_nexusbot.pdf",
+                f"{safe_doi}_scihub.pdf",
+                f"{safe_doi}_scinet.pdf",
+                f"{safe_doi}_anna.pdf",
+                f"{safe_doi}_pmc.pdf",
+                f"{safe_doi}_libgen.pdf"
+            ]
+            
+            downloaded_file = None
+            for filename in possible_files:
+                filepath = os.path.join(download_folder, filename)
+                if os.path.exists(filepath):
+                    downloaded_file = filepath
+                    break
+            
+            # Also check for numbered unpaywall files
+            if not downloaded_file:
+                for i in range(1, 10):  # Check up to 10 files
+                    filename = f"{safe_doi}_unpaywall_{i}.pdf"
+                    filepath = os.path.join(download_folder, filename)
+                    if os.path.exists(filepath):
+                        downloaded_file = filepath
+                        break
+            
+            download_results[doi] = ["success", downloaded_file if downloaded_file else "file_not_found"]
             successful_downloads.append((doi, oa_status))
+            
         elif result is False:
+            download_results[doi] = ["failed", None]
             failed_downloads.append((doi, oa_status))
-        # result is None when no_download is True or no document found
+        else:  # result is None when no_download is True or no document found
+            download_results[doi] = ["no_download" if no_download else "not_found", None]
     
     if not no_download:
         print(f"\nDownload Summary:")
@@ -2325,6 +2360,8 @@ async def download_by_doi_list(doi_file: str, download_folder: str = DEFAULT_DOW
             for doi, oa_status in failed_downloads:
                 oa_status_text = "Open Access" if oa_status else "Closed Access"
                 print(f"  ✗ {doi} [{oa_status_text}]")
+    
+    return download_results
 
 def print_default_paths():
     """

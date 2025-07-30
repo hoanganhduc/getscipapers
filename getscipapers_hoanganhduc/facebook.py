@@ -31,6 +31,8 @@ import os
 import shutil
 import sys
 import getpass
+import traceback
+import tempfile
 
 USERNAME = "" # Replace with your Facebook username
 PASSWORD = "" # Replace with your Facebook password
@@ -630,7 +632,7 @@ class FacebookScraper:
             self.log(f"Error extracting DOIs: {e}")
             return []
 
-    def scrape_posts(self, max_posts, having_doi=False, download=None):
+    def scrape_posts(self, max_posts, having_doi=False, download=None, no_comment=False):
         """Scrape a specified number of posts with optional DOI filtering and PDF download"""
         
         # Validate and set download parameter
@@ -644,7 +646,8 @@ class FacebookScraper:
         
         doi_filter = " with DOIs" if having_doi else ""
         download_filter = f" (with PDF download to {download})" if download else ""
-        self.log(f"Starting to scrape {max_posts} posts{doi_filter}{download_filter}...")
+        comment_filter = " with no comments" if no_comment else ""
+        self.log(f"Starting to scrape {max_posts} posts{doi_filter}{download_filter}{comment_filter}...")
         
         all_posts = []
         all_posts_processed = []  # Track all processed posts for DOI filtering
@@ -670,12 +673,33 @@ class FacebookScraper:
                 if not self.has_meaningful_content(post):
                     continue
                     
+                # Skip posts with comments if no_comment is True
+                if no_comment:
+                    comments_count = post.get('comments_count', '0')
+                    # Handle various comment count formats
+                    if comments_count and comments_count != '0':
+                        # Check if it's a numeric value or contains numbers
+                        if re.search(r'\d+', str(comments_count)):
+                            continue  # Skip posts with comments
+                    
                 post['doi_numbers'] = self.extract_doi_from_text(post['post_text'])
             
             # Remove notification posts and posts without meaningful content
-            posts = [post for post in posts if not self.is_notification_content(post) and self.has_meaningful_content(post)]
+            filtered_posts = []
+            for post in posts:
+                if self.is_notification_content(post) or not self.has_meaningful_content(post):
+                    continue
+                    
+                # Apply no_comment filter
+                if no_comment:
+                    comments_count = post.get('comments_count', '0')
+                    if comments_count and comments_count != '0':
+                        if re.search(r'\d+', str(comments_count)):
+                            continue  # Skip posts with comments
+                
+                filtered_posts.append(post)
             
-            all_posts_processed.extend(posts)
+            all_posts_processed.extend(filtered_posts)
             all_posts_processed = self.remove_duplicates(all_posts_processed)
             
             if having_doi:
@@ -1172,7 +1196,7 @@ class FacebookScraper:
             self.log(f"❌ Error creating post: {e}")
             return False
 
-    def search_posts(self, search_query, max_posts=10, group_id=None, user_id=None, having_doi=False, download=None):
+    def search_posts(self, search_query, max_posts=10, group_id=None, user_id=None, having_doi=False, download=None, no_comment=False):
         """Search for posts containing specific content, optionally in a specific group or from a specific user, optionally filtering for posts with DOI numbers, and optionally downloading PDFs"""
         
         # Validate and set download parameter
@@ -1187,7 +1211,8 @@ class FacebookScraper:
         context = f"from user {user_id}" if user_id else (f"in group {group_id}" if group_id else "on Facebook")
         doi_filter = " with DOIs" if having_doi else ""
         download_filter = f" (with PDF download to {download})" if download else ""
-        self.log(f"Searching for posts containing: '{search_query}'{doi_filter}{download_filter} {context}")
+        comment_filter = " with no comments" if no_comment else ""
+        self.log(f"Searching for posts containing: '{search_query}'{doi_filter}{download_filter}{comment_filter} {context}")
         
         try:
             # Navigate to specific user search if user_id is provided
@@ -1229,7 +1254,7 @@ class FacebookScraper:
                     self.log(f"Could not use search box, trying direct URL approach: {e}")
             
             # Scrape search results
-            self.log(f"Scraping search results for '{search_query}'{doi_filter}{download_filter} {context}...")
+            self.log(f"Scraping search results for '{search_query}'{doi_filter}{download_filter}{comment_filter} {context}...")
             search_results = []
             all_posts_processed = []  # Track all processed posts for DOI filtering
             scroll_count = 0
@@ -1247,6 +1272,19 @@ class FacebookScraper:
                 
                 # Filter out notification content and posts without meaningful content
                 posts = [post for post in posts if not self.is_notification_content(post) and self.has_meaningful_content(post)]
+                
+                # Apply no_comment filter if specified
+                if no_comment:
+                    filtered_posts = []
+                    for post in posts:
+                        comments_count = post.get('comments_count', '0')
+                        # Handle various comment count formats
+                        if comments_count and comments_count != '0':
+                            # Check if it's a numeric value or contains numbers
+                            if re.search(r'\d+', str(comments_count)):
+                                continue  # Skip posts with comments
+                        filtered_posts.append(post)
+                    posts = filtered_posts
                 
                 if user_id or group_id:
                     # For user or group searches, add all posts since they're already filtered by Facebook
@@ -1870,12 +1908,387 @@ class FacebookScraper:
             self.log(f"❌ Failed to post help request for DOIs to group {group_id}")
         return [(doi, success) for doi in dois]
     
+    def scrape_and_comment(self, max_posts=10, having_doi=False, no_comment=False):
+        """
+        Scrape posts from the current page and interactively select one or more to comment on.
+        
+        Args:
+            max_posts (int): Maximum number of posts to scrape
+            having_doi (bool): Whether to filter for posts with DOI numbers
+            no_comment (bool): Whether to filter for posts with no comments
+        
+        Returns:
+            bool: True if commenting was successful, False otherwise
+        """
+        self.log(f"Scraping up to {max_posts} posts to select one or more for commenting...")
+        
+        doi_filter = " with DOIs" if having_doi else ""
+        comment_filter = " with no comments" if no_comment else ""
+        self.log(f"Starting to scrape {max_posts} posts{doi_filter}{comment_filter} for commenting...")
+        
+        # Step 1: Scrape posts from the current page (no downloading yet)
+        posts = self.scrape_posts(max_posts, having_doi=having_doi, no_comment=no_comment)
+        
+        if not posts:
+            self.log("No posts found to comment on")
+            print("❌ No posts found to comment on.")
+            return False
+        
+        self.log(f"Successfully scraped {len(posts)} posts")
+        
+        # Step 2: Display scraped posts for selection
+        print("\n" + "="*80)
+        print(f"SELECT POSTS TO DOWNLOAD AND COMMENT ON - Found {len(posts)} posts")
+        print("="*80)
+        
+        posts_with_dois = []
+        for idx, post in enumerate(posts, start=1):
+            print(f"\n{idx}. 👤 Author: {post['author']}")
+            print(f"   ⏰ Posted: {post['post_time']}")
+            print(f"   👍 Likes: {post['likes']} | 💬 Comments: {post['comments_count']}")
+            
+            # Show DOI information if available
+            post_dois = post.get('doi_numbers', [])
+            if post_dois:
+                print(f"   📄 DOIs: {len(post_dois)} - {', '.join(post_dois[:3])}{' ...' if len(post_dois) > 3 else ''}")
+                posts_with_dois.append(idx)
+            else:
+                print(f"   📄 DOIs: None")
+            
+            content_preview = post['post_text'][:300] + "..." if len(post['post_text']) > 300 else post['post_text']
+            print(f"   📝 Content: {content_preview}")
+            print("-" * 40)
+        
+        if not posts_with_dois:
+            print("\n❌ No posts with DOI numbers found. Cannot proceed with downloading.")
+            return False
+        
+        print(f"\nℹ️ Posts with DOI numbers: {', '.join(map(str, posts_with_dois))}")
+        
+        def get_input_with_timeout(prompt, timeout=30):
+            """Get user input with timeout handling for both Windows and Unix"""
+            if platform.system() == "Windows":
+                print(prompt, end='', flush=True)
+                start_time = time.time()
+                input_chars = []
+                
+                while True:
+                    if msvcrt.kbhit():
+                        char = msvcrt.getch()
+                        if char == b'\r':  # Enter key
+                            print()  # New line
+                            return ''.join(input_chars)
+                        elif char == b'\x08':  # Backspace
+                            if input_chars:
+                                input_chars.pop()
+                                print('\b \b', end='', flush=True)
+                        else:
+                            try:
+                                decoded_char = char.decode('utf-8')
+                                input_chars.append(decoded_char)
+                                print(decoded_char, end='', flush=True)
+                            except UnicodeDecodeError:
+                                pass
+                    
+                    if time.time() - start_time > timeout:
+                        print(f"\n⏰ Timeout: No response received within {timeout} seconds.")
+                        return None
+                    
+                    time.sleep(0.1)
+            else:
+                def alarm_handler(signum, frame):
+                    raise TimeoutError()
+                
+                try:
+                    signal.signal(signal.SIGALRM, alarm_handler)
+                    signal.alarm(timeout)
+                    result = input(prompt)
+                    signal.alarm(0)  # Cancel the alarm
+                    return result
+                except (TimeoutError, KeyboardInterrupt):
+                    signal.alarm(0)  # Cancel the alarm
+                    print(f"\n⏰ Timeout: No response received within {timeout} seconds.")
+                    return None
+        
+        def parse_selection(selection_str, max_num):
+            """Parse user selection string (e.g., '1,3-5,7' or '2-4') into list of indices"""
+            selected_indices = []
+            
+            for part in selection_str.split(','):
+                part = part.strip()
+                if '-' in part:
+                    # Range selection
+                    try:
+                        start, end = part.split('-', 1)
+                        start, end = int(start.strip()), int(end.strip())
+                        if 1 <= start <= max_num and 1 <= end <= max_num and start <= end:
+                            selected_indices.extend(range(start, end + 1))
+                        else:
+                            return None  # Invalid range
+                    except ValueError:
+                        return None  # Invalid format
+                else:
+                    # Single selection
+                    try:
+                        num = int(part)
+                        if 1 <= num <= max_num:
+                            selected_indices.append(num)
+                        else:
+                            return None  # Out of range
+                    except ValueError:
+                        return None  # Invalid format
+            
+            return sorted(list(set(selected_indices)))  # Remove duplicates and sort
+        
+        # Step 3: Get user selection for posts to download
+        self.log("Prompting user to select posts for downloading...")
+        while True:
+            try:
+                selection = get_input_with_timeout(
+                    f"\nSelect posts for downloading (e.g., '1,3-5,7' for posts 1,3,4,5,7 or just '2' for post 2) or 'q' to quit: ",
+                    timeout=60
+                )
+                
+                if selection is None:  # Timeout occurred
+                    self.log("Operation failed due to user input timeout")
+                    return False
+                
+                selection = selection.strip()
+                self.log(f"User input: '{selection}'")
+                
+                if selection.lower() == 'q':
+                    self.log("User cancelled post selection")
+                    return False
+                
+                selected_indices = parse_selection(selection, len(posts))
+                if selected_indices:
+                    # Filter to only include posts with DOIs
+                    valid_indices = [idx for idx in selected_indices if idx in posts_with_dois]
+                    if valid_indices:
+                        selected_posts = [posts[idx - 1] for idx in valid_indices]
+                        self.log(f"User selected posts: {valid_indices}")
+                        break
+                    else:
+                        print(f"❌ Selected posts don't have DOI numbers. Please select from: {', '.join(map(str, posts_with_dois))}")
+                else:
+                    print(f"❌ Invalid selection. Please use format like '1,3-5,7' or select from 1-{len(posts)}")
+                    
+            except Exception as e:
+                self.log(f"Error parsing selection: {e}")
+                print("❌ Invalid selection format. Please try again.")
+        
+        # Step 4: Start downloading for selected posts
+        print(f"\n🔄 Starting download process for {len(selected_posts)} selected posts...")
+        self.log(f"Starting to download PDFs for {len(selected_posts)} selected posts...")
+        
+        for idx, post in enumerate(selected_posts, start=1):
+            post_dois = post.get('doi_numbers', [])
+            self.log(f"Post {idx}/{len(selected_posts)} by {post['author']}: found {len(post_dois)} DOIs")
+            
+            if post_dois:
+                print(f"📥 Downloading PDFs for post by {post['author']} ({len(post_dois)} DOIs)...")
+                self.log(f"DOIs in post {idx}: {post_dois}")
+                self.log(f"Attempting to download PDFs for {len(post_dois)} DOIs from post by {post['author']}...")
+                
+                try:
+                    # Try to download PDFs for all DOIs in this post
+                    self.log(f"Calling getpapers.download_by_doi_list with DOIs: {post_dois}")
+                    self.log(f"Download folder: {DOWNLOAD_FOLDER}")
+                    
+                    # Save DOIs to a temporary file first
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as temp_file:
+                        for doi in post_dois:
+                            temp_file.write(f"{doi}\n")
+                        temp_doi_file = temp_file.name
+                    
+                    try:
+                        download_results = asyncio.run(getpapers.download_by_doi_list(temp_doi_file, DOWNLOAD_FOLDER, no_download=False))
+                    finally:
+                        # Clean up temporary file
+                        try:
+                            os.unlink(temp_doi_file)
+                        except:
+                            pass
+                    
+                    self.log(f"Download results for post {idx}: {download_results}")
+                    
+                    # Map successful downloads to their source services
+                    successful_downloads = {}
+                    for doi, result_list in download_results.items():
+                        self.log(f"Processing download result for DOI {doi}: {result_list}")
+                        
+                        if result_list and len(result_list) >= 2:
+                            download_status = result_list[0]
+                            file_path = result_list[1]
+                            
+                            self.log(f"DOI {doi} - Status: {download_status}, Path: {file_path}")
+                            
+                            if download_status and file_path and os.path.exists(file_path):
+                                # Determine the source service from filename
+                                filename = os.path.basename(file_path).lower()
+                                self.log(f"DOI {doi} - Filename: {filename}")
+                                
+                                if '_scihub' in filename:
+                                    source = 'Sci-Hub'
+                                elif '_scinet' in filename:
+                                    source = 'Sci-Net'
+                                elif '_anna' in filename:
+                                    source = "Anna's Archive"
+                                elif '_nexus' in filename or '_nexusbot' in filename:
+                                    source = 'Nexus'
+                                else:
+                                    source = 'một nguồn khác'  # "another source" in Vietnamese
+                                
+                                successful_downloads[doi] = {
+                                    'path': file_path,
+                                    'source': source
+                                }
+                                self.log(f"Successfully downloaded DOI {doi} from {source} to {file_path}")
+                                print(f"  ✅ {doi} from {source}")
+                            else:
+                                self.log(f"DOI {doi} - Download failed: status={download_status}, file_exists={os.path.exists(file_path) if file_path else False}")
+                                print(f"  ❌ {doi} - download failed")
+                        else:
+                            self.log(f"DOI {doi} - Invalid result format: {result_list}")
+                            print(f"  ❌ {doi} - invalid result")
+                    
+                    # Generate Vietnamese comment if any downloads were successful
+                    if successful_downloads:
+                        self.log(f"Post {idx}: {len(successful_downloads)} successful downloads out of {len(post_dois)} DOIs")
+                        
+                        comment_parts = []
+                        for doi, info in successful_downloads.items():
+                            comment_parts.append(f"Bài báo có DOI {doi} có thể tải từ {info['source']}")
+                        
+                        auto_comment = "\n".join(comment_parts)
+                        post['auto_comment'] = auto_comment
+                        post['downloaded_files'] = successful_downloads
+                        self.log(f"Generated auto-comment for post {idx} by {post['author']}: '{auto_comment}'")
+                        print(f"  📝 Generated comment for sharing")
+                    else:
+                        self.log(f"Post {idx}: No successful downloads for any of the {len(post_dois)} DOIs")
+                        print(f"  ❌ No successful downloads")
+                    
+                except Exception as e:
+                    self.log(f"Error downloading PDFs for post {idx} by {post['author']}: {e}")
+                    self.log(f"Traceback: {traceback.format_exc()}")
+                    print(f"  ❌ Error during download: {e}")
+        
+        # Step 5: Display selected posts with download status for final commenting decision
+        posts_with_downloads = [post for post in selected_posts if post.get('downloaded_files')]
+        print(f"\n📋 Download completed! {len(posts_with_downloads)} out of {len(selected_posts)} posts have downloadable PDFs")
+        
+        if not posts_with_downloads:
+            print("❌ No PDFs were successfully downloaded. Cannot proceed with commenting.")
+            return False
+        
+        print("\n" + "="*80)
+        print(f"SELECT POSTS TO COMMENT ON - {len(posts_with_downloads)} posts with downloads")
+        print("="*80)
+        
+        for idx, post in enumerate(posts_with_downloads, start=1):
+            print(f"\n{idx}. 👤 Author: {post['author']}")
+            print(f"   ⏰ Posted: {post['post_time']}")
+            print(f"   👍 Likes: {post['likes']} | 💬 Comments: {post['comments_count']}")
+            
+            # Show download status
+            downloaded_files = post.get('downloaded_files', {})
+            print(f"   ✅ Downloaded: {len(downloaded_files)} PDFs available for sharing")
+            
+            # Show auto-generated comment preview
+            auto_comment = post.get('auto_comment', '')
+            if auto_comment:
+                comment_preview = auto_comment[:100] + "..." if len(auto_comment) > 100 else auto_comment
+                print(f"   💬 Comment preview: {comment_preview}")
+            
+            content_preview = post['post_text'][:200] + "..." if len(post['post_text']) > 200 else post['post_text']
+            print(f"   📝 Content: {content_preview}")
+            print("-" * 40)
+        
+        # Step 6: Get final selection for commenting (allowing range selection)
+        self.log("Prompting user to select posts for commenting...")
+        while True:
+            try:
+                choice = get_input_with_timeout(
+                    f"\nSelect posts to comment on (e.g., '1,3-5' for posts 1,3,4,5 or just '2' for post 2) or 'q' to quit: ",
+                    timeout=60
+                )
+                
+                if choice is None:  # Timeout occurred
+                    self.log("Operation failed due to user input timeout")
+                    return False
+                
+                choice = choice.strip()
+                self.log(f"User input: '{choice}'")
+                
+                if choice.lower() == 'q':
+                    self.log("User cancelled final post selection")
+                    return False
+                
+                selected_comment_indices = parse_selection(choice, len(posts_with_downloads))
+                if selected_comment_indices:
+                    selected_comment_posts = [posts_with_downloads[idx - 1] for idx in selected_comment_indices]
+                    self.log(f"User selected posts for commenting: {selected_comment_indices}")
+                    break
+                else:
+                    print(f"❌ Invalid selection. Please use format like '1,3-5' or select from 1-{len(posts_with_downloads)}")
+                    
+            except Exception as e:
+                self.log(f"Error parsing selection: {e}")
+                print("❌ Invalid selection format. Please try again.")
+        
+        # Step 7: Show final confirmation and comment on selected posts
+        print(f"\n✅ Selected {len(selected_comment_posts)} posts for commenting")
+        
+        # Final confirmation
+        self.log("Prompting user for final confirmation...")
+        should_comment = get_input_with_timeout(f"\nPost comments on {len(selected_comment_posts)} selected posts? (y/n): ", timeout=30)
+        
+        if should_comment is None:  # Timeout occurred
+            self.log("Operation failed due to user input timeout")
+            return False
+        
+        self.log(f"User final confirmation: '{should_comment}'")
+        
+        if should_comment.lower().startswith('y'):
+            self.log("User confirmed posting comments about downloaded PDFs")
+            
+            # Comment on all selected posts
+            success_count = 0
+            for idx, post in enumerate(selected_comment_posts, start=1):
+                auto_comment = post.get('auto_comment', '')
+                downloaded_files = post.get('downloaded_files', {})
+                
+                print(f"\n📝 Commenting on post {idx}/{len(selected_comment_posts)} by {post['author']}")
+                print(f"   Comment: {auto_comment}")
+                
+                result = self.comment_on_post(post, auto_comment)
+                if result:
+                    success_count += 1
+                    print(f"  ✅ Successfully commented on post by {post['author']}")
+                else:
+                    print(f"  ❌ Failed to comment on post by {post['author']}")
+                
+                self.log(f"Comment operation {idx}/{len(selected_comment_posts)} result: {result}")
+                
+                # Add a small delay between comments to avoid rate limiting
+                if idx < len(selected_comment_posts):
+                    time.sleep(random.uniform(2, 5))
+            
+            print(f"\n✅ Commenting completed: {success_count}/{len(selected_comment_posts)} posts commented successfully")
+            self.log(f"Final comment operation results: {success_count}/{len(selected_comment_posts)} successful")
+            return success_count > 0
+        else:
+            self.log("User declined to post final comments")
+            print("❌ Comments cancelled by user.")
+            return False
+    
     def print_default_paths():
         """Print all default cache and download directory paths."""
-        print("Default Facebook Scraper Paths:")
-        print(f"  Cache directory: {_CACHE_DIR}")
-        print(f"  Download folder: {_DOWNLOAD_DIR}")
-        print(f"  Cache file: {CACHE_FILE}")
+        print("📁 Default Facebook Scraper Paths:")
+        print(f"  💾 Cache directory: {_CACHE_DIR}")
+        print(f"  📥 Download folder: {_DOWNLOAD_DIR}")
+        print(f"  🗂️ Cache file: {CACHE_FILE}")
 
     def close(self):
         """Close the browser"""
@@ -1926,7 +2339,7 @@ def main():
 
 Popular Facebook Groups for Scientific Paper Requests:
 * Nhóm Tải Báo: 188053074599163 (default group)
-* Nhóm Tải Báo (Original)
+* Nhóm Tải Báo (Original): 1483789705251475
 * Science Mutual Aid: 402784499466368
 * Ask for PDFs from People with Institutional Access: 850609558335839
 * Scientific Papers: 556282024420690
@@ -1945,6 +2358,9 @@ Examples:
 
   Search for posts with DOI numbers and download PDFs:
     %(prog)s --search "machine learning" --having-doi --download ~/Downloads/papers --search-limit 15
+
+  Search for posts with no comments:
+    %(prog)s --search "research paper" --no-comment --search-limit 10
 
   Search and comment on posts:
     %(prog)s --search "data science" --search-comment "Great insights!"
@@ -1967,11 +2383,23 @@ Examples:
   Get top posts with DOI numbers and download PDFs:
     %(prog)s --get-posts 10 --having-doi --download ~/Downloads/papers
 
+  Get top posts with no comments:
+    %(prog)s --get-posts 15 --no-comment
+
   Get top posts from group:
     %(prog)s --get-posts 15 --get-in-group 188053074599163
 
   Get top posts from user profile:
     %(prog)s --get-posts 10 --get-in-profile user123
+
+  Get posts and automatically help with available PDFs:
+    %(prog)s --get-and-comment 15
+    %(prog)s --get-and-comment 10 --having-doi
+    %(prog)s --get-and-comment 15 --get-in-group 188053074599163
+    %(prog)s --get-and-comment 10 --get-in-profile user123
+
+  Get posts with no comments and help with PDFs:
+    %(prog)s --get-and-comment 10 --no-comment
 
   Post to your profile:
     %(prog)s --post-on-profile --profile-post-content "Hello World!"
@@ -2001,6 +2429,9 @@ Examples:
   Filter for posts with DOI numbers and download PDFs:
     %(prog)s --search "research paper" --having-doi --download ~/Downloads/papers --search-in-group 188053074599163
 
+  Filter for posts with no comments:
+    %(prog)s --search "research paper" --no-comment --search-in-group 188053074599163
+
   Request help for DOI(s):
     %(prog)s --request-doi 10.1000/xyz123
     %(prog)s --request-doi 10.1000/xyz123,10.1000/abc456 --request-in-group 402784499466368
@@ -2018,6 +2449,8 @@ Examples:
                        help='Path to JSON credentials file containing username and password')
     parser.add_argument('--having-doi', action='store_true',
                        help='Filter posts to only include those containing DOI numbers')
+    parser.add_argument('--no-comment', action='store_true',
+                       help='Filter posts to only include those with no comments')
     parser.add_argument('--download', '-d', nargs='?', const=DOWNLOAD_FOLDER, type=str,
                        help=f'Download PDFs for DOI numbers found in posts to specified directory (requires --having-doi). Default: {DOWNLOAD_FOLDER}')
     parser.add_argument('--search', '-s', type=str,
@@ -2038,6 +2471,8 @@ Examples:
                        help='Retrieve posts from a specific group (provide group ID, or use default if no ID specified)')
     parser.add_argument('--get-in-profile', '-gp', type=str,
                        help='Retrieve posts from a specific user profile (provide user ID)')
+    parser.add_argument('--get-and-comment', '-gc', type=int, metavar='LIMIT',
+                       help='Retrieve posts and automatically comment on those with downloadable PDFs')
     parser.add_argument('--post-in-group', '-pg', nargs='?', const='188053074599163', type=str,
                        help='Post to a specific group (provide group ID, or use default if no ID specified)')
     parser.add_argument('--group-post-content', '-gpc', type=str,
@@ -2228,49 +2663,91 @@ Examples:
             # After DOI request, exit
             return
         
+        # Handle get posts and select to comment
+        if args.get_and_comment:
+            # Navigate to appropriate page based on options
+            if args.get_in_group:
+                print_and_log(f"📄 Getting posts from group {args.get_in_group} to select for commenting...")
+                group_url = f"https://www.facebook.com/groups/{args.get_in_group}/?sorting_setting=CHRONOLOGICAL"
+                scraper.navigate_to_profile(group_url)
+            elif args.get_in_profile:
+                print_and_log(f"📄 Getting posts from profile {args.get_in_profile} to select for commenting...")
+                profile_url = f"https://www.facebook.com/{args.get_in_profile}"
+                scraper.navigate_to_profile(profile_url)
+            else:
+                print_and_log("📄 Getting posts from homepage to select for commenting...")
+                scraper.driver.get("https://www.facebook.com")
+            
+            # Use scrape_and_comment function
+            success = scraper.scrape_and_comment(
+                max_posts=args.get_and_comment,
+                having_doi=args.having_doi,
+                no_comment=args.no_comment
+            )
+            
+            if success:
+                print_and_log("✅ Successfully commented on selected post!")
+            else:
+                print_and_log("❌ Failed to comment on post or operation cancelled")
+        
         # Get posts from group, profile, or homepage
-        if args.get_posts:
+        elif args.get_posts:
             if args.get_in_group:
                 doi_filter_msg = " with DOI numbers" if args.having_doi else ""
+                comment_filter_msg = " with no comments" if args.no_comment else ""
                 download_msg = f" and downloading PDFs to {args.download}" if args.download else ""
-                msg = f"📄 Retrieving {args.get_posts} posts{doi_filter_msg}{download_msg} from group {args.get_in_group}..."
+                msg = f"📄 Retrieving {args.get_posts} posts{doi_filter_msg}{comment_filter_msg}{download_msg} from group {args.get_in_group}..."
                 print_and_log(msg)
                 group_url = f"https://www.facebook.com/groups/{args.get_in_group}/?sorting_setting=CHRONOLOGICAL"
                 scraper.navigate_to_profile(group_url)
-                posts = scraper.scrape_posts(args.get_posts, having_doi=args.having_doi, download=args.download)
+                posts = scraper.scrape_posts(args.get_posts, having_doi=args.having_doi, download=args.download, no_comment=args.no_comment)
                 if posts:
                     print_and_log(f"\n🏷️ GROUP POSTS FROM: {args.get_in_group}")
                     scraper.print_posts(posts)
                 else:
-                    filter_msg = " with DOI numbers" if args.having_doi else ""
+                    filter_msg = ""
+                    if args.having_doi:
+                        filter_msg += " with DOI numbers"
+                    if args.no_comment:
+                        filter_msg += " with no comments"
                     print_and_log(f"❌ No posts{filter_msg} found in the specified group")
             elif args.get_in_profile:
                 doi_filter_msg = " with DOI numbers" if args.having_doi else ""
+                comment_filter_msg = " with no comments" if args.no_comment else ""
                 download_msg = f" and downloading PDFs to {args.download}" if args.download else ""
-                msg = f"📄 Retrieving {args.get_posts} posts{doi_filter_msg}{download_msg} from profile {args.get_in_profile}..."
+                msg = f"📄 Retrieving {args.get_posts} posts{doi_filter_msg}{comment_filter_msg}{download_msg} from profile {args.get_in_profile}..."
                 print_and_log(msg)
                 profile_url = f"https://www.facebook.com/{args.get_in_profile}"
                 scraper.navigate_to_profile(profile_url)
-                posts = scraper.scrape_posts(args.get_posts, having_doi=args.having_doi, download=args.download)
+                posts = scraper.scrape_posts(args.get_posts, having_doi=args.having_doi, download=args.download, no_comment=args.no_comment)
                 if posts:
                     print_and_log(f"\n🏷️ PROFILE POSTS FROM: {args.get_in_profile}")
                     scraper.print_posts(posts)
                 else:
-                    filter_msg = " with DOI numbers" if args.having_doi else ""
+                    filter_msg = ""
+                    if args.having_doi:
+                        filter_msg += " with DOI numbers"
+                    if args.no_comment:
+                        filter_msg += " with no comments"
                     print_and_log(f"❌ No posts{filter_msg} found in the specified profile")
             else:
                 # Default to homepage if no specific group or profile specified
                 doi_filter_msg = " with DOI numbers" if args.having_doi else ""
+                comment_filter_msg = " with no comments" if args.no_comment else ""
                 download_msg = f" and downloading PDFs to {args.download}" if args.download else ""
-                msg = f"📄 Retrieving {args.get_posts} posts{doi_filter_msg}{download_msg} from homepage..."
+                msg = f"📄 Retrieving {args.get_posts} posts{doi_filter_msg}{comment_filter_msg}{download_msg} from homepage..."
                 print_and_log(msg)
                 scraper.driver.get("https://www.facebook.com")
-                posts = scraper.scrape_posts(args.get_posts, having_doi=args.having_doi, download=args.download)
+                posts = scraper.scrape_posts(args.get_posts, having_doi=args.having_doi, download=args.download, no_comment=args.no_comment)
                 if posts:
                     print_and_log(f"\n🏷️ HOMEPAGE POSTS")
                     scraper.print_posts(posts)
                 else:
-                    filter_msg = " with DOI numbers" if args.having_doi else ""
+                    filter_msg = ""
+                    if args.having_doi:
+                        filter_msg += " with DOI numbers"
+                    if args.no_comment:
+                        filter_msg += " with no comments"
                     print_and_log(f"❌ No posts{filter_msg} found on homepage")
         
         # Search for posts containing a specific term
@@ -2310,10 +2787,11 @@ Examples:
                     group_id=args.search_in_group,
                     user_id=args.search_in_profile,
                     having_doi=args.having_doi,
-                    download=args.download
+                    download=args.download,
+                    no_comment=args.no_comment
                 )
                 scraper.print_search_results(search_results, args.search)
-        elif not args.get_posts:
+        elif not args.get_posts and not args.get_and_comment:
             print_and_log("No search term provided. Use --search to find posts containing specific content.")
             if args.search_comment is not None or args.search_comment_file:
                 print_and_log("Note: Comment options require --search to be specified")
@@ -2321,8 +2799,10 @@ Examples:
                 print_and_log("Note: --search-in-group requires --search to be specified")
             if args.search_in_profile:
                 print_and_log("Note: --search-in-profile requires --search to be specified")
-            if args.having_doi:
-                print_and_log("Note: --having-doi requires either --search or --get-posts to be specified")
+            if args.having_doi and not args.get_and_comment:
+                print_and_log("Note: --having-doi requires either --search, --get-posts or --get-and-comment to be specified")
+            if args.no_comment and not args.get_and_comment:
+                print_and_log("Note: --no-comment requires either --search, --get-posts or --get-and-comment to be specified")
             if args.download:
                 print_and_log("Note: --download requires both --having-doi and either --search or --get-posts to be specified")
 
