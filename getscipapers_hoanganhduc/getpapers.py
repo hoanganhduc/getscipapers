@@ -740,6 +740,7 @@ def extract_dois_from_text(text: str) -> list:
 
     url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+[^\s<>"{}|\\^`\[\].,;:!?]|https?://[^\s<>"{}|\\^`\[\]]+\.\.\.[^\s<>"{}|\\^`\[\]]+[^\s<>"{}|\\^`\[\].,;:!?]'
     urls = re.findall(url_pattern, text)
+    vprint(f"Found {len(urls)} URLs in text for DOI extraction: {urls}")
 
     for url in urls:
         already_has_doi = False
