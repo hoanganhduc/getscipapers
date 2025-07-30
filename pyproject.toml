@@ -1,6 +1,6 @@
 [project]
 name = "getscipapers_hoanganhduc"
-version = "0.1.0"
+version = "0.1.1"
 authors = [
   { name="Duc A. Hoang (hoanganhduc)", email="anhduc.hoang1990@gmail.com" },
 ]

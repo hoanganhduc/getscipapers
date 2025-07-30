@@ -738,7 +738,7 @@ def extract_dois_from_text(text: str) -> list:
 
     dois = list(dict.fromkeys(dois))
 
-    url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+[^\s<>"{}|\\^`\[\].,;:!?]'
+    url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+[^\s<>"{}|\\^`\[\].,;:!?]|https?://[^\s<>"{}|\\^`\[\]]+\.\.\.[^\s<>"{}|\\^`\[\]]+[^\s<>"{}|\\^`\[\].,;:!?]'
     urls = re.findall(url_pattern, text)
 
     for url in urls:
