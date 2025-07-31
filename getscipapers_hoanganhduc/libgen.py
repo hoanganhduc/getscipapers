@@ -1899,17 +1899,6 @@ Examples:
         help="Download after search (interactive for --search, auto for --check-doi). Optionally specify download directory."
     )
     args = parser.parse_args()
-    
-    # Suppress ChromeDriver and Selenium warnings/logs
-    os.environ["WDM_LOG_LEVEL"] = "0"
-    os.environ["PYTHONWARNINGS"] = "ignore"
-    os.environ["SELENIUM_MANAGER_LOG_LEVEL"] = "OFF"
-    os.environ["SELOG_LEVEL"] = "OFF"
-    os.environ["ABSL_LOG_LEVEL"] = "0"
-    os.environ["ABSL_LOG_TO_STDERR"] = "0"
-    os.environ["ABSL_LOG_TO_STDOUT"] = "0"
-    os.environ["ABSL_LOG_TO_FILE"] = "0"
-    os.environ["ABSL_LOG_STREAM"] = "none"
 
     # Handle clear-cache option
     if getattr(args, "clear_cache", False):
