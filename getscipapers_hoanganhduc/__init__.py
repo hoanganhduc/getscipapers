@@ -70,6 +70,7 @@ def main():
     parser = argparse.ArgumentParser(description=__description__)
     parser.add_argument('module', nargs='?', help='Module name to execute')
     parser.add_argument('--list', action='store_true', help='List available modules')
+    parser.add_argument('--version', action='version', version=f'getscipapers {__version__}')
     
     args = parser.parse_args()
     
