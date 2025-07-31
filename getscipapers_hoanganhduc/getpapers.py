@@ -719,22 +719,32 @@ def extract_dois_from_text(text: str) -> list:
     doi_patterns = [
         r'\b10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
         r'\b10\.\d{4,9}\s*/\s*[A-Za-z0-9\-._;()/:]+',
-        r'\bdoi:\s*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
+        r'\bdoi:\s*(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
         r'\bhttps?://doi\.org/(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
         r'\bhttps?://dx\.doi\.org/(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
         r'\bdoi\s*=\s*["\']?(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
-        r'\bDigital Object Identifier[:\s]*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
-        r'\bDOI Identifier[:\s]*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
-        r'\bDOI\s*10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
-        r'\b10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
+        r'\bDigital Object Identifier[:\s]*(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
+        r'\bDOI Identifier[:\s]*(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
+        r'\bDOI\s*(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
+        r'\b(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
         ieee_doi_pattern,
     ]
     for pattern in doi_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         if matches:
-            if isinstance(matches[0], tuple):
-                matches = [m[0] for m in matches]
-            dois.extend(matches)
+            for match in matches:
+                if isinstance(match, tuple):
+                    # Extract the captured group (the DOI part starting with 10.)
+                    doi_part = next((group for group in match if group.startswith('10.')), None)
+                    if doi_part:
+                        dois.append(doi_part)
+                elif isinstance(match, str):
+                    # For patterns without capture groups, extract the 10. part
+                    doi_match = re.search(r'(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)', match)
+                    if doi_match:
+                        dois.append(doi_match.group(1))
+                    else:
+                        dois.append(match)
 
     dois = list(dict.fromkeys(dois))
 
