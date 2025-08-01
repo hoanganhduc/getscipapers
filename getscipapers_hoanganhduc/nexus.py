@@ -3871,6 +3871,7 @@ async def simple_upload_to_nexus_aaron(file_path, verbose=False):
     """
     Upload a file to the @nexus_aaron bot with minimal input.
     If the file is a PDF, try to extract the DOI using getpapers.
+    If DOI extraction fails, prompt the user to enter a DOI manually (with timeout).
     Args:
         file_path (str): Path to the file to upload.
         verbose (bool): If True, enable verbose output.
@@ -3910,6 +3911,7 @@ async def simple_upload_to_nexus_aaron(file_path, verbose=False):
 
     # If file is a PDF, try to extract DOI for caption
     caption = ""
+    doi = None
     if file_path.lower().endswith(".pdf"):
         try:
             info_print(f"Attempting to extract DOI from PDF: {file_path}")
@@ -3917,8 +3919,27 @@ async def simple_upload_to_nexus_aaron(file_path, verbose=False):
             if doi:
                 caption = f"DOI: {doi}"
                 info_print(f"Extracted DOI from PDF: {doi}")
+            else:
+                info_print("Could not extract DOI from PDF.")
         except Exception as e:
             debug_print(f"Could not extract DOI from PDF: {e}")
+            info_print("Could not extract DOI from PDF.")
+
+        # If DOI extraction failed, prompt user for manual input
+        if not doi:
+            user_doi = get_input_with_timeout(
+                "Enter DOI for this PDF (or leave blank to cancel): ",
+                timeout=60,
+                default="",
+                keep_origin=True
+            )
+            user_doi = user_doi.strip()
+            if not user_doi:
+                error_print("No DOI provided. Upload cancelled.")
+                return {"error": "No DOI provided. Upload cancelled."}
+            else:
+                caption = f"DOI: {user_doi}"
+                info_print(f"Using manually entered DOI: {user_doi}")
 
     # Call upload_file_to_nexus_aaron
     result = await upload_file_to_nexus_aaron(

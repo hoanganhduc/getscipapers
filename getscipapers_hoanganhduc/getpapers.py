@@ -713,6 +713,7 @@ def extract_dois_from_text(text: str) -> list:
     Returns a list of unique, valid paper DOIs.
     Only keeps DOIs that resolve at https://doi.org/<doi> (HTTP 200, 301, 302).
     """
+    vprint(f"Extracting DOIs from text {text[:100]}... (length: {len(text)})")
     dois = []
 
     ieee_doi_pattern = r'\b10\.1109/[A-Z]+(?:\.[0-9]{4})+\.[0-9]+'
@@ -725,7 +726,8 @@ def extract_dois_from_text(text: str) -> list:
         r'\bdoi\s*=\s*["\']?(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
         r'\bDigital Object Identifier[:\s]*(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
         r'\bDOI Identifier[:\s]*(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
-        r'\bDOI\s*(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
+        r'\bDOI\s*(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',  
+        r'\bDOI[:\s]+(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)', 
         r'\b(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
         ieee_doi_pattern,
     ]
