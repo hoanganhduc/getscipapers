@@ -52,10 +52,21 @@ def request_dois(dois, verbose=False, service=None):
             svc_results = asyncio.run(fetch_nexus(dois))
         elif svc == "ablesci":
             try:
-                response = ablesci.request_multiple_dois(dois)
+                response_list = ablesci.request_multiple_dois(dois)
                 if verbose:
                     print("📨 Posted DOIs to AbleSci for help.")
-                svc_results = {doi: response.get(doi, {"error": "No response or not found"}) for doi in dois}
+                # Map results by DOI for consistency with other services
+                svc_results = {}
+                for item in response_list:
+                    doi = item.get('doi')
+                    if item.get('success'):
+                        svc_results[doi] = {"success": True}
+                    else:
+                        svc_results[doi] = {"error": item.get('error', 'Unknown error')}
+                # Ensure all DOIs are present in the result
+                for doi in dois:
+                    if doi not in svc_results:
+                        svc_results[doi] = {"error": "No response or not found"}
             except Exception as e:
                 if verbose:
                     print(f"❌ Failed to post DOIs to AbleSci: {e}")

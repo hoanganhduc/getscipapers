@@ -639,14 +639,32 @@ def parse_dois_input(doi_input):
     return getpapers.extract_dois_from_text(doi_input)
 
 def request_multiple_dois(dois, headless=True):
+    """
+    Request multiple DOIs and return a list of results.
+
+    Args:
+        dois (list): List of DOI strings.
+        headless (bool): Whether to run browser in headless mode.
+
+    Returns:
+        list: List of dicts with keys: 'doi', 'success', 'error' (if any).
+    """
     debug_print(f"Starting batch request for {len(dois)} DOIs")
+    results = []
     for i, doi in enumerate(dois, 1):
         debug_print(f"Processing DOI {i}/{len(dois)}: {doi}")
         if not is_valid_doi(doi):
             print(f"Invalid DOI: {doi}")
+            results.append({'doi': doi, 'success': False, 'error': 'Invalid DOI'})
             continue
         print(f"Requesting paper for DOI: {doi}")
-        request_paper_by_doi(doi, headless=headless)
+        try:
+            request_paper_by_doi(doi, headless=headless)
+            results.append({'doi': doi, 'success': True})
+        except Exception as e:
+            debug_print(f"Exception requesting DOI {doi}: {e}")
+            results.append({'doi': doi, 'success': False, 'error': str(e)})
+    return results
 
 def get_waiting_requests(headless=True):
     debug_print("Starting to get waiting requests")
