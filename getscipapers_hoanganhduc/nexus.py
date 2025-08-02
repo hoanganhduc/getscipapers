@@ -4541,7 +4541,7 @@ async def check_doi_availability_on_nexus(api_id, api_hash, phone_number, bot_us
                                 # Calculate wait time based on file size if available
                                 file_size_mb = size_info.get("size_mb", 5.0) if size_info else 5.0
                                 base_wait = 10
-                                size_based_wait = int(file_size_mb * 3)  # 3 seconds per MB
+                                size_based_wait = int(file_size_mb * 5)  # 5 seconds per MB
                                 total_wait = max(base_wait, size_based_wait)
                                 
                                 info_print(f"Waiting {total_wait} seconds for file preparation...")
