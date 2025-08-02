@@ -828,7 +828,7 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
     Extract the first DOI found in a PDF file.
     Returns the DOI string if found and valid (resolves at doi.org), else None.
     Only considers the first three pages of the PDF.
-    Tries to preserve newlines when extracting text from PDF.
+    Tries to preserve layout and newlines when extracting text from PDF.
     """
     try:
         with open(pdf_file, "rb") as f:
@@ -838,7 +838,16 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
                 if i >= 3:
                     break
                 try:
-                    page_text = page.extract_text()
+                    # Try to preserve layout and newlines
+                    if hasattr(page, "extract_text"):
+                        page_text = page.extract_text(
+                            layout=True,  # PyPDF2 >= 3.0.0 supports layout param
+                        )
+                    else:
+                        page_text = page.extract_text()
+                    if not page_text and hasattr(page, "extract_text_with_layout"):
+                        # For some PyPDF2 forks
+                        page_text = page.extract_text_with_layout()
                     if page_text:
                         text_chunks.append(page_text)
                 except Exception:
