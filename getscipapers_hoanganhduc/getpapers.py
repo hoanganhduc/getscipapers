@@ -2166,11 +2166,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
             print(f"Successfully downloaded: 1 PDF")
             print(f"  ✓ {doi} [{oa_status_text}]")
             return True
-        print(f"\nDownload Summary:")
-        print(f"Failed to download: 1 PDF")
-        print(f"  ✗ {doi} [{oa_status_text}]")
-        print(f"No PDF could be downloaded with this script for DOI: {doi}.")
-        return False
+        print(f"Failed to download from Unpaywall for DOI: {doi}. Trying other sources...")
 
     if not id and db in ["all", "nexus"]:
         print(f"No ID available for Nexus download for DOI: {doi}.")
