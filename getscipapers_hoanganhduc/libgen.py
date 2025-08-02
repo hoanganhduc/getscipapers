@@ -1293,7 +1293,7 @@ def create_chrome_driver(headless=True, extra_prefs=None):
     options.add_argument('--disable-web-security')              # Disable web security for broader bypass
     # Option to not automatically change to https
     options.add_argument('--allow-insecure-localhost')
-    options.add_argument('--unsafely-treat-insecure-origin-as-secure=http://librarian.libgen.gs')
+    options.add_argument('--unsafely-treat-insecure-origin-as-secure=http://libgen.gs')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-features=UpgradeInsecureRequests')
     options.add_argument('--disable-features=BlockInsecurePrivateNetworkRequests')
@@ -1317,7 +1317,7 @@ def create_chrome_driver(headless=True, extra_prefs=None):
 
 def selenium_libgen_login(username="genesis", password="upload", headless=True, verbose=False):
     """
-    Open Chrome with Selenium, load http://librarian.libgen.gs/librarian.php,
+    Open Chrome with Selenium, load http://libgen.gs/librarian.php,
     find and follow the login link if present, and login with phpBB forum settings.
     Checks "remember me" and "hide my online status this session" before login.
     If already logged in (by detecting upload form), skip login.
@@ -1327,7 +1327,7 @@ def selenium_libgen_login(username="genesis", password="upload", headless=True, 
     driver = None
     try:
         driver = create_chrome_driver(headless=headless)
-        driver.get("http://librarian.libgen.gs/librarian.php")
+        driver.get("http://libgen.gs/librarian.php")
         if verbose:
             print("Opened librarian page.")
 
@@ -1401,7 +1401,7 @@ def selenium_libgen_login(username="genesis", password="upload", headless=True, 
                     if verbose:
                         print("Submitted login form.")
                     time.sleep(2)
-                    driver.get("http://librarian.libgen.gs/librarian.php")
+                    driver.get("http://libgen.gs/librarian.php")
                     WebDriverWait(driver, 10).until(
                         EC.presence_of_element_located((By.TAG_NAME, "body"))
                     )
@@ -1443,7 +1443,7 @@ def selenium_libgen_login(username="genesis", password="upload", headless=True, 
 
 def selenium_libgen_upload(local_file_path, bib_id, username="genesis", password="upload", headless=True, verbose=False):
     """
-    Upload a local file to http://librarian.libgen.gs/librarian.php after logging in with Selenium.
+    Upload a local file to http://libgen.gs/librarian.php after logging in with Selenium.
     Fills the FTP path in the upload form and clicks the Upload button.
     After upload, finds the bibliography search form, selects the appropriate source (crossref for DOI, goodreads for ISBN),
     fills the bib_id in the bibliography search input, and clicks the Search button.
@@ -1475,7 +1475,7 @@ def selenium_libgen_upload(local_file_path, bib_id, username="genesis", password
     driver = None
     try:
         driver = create_chrome_driver(headless=headless)
-        driver.get("http://librarian.libgen.gs/librarian.php")
+        driver.get("http://libgen.gs/librarian.php")
         if verbose:
             print("🌐 Opened librarian page for upload.")
 
@@ -1720,7 +1720,7 @@ def _selenium_register_bibliography(driver, bib_id, local_file_path, verbose=Fal
             print("❌ Bibliography search form not found after upload:", e)
         return False
 
-def upload_and_register_to_libgen(filepath, verbose=False):
+def upload_and_register_to_libgen(filepath, verbose=False, headless=True):
     """
     Upload and register a file to LibGen using Selenium automation.
     Tries to extract DOI or ISBN from the file name. If found, registers the file with that ID.
@@ -1786,7 +1786,7 @@ def upload_and_register_to_libgen(filepath, verbose=False):
             bib_id=bib_id,
             username="genesis",
             password="upload",
-            headless=True,
+            headless=headless,
             verbose=verbose
         )
         if success:
@@ -1898,7 +1898,15 @@ Examples:
         metavar="DOWNLOAD_DIR",
         help="Download after search (interactive for --search, auto for --check-doi). Optionally specify download directory."
     )
+    parser.add_argument(
+        "--no-headless",
+        action="store_true",
+        help="Run browser in non-headless mode for Selenium operations"
+    )
     args = parser.parse_args()
+    
+    # Handle --no-headless option
+    headless = not getattr(args, "no_headless", False)
 
     # Handle clear-cache option
     if getattr(args, "clear_cache", False):
@@ -1913,7 +1921,7 @@ Examples:
     # Handle login option
     if getattr(args, "login", False):
         print("Attempting to login to LibGen with default credentials...")
-        success = selenium_libgen_login(username="genesis", password="upload", headless=True, verbose=args.verbose)
+        success = selenium_libgen_login(username="genesis", password="upload", headless=headless, verbose=args.verbose)
         if success:
             print("✅ Login successful.")
         else:
@@ -1939,7 +1947,7 @@ Examples:
                 bib_id=upload_id,
                 username="genesis",
                 password="upload",
-                headless=True,
+                headless=headless,
                 verbose=args.verbose
             )
             if success:
@@ -1950,7 +1958,7 @@ Examples:
             # If PDF and no DOI/ISBN, try to extract and register
             if filepath.lower().endswith(".pdf"):
                 print(f"Uploading PDF file to LibGen and trying to extract DOI/ISBN: {filepath}")
-                url = upload_and_register_to_libgen(filepath, verbose=args.verbose)
+                url = upload_and_register_to_libgen(filepath, verbose=args.verbose, headless=headless)
                 if url:
                     print(f"✅ Uploaded and registered: {url}")
                 else:
