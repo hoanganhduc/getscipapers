@@ -1888,6 +1888,48 @@ async def download_from_unpaywall(
         if downloaded > 0:
             return True
 
+        # If no direct PDF, try to download OA link directly as a PDF (browser-style request)
+        for idx, url in enumerate(all_links, 1):
+            if url in pdf_links:
+                continue  # Already tried direct PDF links
+            vprint(f"Trying to download OA link directly as PDF: {url}")
+            try:
+                async with aiohttp.TCPConnector() as conn:
+                    async with aiohttp.ClientSession(connector=conn) as session:
+                        browser_headers = {
+                            "User-Agent": (
+                                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                "Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.67"
+                            ),
+                            "Accept": "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
+                            "Referer": f"https://doi.org/{doi}",
+                            "DNT": "1",
+                            "Connection": "keep-alive",
+                        }
+                        async with session.get(url, headers=browser_headers, timeout=60) as resp:
+                            if resp.status == 200 and resp.content_type == "application/pdf":
+                                filename = f"{safe_doi}_unpaywall_browser_{idx}.pdf"
+                                filepath = os.path.join(download_folder, filename)
+                                with open(filepath, "wb") as f:
+                                    f.write(await resp.read())
+                                print(f"Downloaded PDF by direct OA link (browser): {filepath}")
+                                downloaded += 1
+                                # Don't break, try all links
+                            elif resp.status == 200:
+                                # Sometimes content-type is not set correctly, try anyway
+                                filename = f"{safe_doi}_unpaywall_browser_{idx}.pdf"
+                                filepath = os.path.join(download_folder, filename)
+                                with open(filepath, "wb") as f:
+                                    f.write(await resp.read())
+                                print(f"Downloaded (possibly non-PDF) file by direct OA link (browser): {filepath}")
+                                downloaded += 1
+            except Exception as e:
+                vprint(f"Error downloading OA link directly as PDF {url}: {e}")
+
+        if downloaded > 0:
+            return True
+        
         # If no direct PDF, try to follow each OA link and look for PDF
         for idx, url in enumerate(all_links, 1):
             if url in pdf_links:
