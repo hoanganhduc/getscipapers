@@ -825,23 +825,31 @@ def extract_dois_from_file(input_file: str):
 
 def extract_doi_from_pdf(pdf_file: str) -> str:
     """
-    Extract the first DOI found in a PDF file.
-    Returns the DOI string if found and valid (resolves at doi.org), else None.
+    Extract the most likely DOI found in a PDF file.
+    If multiple DOIs are found, fetch the paper title from Crossref for each DOI,
+    and check if a similar title exists in the first page of the PDF.
+    Select the DOI whose title matches; if none match, select the first found.
     Only considers the first three pages of the PDF.
+    Keeps newlines intact when extracting text from PDF pages.
     """
     try:
         with open(pdf_file, "rb") as f:
             reader = PyPDF2.PdfReader(f)
             text_chunks = []
+            first_page_text = ""
             for i, page in enumerate(reader.pages):
-                if i >= 3:
-                    break
                 try:
+                    # Use extract_text() which preserves newlines as in the PDF
                     page_text = page.extract_text()
                     if page_text:
                         text_chunks.append(page_text)
+                        if i == 0:
+                            first_page_text = page_text
                 except Exception:
                     continue
+                if i >= 2:
+                    break
+            # Join with '\n' to keep page breaks and newlines intact
             text = "\n".join(text_chunks)
     except Exception as e:
         print(f"Failed to read PDF file: {e}")
@@ -851,8 +859,30 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
     if not dois:
         return None
 
-    doi = dois[0]
-    return doi
+    if len(dois) == 1:
+        return dois[0]
+
+    # If multiple DOIs, try to match Crossref title with first page text
+    def normalize(s):
+        return re.sub(r'\W+', '', s or '').lower()
+
+    for doi in dois:
+        crossref_data = fetch_crossref_data(doi)
+        title = None
+        if crossref_data:
+            title_list = crossref_data.get("title")
+            if isinstance(title_list, list) and title_list:
+                title = title_list[0]
+            elif isinstance(title_list, str):
+                title = title_list
+        if title:
+            norm_title = normalize(title)
+            norm_first_page = normalize(first_page_text)
+            if norm_title and norm_title in norm_first_page:
+                return doi
+
+    # If no title matches, return the first found
+    return dois[0]
 
 async def search_documents(query: str, limit: int = 1):
     """
