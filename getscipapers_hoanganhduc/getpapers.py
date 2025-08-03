@@ -1949,6 +1949,8 @@ async def download_from_unpaywall(
 
         # Get all OA links (should include all PDF URLs)
         all_links = Unpywall.get_all_links(doi=doi)
+        vprint(f"Found {len(all_links)} open access links on Unpaywall for DOI: {doi}")
+        vprint(f"All links: {all_links}")
         if not all_links:
             vprint(f"No open access links found on Unpaywall for DOI: {doi}")
             return False
