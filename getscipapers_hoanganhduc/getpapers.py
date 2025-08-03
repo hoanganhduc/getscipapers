@@ -824,6 +824,117 @@ def extract_dois_from_file(input_file: str):
 
     return filtered_dois
 
+def extract_text_from_pdf(pdf_file: str, max_pages: int = None) -> str:
+    """
+    Extract text from a PDF file using PyMuPDF (pymupdf) if available,
+    otherwise fall back to PyPDF2. Uses text blocks to intelligently
+    preserve document structure including paragraphs and headings.
+    Returns the extracted text as a string.
+    If max_pages is specified, only extract up to the first N pages.
+    """
+    vprint(f"extract_text_from_pdf: Starting extraction for {pdf_file} (max_pages={max_pages})")
+    try:
+        import pymupdf  # PyMuPDF package
+        vprint("extract_text_from_pdf: Using PyMuPDF for extraction.")
+        text_chunks = []
+        
+        # Use context manager to ensure document is properly closed
+        with pymupdf.open(pdf_file) as doc:
+            num_pages = len(doc)
+            vprint(f"extract_text_from_pdf: PDF has {num_pages} pages.")
+            page_range = range(num_pages) if max_pages is None else range(min(num_pages, max_pages))
+            
+            for page_num in page_range:
+                page = doc[page_num]
+                vprint(f"extract_text_from_pdf: Processing page {page_num+1}/{num_pages}")
+                
+                # Try first with the 'text' option which preserves some layout
+                try:
+                    page_text = page.get_text("text")
+                    if page_text and len(page_text.strip()) > 100:  # Reasonable text found
+                        text_chunks.append(page_text)
+                        vprint(f"extract_text_from_pdf: Extracted {len(page_text)} chars with 'text' mode from page {page_num+1}")
+                        continue
+                except Exception as e:
+                    vprint(f"extract_text_from_pdf: Error with 'text' mode: {e}")
+                
+                # If 'text' mode didn't provide good results, use more detailed extraction
+                try:
+                    # Get all blocks with their bounding boxes using 'dict' mode
+                    page_dict = page.get_text("dict")
+                    blocks = page_dict.get("blocks", [])
+                    vprint(f"extract_text_from_pdf: Found {len(blocks)} blocks on page {page_num+1}")
+                    
+                    paragraphs = []
+                    for block in blocks:
+                        if block.get("type") == 0:  # Text block
+                            block_text = ""
+                            for line in block.get("lines", []):
+                                line_text = "".join(span.get("text", "") for span in line.get("spans", []))
+                                if line_text.strip():
+                                    if block_text:
+                                        block_text += " "  # Space between lines within same block
+                                    block_text += line_text
+                            if block_text.strip():
+                                paragraphs.append(block_text)
+                    
+                    # Join paragraphs with double newlines to preserve structure
+                    page_text = "\n\n".join(paragraphs)
+                    if page_text:
+                        vprint(f"extract_text_from_pdf: Extracted {len(page_text)} chars with 'dict' mode from page {page_num+1}")
+                        text_chunks.append(page_text)
+                    else:
+                        vprint(f"extract_text_from_pdf: No text extracted with 'dict' mode from page {page_num+1}")
+                except Exception as e:
+                    vprint(f"extract_text_from_pdf: Error with 'dict' mode: {e}")
+                    
+                    # Last resort: try 'blocks' mode which is simpler
+                    try:
+                        blocks_text = page.get_text("blocks")
+                        if blocks_text:
+                            text_chunks.append("\n\n".join(b[4] for b in blocks_text if b[4].strip()))
+                            vprint(f"extract_text_from_pdf: Extracted text with 'blocks' mode from page {page_num+1}")
+                    except Exception as e2:
+                        vprint(f"extract_text_from_pdf: Error with 'blocks' mode: {e2}")
+        
+        if text_chunks:
+            vprint(f"extract_text_from_pdf: Extraction complete using PyMuPDF. Total text length: {sum(len(t) for t in text_chunks)}")
+            return "\n\n".join(text_chunks)
+        else:
+            vprint("extract_text_from_pdf: No text extracted with PyMuPDF, falling back to PyPDF2.")
+    except ImportError:
+        vprint("extract_text_from_pdf: PyMuPDF not installed, falling back to PyPDF2.")
+    except Exception as e:
+        vprint(f"extract_text_from_pdf: PyMuPDF failed to extract text: {e}. Falling back to PyPDF2.")
+
+    # Fallback: PyPDF2
+    try:
+        vprint("extract_text_from_pdf: Using PyPDF2 for extraction.")
+        with open(pdf_file, "rb") as f:
+            reader = PyPDF2.PdfReader(f)
+            num_pages = len(reader.pages)
+            vprint(f"extract_text_from_pdf: PDF has {num_pages} pages (PyPDF2).")
+            page_range = range(num_pages) if max_pages is None else range(min(num_pages, max_pages))
+            text_chunks = []
+            for i in page_range:
+                try:
+                    page = reader.pages[i]
+                    page_text = page.extract_text()
+                    if page_text:
+                        vprint(f"extract_text_from_pdf: Extracted {len(page_text)} characters from page {i+1} (PyPDF2)")
+                        text_chunks.append(page_text)
+                    else:
+                        vprint(f"extract_text_from_pdf: No text extracted from page {i+1} (PyPDF2)")
+                except Exception as e:
+                    vprint(f"extract_text_from_pdf: Exception extracting page {i+1} (PyPDF2): {e}")
+                    continue
+        total_len = sum(len(t) for t in text_chunks)
+        vprint(f"extract_text_from_pdf: Extraction complete using PyPDF2. Total text length: {total_len}")
+        return "\n".join(text_chunks)
+    except Exception as e:
+        vprint(f"extract_text_from_pdf: PyPDF2 failed to extract text: {e}")
+        return ""
+
 def extract_doi_from_pdf(pdf_file: str) -> str:
     """
     Extract the most likely DOI found in a PDF file.
@@ -834,34 +945,25 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
     Keeps newlines intact when extracting text from PDF pages.
     """
     try:
-        with open(pdf_file, "rb") as f:
-            reader = PyPDF2.PdfReader(f)
-            text_chunks = []
-            first_page_text = ""
-            for i, page in enumerate(reader.pages):
-                try:
-                    # Use extract_text() which preserves newlines as in the PDF
-                    page_text = page.extract_text()
-                    if page_text:
-                        text_chunks.append(page_text)
-                        if i == 0:
-                            first_page_text = page_text
-                except Exception:
-                    continue
-                if i >= 4:  # Only read the first 5 pages
-                    vprint(f"Reached 5 pages in PDF {pdf_file}, stopping extraction.")
-                    break
-            # Join with '\n' to keep page breaks and newlines intact
-            text = "\n".join(text_chunks)
+        vprint(f"Extracting text from PDF (first 5 pages): {pdf_file}")
+        text = extract_text_from_pdf(pdf_file, max_pages=5)
+        if not text:
+            print(f"No text could be extracted from PDF: {pdf_file}")
+            return None
+        vprint(f"Extracting text from PDF (first page only): {pdf_file}")
+        first_page_text = extract_text_from_pdf(pdf_file, max_pages=1)
     except Exception as e:
-        print(f"Failed to read PDF file: {e}")
+        print(f"Failed to extract text from PDF file: {e}")
         return None
 
+    vprint(f"Extracting DOIs from PDF text...")
     dois = extract_dois_from_text(text)
+    vprint(f"DOIs found in PDF: {dois}")
     if not dois:
         return None
 
     if len(dois) == 1:
+        vprint(f"Only one DOI found, returning: {dois[0]}")
         return dois[0]
 
     # If multiple DOIs, try to match Crossref title with first page text
@@ -869,6 +971,7 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
         return re.sub(r'\W+', '', s or '').lower()
 
     for doi in dois:
+        vprint(f"Fetching Crossref data for DOI: {doi}")
         crossref_data = fetch_crossref_data(doi)
         title = None
         if crossref_data:
@@ -877,13 +980,17 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
                 title = title_list[0]
             elif isinstance(title_list, str):
                 title = title_list
+        vprint(f"Crossref title for DOI {doi}: {title}")
         if title:
             norm_title = normalize(title)
             norm_first_page = normalize(first_page_text)
+            vprint(f"Normalized Crossref title: {norm_title}")
+            vprint(f"Normalized first page text: {norm_first_page[:100]}...")  # Print only first 100 chars
             if norm_title and norm_title in norm_first_page:
+                vprint(f"Title match found for DOI {doi}, returning this DOI.")
                 return doi
 
-    # If no title matches, return the first found
+    vprint(f"No title match found, returning first DOI: {dois[0]}")
     return dois[0]
 
 async def search_documents(query: str, limit: int = 1):
