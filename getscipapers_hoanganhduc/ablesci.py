@@ -649,6 +649,9 @@ def request_multiple_dois(dois, headless=True):
     Returns:
         list: List of dicts with keys: 'doi', 'success', 'error' (if any).
     """
+    if not dois:
+        print("No DOIs provided.")
+        return []
     debug_print(f"Starting batch request for {len(dois)} DOIs")
     results = []
     for i, doi in enumerate(dois, 1):

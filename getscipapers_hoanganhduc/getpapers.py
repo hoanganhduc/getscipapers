@@ -796,20 +796,20 @@ def extract_dois_from_text(text: str) -> list:
     return validate_dois(unique_dois)
 
 def extract_dois_from_file(input_file: str):
-    """Extract DOI numbers from a text file and write them to a new file"""
+    """Extract DOI numbers from a text file and write them to a new file. Returns the list of extracted DOIs."""
     try:
         with open(input_file, 'r', encoding='utf-8') as f:
             content = f.read()
     except Exception as e:
         print(f"Failed to read input file: {e}")
-        return
+        return []
 
     # Use the new extract_dois_from_text function
     filtered_dois = extract_dois_from_text(content)
 
     if not filtered_dois:
         print(f"No valid paper DOIs found in {input_file}")
-        return
+        return []
 
     base_name = os.path.splitext(input_file)[0]
     output_file = f"{base_name}.dois.txt"
@@ -822,6 +822,9 @@ def extract_dois_from_file(input_file: str):
         vprint(f"DOIs found: {filtered_dois}")
     except Exception as e:
         print(f"Failed to write DOIs to output file: {e}")
+        return []
+
+    return filtered_dois
 
 def extract_doi_from_pdf(pdf_file: str) -> str:
     """
