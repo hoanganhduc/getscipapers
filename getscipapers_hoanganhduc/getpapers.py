@@ -829,7 +829,7 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
     If multiple DOIs are found, fetch the paper title from Crossref for each DOI,
     and check if a similar title exists in the first page of the PDF.
     Select the DOI whose title matches; if none match, select the first found.
-    Only considers the first three pages of the PDF.
+    Only considers the first five pages of the PDF.
     Keeps newlines intact when extracting text from PDF pages.
     """
     try:
@@ -847,7 +847,8 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
                             first_page_text = page_text
                 except Exception:
                     continue
-                if i >= 2:
+                if i >= 4:  # Only read the first 5 pages
+                    vprint(f"Reached 5 pages in PDF {pdf_file}, stopping extraction.")
                     break
             # Join with '\n' to keep page breaks and newlines intact
             text = "\n".join(text_chunks)
