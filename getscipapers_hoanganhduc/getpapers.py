@@ -716,7 +716,6 @@ def extract_dois_from_text(text: str) -> list:
     vprint(f"Extracting DOIs from text {text[:100]}... (length: {len(text)})")
     dois = []
 
-    ieee_doi_pattern = r'\b10\.1109/[A-Z]+(?:\.[0-9]{4})+\.[0-9]+'
     doi_patterns = [
         r'\b10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
         r'\b10\.\d{4,9}\s*/\s*[A-Za-z0-9\-._;()/:]+',
@@ -729,7 +728,7 @@ def extract_dois_from_text(text: str) -> list:
         r'\bDOI\s*(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',  
         r'\bDOI[:\s]+(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)', 
         r'\b(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)',
-        ieee_doi_pattern,
+        r'\b10\.1109/[A-Z]+(?:\.[0-9]{4})+\.[0-9]+'
     ]
     for pattern in doi_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
@@ -757,7 +756,6 @@ def extract_dois_from_text(text: str) -> list:
     for url in urls:
         already_has_doi = False
         for pattern in [
-            ieee_doi_pattern,
             r'10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+',
             r'10\.\d{4,9}\s*/\s*[A-Za-z0-9\-._;()/:]+'
         ]:
