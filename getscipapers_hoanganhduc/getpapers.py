@@ -2529,6 +2529,12 @@ async def main():
         type=str,
         help="Extract the first valid DOI from a PDF file"
     )
+    argparser.add_argument(
+        "--extract-doi-from-txt",
+        type=str,
+        help="Extract all valid DOIs from a text file and write them to <file>.dois.txt"
+    )
+        
     args = argparser.parse_args()
 
     # Initialize Unpywall cache
@@ -2554,9 +2560,9 @@ async def main():
         sys.exit(0)
 
     # Check that mutually exclusive options are not specified together
-    exclusive_options = [args.doi, args.doi_file, args.search, args.extract_doi_from_pdf]
+    exclusive_options = [args.doi, args.doi_file, args.search, args.extract_doi_from_pdf, args.extract_doi_from_txt]
     if sum(bool(opt) for opt in exclusive_options) > 1:
-        print("Error: Only one of --doi, --doi-file, --search, or --extract-doi-from-pdf can be specified at a time.")
+        print("Error: Only one of --doi, --doi-file, --search, --extract-doi-from-pdf, or --extract-doi-from-txt can be specified at a time.")
         sys.exit(1)
 
     # Set global verbose flag
@@ -2570,7 +2576,7 @@ async def main():
     load_credentials(credentials_file)
 
     # If only --credentials is specified, exit after loading credentials
-    if args.credentials and not (args.doi or args.doi_file or args.search or args.extract_doi_from_pdf):
+    if args.credentials and not (args.doi or args.doi_file or args.search or args.extract_doi_from_pdf or args.extract_doi_from_txt):
         print(f"Loaded credentials from file: {credentials_file}")
         sys.exit(0)
 
@@ -2581,6 +2587,9 @@ async def main():
             print(f"Extracted DOI from PDF: {doi}")
         else:
             print(f"No valid DOI found in PDF: {pdf_file}")
+    elif args.extract_doi_from_txt:
+        txt_file = args.extract_doi_from_txt
+        extract_dois_from_file(txt_file)
     elif args.doi:
         await download_by_doi(args.doi, download_folder=args.download_folder, db=args.db, no_download=args.no_download)
     elif args.search:
@@ -2588,7 +2597,7 @@ async def main():
     elif args.doi_file:
         await download_by_doi_list(args.doi_file, download_folder=args.download_folder, db=args.db, no_download=args.no_download)
     else:
-        print("Please specify --search <keyword|doi>, --doi <doi>, --doi-file <file>, or --extract-doi-from-pdf <pdf>.")
+        print("Please specify --search <keyword|doi>, --doi <doi>, --doi-file <file>, --extract-doi-from-pdf <pdf>, or --extract-doi-from-txt <txt>.")
 
 if __name__ == "__main__":
     # Use the recommended event loop policy for Windows
