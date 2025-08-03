@@ -843,8 +843,8 @@ def cancel_waiting_request(detail_url, headless=True):
         
 def interactive_cancel_waiting_requests(headless=True):
     """
-    List waiting requests, prompt user to select one or more (comma-separated or range, e.g., 1,3,5-7) to cancel, and cancel them.
-    Supports single numbers, comma-separated list, and ranges (e.g., 1,3,5-7).
+    List waiting requests, prompt user to select one or more (comma-separated, range, e.g., 1,3,5-7, or 'all') to cancel, and cancel them.
+    Supports single numbers, comma-separated list, ranges (e.g., 1,3,5-7), or 'all' to select all.
     If no response from user for 30 seconds, quit.
     """
     requests = get_waiting_requests(headless=headless)
@@ -852,7 +852,7 @@ def interactive_cancel_waiting_requests(headless=True):
         print("No waiting requests to cancel.")
         return
 
-    print("Enter the numbers of the requests you want to cancel (comma-separated or range, e.g., 1,3,5-7), or press Enter to skip:")
+    print("Enter the numbers of the requests you want to cancel (comma-separated, range, e.g., 1,3,5-7, or 'all'), or press Enter to skip:")
 
     # Input with 30s timeout (cross-platform)
     def input_with_timeout(prompt, timeout=30):
@@ -877,36 +877,38 @@ def interactive_cancel_waiting_requests(headless=True):
         print("\nNo input received in 30 seconds. Cancel operation aborted.")
         return
 
-    selection = selection.strip()
+    selection = selection.strip().lower()
     if not selection:
         print("No requests selected for cancellation.")
         return
 
-    # Parse user input (comma-separated numbers and ranges)
     indices = set()
-    for part in selection.split(','):
-        part = part.strip()
-        if '-' in part:
-            try:
-                start, end = map(int, part.split('-', 1))
-                if start > end:
-                    print(f"Invalid range: {part} (start > end)")
-                    continue
-                for idx in range(start, end + 1):
-                    if 1 <= idx <= len(requests):
-                        indices.add(idx - 1)
-                    else:
-                        print(f"Invalid selection: {idx} (out of range)")
-            except Exception:
-                print(f"Invalid range input: {part}")
-        elif part.isdigit():
-            idx = int(part)
-            if 1 <= idx <= len(requests):
-                indices.add(idx - 1)
-            else:
-                print(f"Invalid selection: {part} (out of range)")
-        elif part:
-            print(f"Invalid input: {part}")
+    if selection == "all":
+        indices = set(range(len(requests)))
+    else:
+        for part in selection.split(','):
+            part = part.strip()
+            if '-' in part:
+                try:
+                    start, end = map(int, part.split('-', 1))
+                    if start > end:
+                        print(f"Invalid range: {part} (start > end)")
+                        continue
+                    for idx in range(start, end + 1):
+                        if 1 <= idx <= len(requests):
+                            indices.add(idx - 1)
+                        else:
+                            print(f"Invalid selection: {idx} (out of range)")
+                except Exception:
+                    print(f"Invalid range input: {part}")
+            elif part.isdigit():
+                idx = int(part)
+                if 1 <= idx <= len(requests):
+                    indices.add(idx - 1)
+                else:
+                    print(f"Invalid selection: {part} (out of range)")
+            elif part:
+                print(f"Invalid input: {part}")
 
     if not indices:
         print("No valid requests selected for cancellation.")
@@ -1228,10 +1230,10 @@ def download_file_from_fulfilled_request(detail_url, download_folder=None, headl
 
 def interactive_download_fulfilled_requests(headless=True, download_folder=None):
     """
-    List fulfilled requests, prompt user to select one or more (comma-separated or range, e.g., 1,3,5-7) to download files, and download them.
-    Supports single numbers, comma-separated list, and ranges (e.g., 1,3,5-7).
+    List fulfilled requests, prompt user to select one or more (comma-separated, range, e.g., 1,3,5-7, or 'all') to download files, and download them.
+    Supports single numbers, comma-separated list, ranges (e.g., 1,3,5-7), or 'all' to select all.
     If no response from user for 30 seconds, quit.
-    
+
     Args:
         headless: Whether to run browser in headless mode
         download_folder: Directory to save the downloaded files (default: DEFAULT_DOWNLOAD_FOLDER)
@@ -1241,7 +1243,7 @@ def interactive_download_fulfilled_requests(headless=True, download_folder=None)
         print("No fulfilled requests to download.")
         return
 
-    print("Enter the numbers of the requests you want to download files from (comma-separated or range, e.g., 1,3,5-7), or press Enter to skip:")
+    print("Enter the numbers of the requests you want to download files from (comma-separated, range, e.g., 1,3,5-7, or 'all'), or press Enter to skip:")
 
     # Input with 30s timeout (cross-platform)
     def input_with_timeout(prompt, timeout=30):
@@ -1266,36 +1268,38 @@ def interactive_download_fulfilled_requests(headless=True, download_folder=None)
         print("\nNo input received in 30 seconds. Download operation aborted.")
         return
 
-    selection = selection.strip()
+    selection = selection.strip().lower()
     if not selection:
         print("No requests selected for download.")
         return
 
-    # Parse user input (comma-separated numbers and ranges)
     indices = set()
-    for part in selection.split(','):
-        part = part.strip()
-        if '-' in part:
-            try:
-                start, end = map(int, part.split('-', 1))
-                if start > end:
-                    print(f"Invalid range: {part} (start > end)")
-                    continue
-                for idx in range(start, end + 1):
-                    if 1 <= idx <= len(requests):
-                        indices.add(idx - 1)
-                    else:
-                        print(f"Invalid selection: {idx} (out of range)")
-            except Exception:
-                print(f"Invalid range input: {part}")
-        elif part.isdigit():
-            idx = int(part)
-            if 1 <= idx <= len(requests):
-                indices.add(idx - 1)
-            else:
-                print(f"Invalid selection: {part} (out of range)")
-        elif part:
-            print(f"Invalid input: {part}")
+    if selection == "all":
+        indices = set(range(len(requests)))
+    else:
+        for part in selection.split(','):
+            part = part.strip()
+            if '-' in part:
+                try:
+                    start, end = map(int, part.split('-', 1))
+                    if start > end:
+                        print(f"Invalid range: {part} (start > end)")
+                        continue
+                    for idx in range(start, end + 1):
+                        if 1 <= idx <= len(requests):
+                            indices.add(idx - 1)
+                        else:
+                            print(f"Invalid selection: {idx} (out of range)")
+                except Exception:
+                    print(f"Invalid range input: {part}")
+            elif part.isdigit():
+                idx = int(part)
+                if 1 <= idx <= len(requests):
+                    indices.add(idx - 1)
+                else:
+                    print(f"Invalid selection: {part} (out of range)")
+            elif part:
+                print(f"Invalid input: {part}")
 
     if not indices:
         print("No valid requests selected for download.")
@@ -1305,7 +1309,7 @@ def interactive_download_fulfilled_requests(headless=True, download_folder=None)
     folder_path = download_folder if download_folder else DEFAULT_DOWNLOAD_FOLDER
     print(f"\nDownload folder: {folder_path}")
     print(f"Starting download for {len(indices)} requests...")
-    
+
     for idx in sorted(indices):
         req = requests[idx]
         print(f"Downloading file for request {idx+1}: {req.get('title', 'N/A')}")
@@ -1492,8 +1496,8 @@ def accept_fulfilled_request(detail_url, headless=True):
 
 def interactive_accept_fulfilled_requests(headless=True):
     """
-    List fulfilled requests, prompt user to select one or more (comma-separated or range, e.g., 1,3,5-7) to accept, and accept them.
-    Supports single numbers, comma-separated list, and ranges (e.g., 1,3,5-7).
+    List fulfilled requests, prompt user to select one or more (comma-separated, range, e.g., 1,3,5-7, or 'all') to accept, and accept them.
+    Supports single numbers, comma-separated list, ranges (e.g., 1,3,5-7), or 'all' to select all.
     If no response from user for 30 seconds, quit.
     """
     requests = get_fulfilled_requests(headless=headless)
@@ -1501,7 +1505,7 @@ def interactive_accept_fulfilled_requests(headless=True):
         print("No fulfilled requests to accept.")
         return
 
-    print("Enter the numbers of the requests you want to accept (comma-separated or range, e.g., 1,3,5-7), or press Enter to skip:")
+    print("Enter the numbers of the requests you want to accept (comma-separated, range, e.g., 1,3,5-7, or 'all'), or press Enter to skip:")
 
     # Input with 30s timeout (cross-platform)
     def input_with_timeout(prompt, timeout=30):
@@ -1526,36 +1530,38 @@ def interactive_accept_fulfilled_requests(headless=True):
         print("\nNo input received in 30 seconds. Accept operation aborted.")
         return
 
-    selection = selection.strip()
+    selection = selection.strip().lower()
     if not selection:
         print("No requests selected for acceptance.")
         return
 
-    # Parse user input (comma-separated numbers and ranges)
     indices = set()
-    for part in selection.split(','):
-        part = part.strip()
-        if '-' in part:
-            try:
-                start, end = map(int, part.split('-', 1))
-                if start > end:
-                    print(f"Invalid range: {part} (start > end)")
-                    continue
-                for idx in range(start, end + 1):
-                    if 1 <= idx <= len(requests):
-                        indices.add(idx - 1)
-                    else:
-                        print(f"Invalid selection: {idx} (out of range)")
-            except Exception:
-                print(f"Invalid range input: {part}")
-        elif part.isdigit():
-            idx = int(part)
-            if 1 <= idx <= len(requests):
-                indices.add(idx - 1)
-            else:
-                print(f"Invalid selection: {part} (out of range)")
-        elif part:
-            print(f"Invalid input: {part}")
+    if selection == "all":
+        indices = set(range(len(requests)))
+    else:
+        for part in selection.split(','):
+            part = part.strip()
+            if '-' in part:
+                try:
+                    start, end = map(int, part.split('-', 1))
+                    if start > end:
+                        print(f"Invalid range: {part} (start > end)")
+                        continue
+                    for idx in range(start, end + 1):
+                        if 1 <= idx <= len(requests):
+                            indices.add(idx - 1)
+                        else:
+                            print(f"Invalid selection: {idx} (out of range)")
+                except Exception:
+                    print(f"Invalid range input: {part}")
+            elif part.isdigit():
+                idx = int(part)
+                if 1 <= idx <= len(requests):
+                    indices.add(idx - 1)
+                else:
+                    print(f"Invalid selection: {part} (out of range)")
+            elif part:
+                print(f"Invalid input: {part}")
 
     if not indices:
         print("No valid requests selected for acceptance.")
@@ -1748,8 +1754,8 @@ def reject_fulfilled_request(detail_url, reason="版本错误", headless=True):
 
 def interactive_reject_fulfilled_requests(headless=True):
     """
-    List fulfilled requests, prompt user to select one or more (comma-separated or range, e.g., 1,3,5-7) to reject, and reject them.
-    Supports single numbers, comma-separated list, and ranges (e.g., 1,3,5-7).
+    List fulfilled requests, prompt user to select one or more (comma-separated, range, e.g., 1,3,5-7, or 'all') to reject, and reject them.
+    Supports single numbers, comma-separated list, ranges (e.g., 1,3,5-7), or 'all' to select all.
     If no response from user for 30 seconds, quit.
     """
     requests = get_fulfilled_requests(headless=headless)
@@ -1757,7 +1763,7 @@ def interactive_reject_fulfilled_requests(headless=True):
         print("No fulfilled requests to reject.")
         return
 
-    print("Enter the numbers of the requests you want to reject (comma-separated or range, e.g., 1,3,5-7), or press Enter to skip:")
+    print("Enter the numbers of the requests you want to reject (comma-separated, range, e.g., 1,3,5-7, or 'all'), or press Enter to skip:")
 
     # Input with 30s timeout (cross-platform)
     def input_with_timeout(prompt, timeout=30):
@@ -1782,36 +1788,39 @@ def interactive_reject_fulfilled_requests(headless=True):
         print("\nNo input received in 30 seconds. Reject operation aborted.")
         return
 
-    selection = selection.strip()
+    selection = selection.strip().lower()
     if not selection:
         print("No requests selected for rejection.")
         return
 
-    # Parse user input (comma-separated numbers and ranges)
+    # Parse user input (comma-separated numbers, ranges, or 'all')
     indices = set()
-    for part in selection.split(','):
-        part = part.strip()
-        if '-' in part:
-            try:
-                start, end = map(int, part.split('-', 1))
-                if start > end:
-                    print(f"Invalid range: {part} (start > end)")
-                    continue
-                for idx in range(start, end + 1):
-                    if 1 <= idx <= len(requests):
-                        indices.add(idx - 1)
-                    else:
-                        print(f"Invalid selection: {idx} (out of range)")
-            except Exception:
-                print(f"Invalid range input: {part}")
-        elif part.isdigit():
-            idx = int(part)
-            if 1 <= idx <= len(requests):
-                indices.add(idx - 1)
-            else:
-                print(f"Invalid selection: {part} (out of range)")
-        elif part:
-            print(f"Invalid input: {part}")
+    if selection == "all":
+        indices = set(range(len(requests)))
+    else:
+        for part in selection.split(','):
+            part = part.strip()
+            if '-' in part:
+                try:
+                    start, end = map(int, part.split('-', 1))
+                    if start > end:
+                        print(f"Invalid range: {part} (start > end)")
+                        continue
+                    for idx in range(start, end + 1):
+                        if 1 <= idx <= len(requests):
+                            indices.add(idx - 1)
+                        else:
+                            print(f"Invalid selection: {idx} (out of range)")
+                except Exception:
+                    print(f"Invalid range input: {part}")
+            elif part.isdigit():
+                idx = int(part)
+                if 1 <= idx <= len(requests):
+                    indices.add(idx - 1)
+                else:
+                    print(f"Invalid selection: {part} (out of range)")
+            elif part:
+                print(f"Invalid input: {part}")
 
     if not indices:
         print("No valid requests selected for rejection.")
@@ -1840,7 +1849,6 @@ def interactive_reject_fulfilled_requests(headless=True):
             idx = int(reason_input)
             if 1 <= idx <= len(reasons_list):
                 # Extract the Chinese part from the selected reason
-                # Remove leading number, dot, and any English in parentheses
                 chinese_part = re.sub(r'^\d+\.\s*', '', reasons_list[idx-1])
                 chinese_part = re.sub(r'\s*\(.*?\)', '', chinese_part)
                 reason = chinese_part.strip()
