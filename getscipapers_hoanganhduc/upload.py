@@ -18,7 +18,14 @@ ICONS = {
     'sync': '🔄',
 }
 
-def get_files_from_args(paths, verbose=False):
+def get_files_from_args(paths, verbose=False, file_types=None):
+    """
+    Collect files from given paths. If file_types is specified (list of extensions, e.g. ['pdf']),
+    only files with those extensions are included. Default is ['pdf'].
+    """
+    if file_types is None:
+        file_types = ['pdf']
+    file_types = [ft.lower().lstrip('.') for ft in file_types]
     files = []
     for path in paths:
         abs_path = os.path.abspath(path)
@@ -28,9 +35,17 @@ def get_files_from_args(paths, verbose=False):
             for entry in os.listdir(abs_path):
                 full_path = os.path.join(abs_path, entry)
                 if os.path.isfile(full_path):
-                    files.append(os.path.abspath(full_path))
+                    ext = os.path.splitext(entry)[1].lower().lstrip('.')
+                    if ext in file_types:
+                        files.append(os.path.abspath(full_path))
+                    elif verbose:
+                        print(f"{ICONS['warning']} Skipping {entry} (not in allowed types: {file_types})")
         elif os.path.isfile(abs_path):
-            files.append(abs_path)
+            ext = os.path.splitext(abs_path)[1].lower().lstrip('.')
+            if ext in file_types:
+                files.append(abs_path)
+            elif verbose:
+                print(f"{ICONS['warning']} Skipping {abs_path} (not in allowed types: {file_types})")
         else:
             if verbose:
                 print(f"{ICONS['warning']} Warning: {abs_path} is not a valid file or directory, skipping.")
@@ -231,11 +246,22 @@ Examples:
   %(prog)s paper.pdf --service scinet
   %(prog)s file.pdf --service temp.sh,libgen
   %(prog)s file.pdf --service temp.sh libgen
+  %(prog)s myfolder --file-type pdf docx --service gdrive
+  %(prog)s "folder1,file2.pdf" --service temp.sh,dropbox --file-type pdf
+  %(prog)s myfile.pdf --service gdrive --verbose
+  %(prog)s myfile.pdf --service scinet --file-type pdf
+  %(prog)s "folder1,file2.pdf" --service nexus,libgen,scinet
 """
     )
     parser.add_argument(
         "paths",
         help="Comma-separated list of files or directories to upload"
+    )
+    parser.add_argument(
+        "--file-type",
+        nargs="+",
+        required=False,
+        help="Only include files with these extensions (e.g. pdf, txt, docx). Default: pdf"
     )
     parser.add_argument(
         "--service",
@@ -273,7 +299,7 @@ Examples:
         print(f"{ICONS['info']} Note: Google Drive and Dropbox services require rclone to be installed and configured. See https://rclone.org/ for instructions.")
 
     input_paths = [p.strip() for p in args.paths.split(",") if p.strip()]
-    files = get_files_from_args(input_paths, args.verbose)
+    files = get_files_from_args(input_paths, args.verbose, args.file_type)
     if not files:
         print(f"{ICONS['error']} No valid files found to upload.")
     for service in services:
