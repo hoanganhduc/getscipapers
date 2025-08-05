@@ -548,13 +548,17 @@ def request_paper_by_doi(doi, headless=True):
                 try:
                     def get_user_response():
                         try:
+                            prompt_msg = (
+                                "\nDo you want to request this paper? (Y/n): "
+                                "[You have 30 seconds to respond, otherwise the request will proceed automatically]"
+                            )
                             if hasattr(signal, 'SIGALRM'):
                                 def timeout_handler(_, __):
                                     raise TimeoutError("Input timeout")
                                 
                                 signal.signal(signal.SIGALRM, timeout_handler)
                                 signal.alarm(30)
-                                response = input(f"\nDo you want to request this paper? (Y/n): ").strip().lower()
+                                response = input(prompt_msg).strip().lower()
                                 signal.alarm(0)
                                 return response
                             else:
@@ -562,7 +566,7 @@ def request_paper_by_doi(doi, headless=True):
                                 q = queue.Queue()
                                 def input_thread():
                                     try:
-                                        response = input(f"\nDo you want to request this paper? (Y/n): ").strip().lower()
+                                        response = input(prompt_msg).strip().lower()
                                         q.put(response)
                                     except:
                                         q.put('')
@@ -577,7 +581,7 @@ def request_paper_by_doi(doi, headless=True):
                                 
                                 return q.get_nowait() if not q.empty() else 'y'
                         except (TimeoutError, queue.Empty):
-                            print("\nNo response received. Proceeding with request...")
+                            print("\nNo response received in 30 seconds. Proceeding with request automatically...")
                             return 'y'
                     
                     response = get_user_response()
@@ -594,7 +598,7 @@ def request_paper_by_doi(doi, headless=True):
                 
                 except Exception as e:
                     debug_print(f"Error in confirmation prompt: {e}")
-                    print("\nProceeding with request...")
+                    print("\nNo response received or error occurred. Proceeding with request automatically...")
                 
                 # Submit the request
                 debug_print("Submitting paper request")
