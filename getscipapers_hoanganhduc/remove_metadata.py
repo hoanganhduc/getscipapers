@@ -44,6 +44,66 @@ def remove_metadata(input_pdf, output_pdf, verbose=False):
     if verbose:
         print("Done.")
 
+def remove_repeated_images(input_pdf, output_pdf, verbose=False, page_range=None, min_pages_ratio=0.9):
+    """
+    Remove images that appear on most or all pages (likely watermarks).
+    Args:
+        input_pdf: Path to input PDF.
+        output_pdf: Path to output PDF.
+        verbose: Print progress.
+        page_range: Optional page range string.
+        min_pages_ratio: Ratio of pages an image must appear on to be considered a watermark.
+    """
+    doc = fitz.open(input_pdf)
+    num_pages = len(doc)
+    pages_to_process = set(range(num_pages))
+    if page_range:
+        pages_to_process = parse_page_range(page_range, num_pages)
+        if verbose:
+            print(f"Processing only pages: {sorted([p+1 for p in pages_to_process])}")
+
+    # Map image xref to set of page indices where it appears
+    image_xref_pages = {}
+    for i in pages_to_process:
+        page = doc[i]
+        for img in page.get_images(full=True):
+            xref = img[0]
+            image_xref_pages.setdefault(xref, set()).add(i)
+
+    # Find images that appear on enough pages
+    threshold = max(2, int(len(pages_to_process) * min_pages_ratio))
+    repeated_xrefs = {xref for xref, pages in image_xref_pages.items() if len(pages) >= threshold}
+    if verbose:
+        print(f"Images considered as watermark (appear on >= {threshold} pages): {repeated_xrefs}")
+
+    # Actually remove the images by replacing them with white rectangles
+    for i in pages_to_process:
+        page = doc[i]
+        img_list = page.get_images(full=True)
+        for img in img_list:
+            xref = img[0]
+            if xref in repeated_xrefs:
+                # Find all rectangles for this image on the page
+                img_rects = []
+                # Use get_image_info if available, else fallback to guessing
+                try:
+                    img_rects = [inst["bbox"] for inst in page.get_image_info(xref)]
+                except Exception:
+                    # Fallback: use the whole page (not ideal)
+                    img_rects = [page.rect]
+                for rect in img_rects:
+                    # Draw a white rectangle over the image
+                    page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1), overlay=True)
+    if verbose:
+        print("Removing metadata...")
+    doc.set_metadata({})
+    if verbose:
+        print(f"Writing output PDF: {output_pdf}")
+    doc.save(output_pdf)
+    doc.close()
+    if verbose:
+        print("Done.")
+
 def remove_watermark(input_pdf, output_pdf, watermark_patterns=None, verbose=False, page_range=None):
     if watermark_patterns is None:
         watermark_patterns = [
@@ -143,8 +203,19 @@ def remove_watermark(input_pdf, output_pdf, watermark_patterns=None, verbose=Fal
 
     if verbose:
         print(f"Reading input PDF: {input_pdf}")
-    
-    doc = fitz.open(input_pdf)
+
+    # First, remove repeated images (likely watermarks)
+    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_img_file:
+        tmp_img_pdf = tmp_img_file.name
+
+    remove_repeated_images(
+        input_pdf,
+        tmp_img_pdf,
+        verbose=verbose,
+        page_range=page_range
+    )
+
+    doc = fitz.open(tmp_img_pdf)
     num_pages = len(doc)
     pages_to_process = set(range(num_pages))
     if page_range:
@@ -201,7 +272,13 @@ def remove_watermark(input_pdf, output_pdf, watermark_patterns=None, verbose=Fal
     
     doc.save(output_pdf)
     doc.close()
-    
+
+    # Clean up temporary file
+    try:
+        os.unlink(tmp_img_pdf)
+    except Exception:
+        pass
+
     if verbose:
         print("Done.")
 
