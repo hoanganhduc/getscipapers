@@ -707,11 +707,144 @@ def validate_dois(dois: list) -> list:
             valid_dois.append(doi)
     return valid_dois
 
+def extract_isbns_from_text(text: str) -> list:
+    """
+    Extract ISBN-13 (preferred) and ISBN-10 numbers from text content.
+    Returns a list of (isbn, doi) tuples, preferring ISBN-13 if found, otherwise ISBN-10.
+    Only includes valid ISBNs (according to Crossref) and their associated DOI(s) if available.
+    If multiple DOIs are found for an ISBN, tries to extract the common DOI prefix (e.g., <common doi>.ch001, <common doi>.ch002).
+    Prints details with vprint.
+    Only extracts ISBN-10 if no ISBN-13 is found.
+    """
+    # ISBN-10: 10 digits, last digit can be X, may have hyphens or spaces
+    isbn10_pattern = r'\b(?:ISBN(?:-10)?:?\s*)?((?:\d[\s-]*){9}[\dXx])\b'
+    # ISBN-13: 13 digits, may have hyphens or spaces, starts with 978 or 979
+    isbn13_pattern = r'\b(?:ISBN(?:-13)?:?\s*)?((97[89][\s-]*){1}([\d][\s-]*){10})\b'
+
+    def normalize_isbn(isbn):
+        return re.sub(r'[\s-]', '', isbn).upper()
+
+    def extract_common_doi_prefix(dois):
+        """
+        Given a list of DOIs, extract the longest common prefix before a chapter/article suffix.
+        E.g., for ['10.1007/978-3-030-12345-6.ch001', '10.1007/978-3-030-12345-6.ch002'],
+        returns '10.1007/978-3-030-12345-6'.
+        """
+        if not dois:
+            return None
+        # Split DOIs at the last dot (.) or .ch or .[0-9]+
+        # Find the longest common prefix
+        split_dois = [re.split(r'(\.ch\d+|\.\d+)$', d)[0] for d in dois]
+        prefix = os.path.commonprefix(split_dois)
+        # Remove trailing dot if present
+        if prefix.endswith('.'):
+            prefix = prefix[:-1]
+        return prefix if prefix else None
+
+    # Extract ISBN-13s
+    isbn13s = []
+    for match in re.findall(isbn13_pattern, text):
+        if isinstance(match, tuple):
+            isbn = next((m for m in match if m and isinstance(m, str)), None)
+        else:
+            isbn = match
+        if isbn:
+            norm_isbn = normalize_isbn(isbn)
+            if norm_isbn not in isbn13s:
+                isbn13s.append(norm_isbn)
+    vprint(f"Found ISBN-13s: {isbn13s}")
+
+    works = Works()
+    results = []
+
+    # Prefer ISBN-13s
+    if isbn13s:
+        for isbn in isbn13s:
+            try:
+                vprint(f"Querying Crossref for ISBN-13: {isbn}")
+                items = list(works.filter(isbn=isbn))
+                vprint(f"Crossref returned {len(items)} items for ISBN-13 {isbn}")
+                if items:
+                    dois = []
+                    for item in items:
+                        doi = item.get("DOI")
+                        if doi:
+                            dois.append(doi)
+                    if dois:
+                        if len(dois) == 1:
+                            vprint(f"Found DOI {dois[0]} for ISBN-13 {isbn}")
+                            results.append((isbn, dois[0]))
+                        else:
+                            # Try to extract common DOI prefix
+                            common_prefix = extract_common_doi_prefix(dois)
+                            if common_prefix:
+                                vprint(f"Multiple DOIs found for ISBN-13 {isbn}, common prefix: {common_prefix}")
+                                results.append((isbn, common_prefix))
+                            else:
+                                vprint(f"Multiple DOIs found for ISBN-13 {isbn}, no common prefix. Returning all DOIs.")
+                                results.append((isbn, dois))
+                    else:
+                        vprint(f"No DOI found for ISBN-13 {isbn}")
+                        results.append((isbn, None))
+                else:
+                    vprint(f"No Crossref entry found for ISBN-13 {isbn}")
+            except Exception as e:
+                vprint(f"Error querying Crossref for ISBN-13 {isbn}: {e}")
+                continue
+        return results
+
+    # Only extract ISBN-10 if no ISBN-13 found
+    isbn10s = []
+    for match in re.findall(isbn10_pattern, text):
+        if isinstance(match, tuple):
+            isbn = next((m for m in match if m and isinstance(m, str)), None)
+        else:
+            isbn = match
+        if isbn:
+            norm_isbn = normalize_isbn(isbn)
+            if norm_isbn not in isbn10s:
+                isbn10s.append(norm_isbn)
+    vprint(f"Found ISBN-10s: {isbn10s}")
+
+    for isbn in isbn10s:
+        try:
+            vprint(f"Querying Crossref for ISBN-10: {isbn}")
+            items = list(works.filter(isbn=isbn))
+            vprint(f"Crossref returned {len(items)} items for ISBN-10 {isbn}")
+            if items:
+                dois = []
+                for item in items:
+                    doi = item.get("DOI")
+                    if doi:
+                        dois.append(doi)
+                if dois:
+                    if len(dois) == 1:
+                        vprint(f"Found DOI {dois[0]} for ISBN-10 {isbn}")
+                        results.append((isbn, dois[0]))
+                    else:
+                        common_prefix = extract_common_doi_prefix(dois)
+                        if common_prefix:
+                            vprint(f"Multiple DOIs found for ISBN-10 {isbn}, common prefix: {common_prefix}")
+                            results.append((isbn, common_prefix))
+                        else:
+                            vprint(f"Multiple DOIs found for ISBN-10 {isbn}, no common prefix. Returning all DOIs.")
+                            results.append((isbn, dois))
+                else:
+                    vprint(f"No DOI found for ISBN-10 {isbn}")
+                    results.append((isbn, None))
+            else:
+                vprint(f"No Crossref entry found for ISBN-10 {isbn}")
+        except Exception as e:
+            vprint(f"Error querying Crossref for ISBN-10 {isbn}: {e}")
+            continue
+    return results
+
 def extract_dois_from_text(text: str) -> list:
     """
     Extract DOI numbers from text content.
     Returns a list of unique, valid paper DOIs.
     Only keeps DOIs that resolve at https://doi.org/<doi> (HTTP 200, 301, 302).
+    If no DOI is found, tries to extract ISBN and resolve to DOI.
     """
     vprint(f"Extracting DOIs from text {text[:100]}... (length: {len(text)})")
     dois = []
@@ -735,12 +868,10 @@ def extract_dois_from_text(text: str) -> list:
         if matches:
             for match in matches:
                 if isinstance(match, tuple):
-                    # Extract the captured group (the DOI part starting with 10.)
                     doi_part = next((group for group in match if group.startswith('10.')), None)
                     if doi_part:
                         dois.append(doi_part)
                 elif isinstance(match, str):
-                    # For patterns without capture groups, extract the 10. part
                     doi_match = re.search(r'(10\.\d{4,9}/[A-Za-z0-9\-._;()/:]+)', match)
                     if doi_match:
                         dois.append(doi_match.group(1))
@@ -791,7 +922,22 @@ def extract_dois_from_text(text: str) -> list:
             dois.extend(page_dois)
 
     unique_dois = list(dict.fromkeys(dois))
-    return validate_dois(unique_dois)
+    valid_dois = validate_dois(unique_dois)
+
+    # If no DOI found, try to extract ISBN and resolve to DOI
+    if not valid_dois:
+        vprint("No DOI found, trying to extract ISBN and resolve to DOI...")
+        isbn_results = extract_isbns_from_text(text)
+        if isbn_results:
+            # isbn_results is a list of (isbn, doi) tuples
+            for isbn, doi in isbn_results:
+                if doi:
+                    vprint(f"Resolved ISBN {isbn} to DOI {doi}")
+                    valid_dois = [doi]
+                    break
+                else:
+                    vprint(f"ISBN {isbn} did not resolve to a DOI")
+    return valid_dois
 
 def extract_dois_from_file(input_file: str):
     """Extract DOI numbers from a text file and write them to a new file. Returns the list of extracted DOIs."""
