@@ -226,5 +226,5 @@ This setup allows you to use **getscipapers** in an isolated environment, keepin
 ## Remarks
 
 * This package is a **work in progress** and thus **may not function as expected**.
-* Many features in the `ablesci`, `scinet`, `libgen`, and `facebook` modules rely on Selenium and may break if the target websites change. In particular, some features in `facebook` module works fine on the local PC but fails in GitHub Codespace and Docker.
+* Many features in the `ablesci`, `scinet`, `libgen`, and `facebook` modules rely on Selenium and may break if the target websites change. In particular, some features in `facebook` module may work on the local PC but fail in GitHub Codespace and Docker container.
 * The `nexus` module may not work reliably when using a proxy (the default configuration). Issues such as `307 Temporary Redirect` errors may occur, and downloads may fail if the Nexus Search server or Telegram bot is unavailable.
