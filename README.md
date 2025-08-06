@@ -2,7 +2,7 @@
 
 ## Description
 
-**getscipapers** is a Python package for searching and requesting scientific papers from various sources. This project is a work in progress and primarily intended for my personal use. It is not a comprehensive solution for accessing scientific papers. Parts of the code were developed with assistance from [GitHub Copilot](https://github.com/features/copilot).
+**getscipapers** is a Python package for searching and requesting scientific papers from various sources. This project is a **work in progress** and primarily intended for **my personal use**. It is not a comprehensive solution for accessing scientific papers. Parts of the code were developed with assistance from [GitHub Copilot](https://github.com/features/copilot).
 
 ## Prerequisites
 
