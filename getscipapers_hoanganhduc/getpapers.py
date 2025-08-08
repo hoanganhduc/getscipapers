@@ -1322,7 +1322,7 @@ async def search_with_nexus_bot(query: str, limit: int = 1):
     Tries first without proxy, then with proxy if it fails.
     """
     try:
-        TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME = await nexus.load_credentials_from_file(nexus.CREDENTIALS_FILE)
+        TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME = await nexus.load_credentials_from_file(nexus.CREDENTIALS_FILE, print_result=False)
         proxies = [None, nexus.DEFAULT_PROXY_FILE]
         for proxy in proxies:
             try:
@@ -2349,7 +2349,7 @@ async def download_from_nexus_bot(doi: str, download_folder: str = DEFAULT_DOWNL
         TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME = await nexus.load_credentials_from_file(nexus.CREDENTIALS_FILE)
         
         # Use decide_proxy_usage to determine if proxy should be used
-        proxy_result = await nexus.decide_proxy_usage(TG_API_ID, TG_API_HASH, PHONE, nexus.SESSION_FILE, nexus.DEFAULT_PROXY_FILE)
+        proxy_result = await nexus.decide_proxy_usage(TG_API_ID, TG_API_HASH, PHONE, nexus.SESSION_FILE, nexus.DEFAULT_PROXY_FILE, print_result=False)
         if proxy_result is False:
             print("Error: Could not establish connection to Telegram (neither direct nor via proxy)")
             return False

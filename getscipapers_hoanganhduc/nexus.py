@@ -1051,7 +1051,7 @@ async def test_telegram_connection(api_id, api_hash, phone_number, session_file=
     print("CONNECTION TEST COMPLETED")
     print("="*70)
     
-async def decide_proxy_usage(api_id, api_hash, phone_number, session_file=SESSION_FILE, proxy_file=DEFAULT_PROXY_FILE):
+async def decide_proxy_usage(api_id, api_hash, phone_number, session_file=SESSION_FILE, proxy_file=DEFAULT_PROXY_FILE, print_result=True):
     """
     Decide whether to use a proxy for Telegram connection.
     If connection works without proxy, return None (no proxy).
@@ -1061,19 +1061,23 @@ async def decide_proxy_usage(api_id, api_hash, phone_number, session_file=SESSIO
         proxy_file if proxy is needed,
         False if neither works.
     """
-    info_print("Testing Telegram connection without proxy...")
+    if print_result:
+        info_print("Testing Telegram connection without proxy...")
     try:
         client = create_telegram_client(api_id, api_hash, session_file, proxy=None)
         await client.start(phone=phone_number if phone_number else None)
         is_auth = await client.is_user_authorized()
         await client.disconnect()
         if is_auth:
-            info_print("Direct connection to Telegram works. Proxy is not needed.")
+            if print_result:
+                info_print("Direct connection to Telegram works. Proxy is not needed.")
             return None
         else:
-            info_print("Direct connection failed (not authorized). Trying default proxy configuration...")
+            if print_result:
+                info_print("Direct connection failed (not authorized). Trying default proxy configuration...")
     except Exception as e:
-        info_print(f"Direct connection failed: {e}. Trying default proxy configuration...")
+        if print_result:
+            info_print(f"Direct connection failed: {e}. Trying default proxy configuration...")
 
     # Try default proxy file if it exists
     if os.path.exists(proxy_file):
@@ -1084,17 +1088,21 @@ async def decide_proxy_usage(api_id, api_hash, phone_number, session_file=SESSIO
             is_auth = await client.is_user_authorized()
             await client.disconnect()
             if is_auth:
-                info_print("Connection via default proxy works. Proxy will be used.")
+                if print_result:
+                    info_print("Connection via default proxy works. Proxy will be used.")
                 return proxy_file
             else:
-                info_print("Connection failed with default proxy (not authorized). Will try to find a new working proxy...")
+                if print_result:
+                    info_print("Connection failed with default proxy (not authorized). Will try to find a new working proxy...")
         except Exception as e:
-            info_print(f"Connection failed with default proxy: {e}. Will try to find a new working proxy...")
+            if print_result:
+                info_print(f"Connection failed with default proxy: {e}. Will try to find a new working proxy...")
 
     # Try to find a new working proxy
     working_proxy = await test_and_select_working_proxy()
     if not working_proxy:
-        error_print("Could not find a working proxy for Telegram")
+        if print_result:
+            error_print("Could not find a working proxy for Telegram")
         return False
     try:
         proxy_config = load_proxy_config(proxy_file)
@@ -1103,13 +1111,16 @@ async def decide_proxy_usage(api_id, api_hash, phone_number, session_file=SESSIO
         is_auth = await client.is_user_authorized()
         await client.disconnect()
         if is_auth:
-            info_print("Connection via new proxy works. Proxy will be used.")
+            if print_result:
+                info_print("Connection via new proxy works. Proxy will be used.")
             return proxy_file
         else:
-            error_print("Connection failed with new proxy (not authorized).")
+            if print_result:
+                error_print("Connection failed with new proxy (not authorized).")
             return False
     except Exception as e:
-        error_print(f"Connection failed with new proxy: {e}")
+        if print_result:
+            error_print(f"Connection failed with new proxy: {e}")
         return False
 
 def create_telegram_client(api_id, api_hash, session_file=SESSION_FILE, proxy=None):
@@ -2214,24 +2225,28 @@ def get_input_with_timeout(prompt, timeout=30, default='y', keep_origin=False):
             print(f"\nTimeout after {timeout} seconds, using default: {default}")
             return default
 
-async def load_credentials_from_file(credentials_path):
+async def load_credentials_from_file(credentials_path, print_result=True):
     """Load API credentials from JSON file, validate, and prompt user if invalid or missing."""
 
     global TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME
 
     def prompt_for_credentials():
-        print("\nPlease enter your Telegram API credentials.")
+        if print_result:
+            print("\nPlease enter your Telegram API credentials.")
         tg_api_id = get_input_with_timeout("API ID: ", timeout=30, default="", keep_origin=True)
         if not tg_api_id:
-            error_print("No API ID entered. Exiting.")
+            if print_result:
+                error_print("No API ID entered. Exiting.")
             return None
         tg_api_hash = get_input_with_timeout("API Hash: ", timeout=30, default="", keep_origin=True)
         if not tg_api_hash:
-            error_print("No API Hash entered. Exiting.")
+            if print_result:
+                error_print("No API Hash entered. Exiting.")
             return None
         phone = get_input_with_timeout("Phone number (with country code): ", timeout=30, default="", keep_origin=True)
         if not phone:
-            error_print("No phone number entered. Exiting.")
+            if print_result:
+                error_print("No phone number entered. Exiting.")
             return None
         bot_username = get_input_with_timeout("Bot username (default: SciNexBot): ", timeout=30, default="SciNexBot", keep_origin=True)
         if not bot_username:
@@ -2250,33 +2265,36 @@ async def load_credentials_from_file(credentials_path):
         PHONE = creds.get("phone", PHONE)
         BOT_USERNAME = creds.get("bot_username", BOT_USERNAME)
         # Validate credentials
-        # Try testing credentials without proxy first
         test_result = await test_credentials(TG_API_ID, TG_API_HASH, PHONE)
         if not os.path.exists(DEFAULT_PROXY_FILE):
-            info_print(f"Proxy file not found: {DEFAULT_PROXY_FILE}")
-            info_print("Attempting to find a suitable free proxy...")
+            if print_result:
+                info_print(f"Proxy file not found: {DEFAULT_PROXY_FILE}")
+                info_print("Attempting to find a suitable free proxy...")
             working_proxy = await test_and_select_working_proxy()
             if working_proxy:
-                info_print("✓ Found and configured a working proxy")
+                if print_result:
+                    info_print("✓ Found and configured a working proxy")
             else:
-                error_print("Could not find a working proxy for Telegram")
-                error_print("You can either:")
-                error_print("1. Try running again (will test different proxies)")
-                error_print("2. Run with --no-proxy to connect directly")
-                error_print("3. Provide a custom proxy configuration file")
+                if print_result:
+                    error_print("Could not find a working proxy for Telegram")
+                    error_print("You can either:")
+                    error_print("1. Try running again (will test different proxies)")
+                    error_print("2. Run with --no-proxy to connect directly")
+                    error_print("3. Provide a custom proxy configuration file")
                 return None
         if not test_result.get("ok") and os.path.exists(DEFAULT_PROXY_FILE):
-            info_print("Credential test failed without proxy, retrying with proxy...")
+            if print_result:
+                info_print("Credential test failed without proxy, retrying with proxy...")
             test_result = await test_credentials(TG_API_ID, TG_API_HASH, PHONE, proxy=DEFAULT_PROXY_FILE)
         if test_result.get("ok"):
-            info_print("Credentials validated successfully.")
+            if print_result:
+                info_print("Credentials validated successfully.")
             # Save to default location if not already there or if different
             save_needed = True
             if os.path.exists(CREDENTIALS_FILE):
                 try:
                     with open(CREDENTIALS_FILE, 'r') as f:
                         existing = json.load(f)
-                    # Compare all fields
                     if (
                         str(existing.get("tg_api_id", "")) == str(TG_API_ID)
                         and str(existing.get("tg_api_hash", "")) == str(TG_API_HASH)
@@ -2295,17 +2313,18 @@ async def load_credentials_from_file(credentials_path):
                             "phone": PHONE,
                             "bot_username": BOT_USERNAME
                         }, f, indent=2)
-                    info_print(f"Credentials saved to: {CREDENTIALS_FILE}")
+                    if print_result:
+                        info_print(f"Credentials saved to: {CREDENTIALS_FILE}")
                 except Exception as e:
                     debug_print(f"Warning: Could not save credentials to default location: {e}")
             return [TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME]
         else:
-            error_print(f"Credential validation failed: {test_result.get('error', 'Unknown error')}")
+            if print_result:
+                error_print(f"Credential validation failed: {test_result.get('error', 'Unknown error')}")
             return None
 
     debug_print(f"Loading credentials from: {credentials_path}")
 
-    # Try credentials_path first
     creds = None
     if os.path.exists(credentials_path):
         try:
@@ -2315,13 +2334,14 @@ async def load_credentials_from_file(credentials_path):
             if result:
                 return result
             else:
-                info_print("Credentials in file are invalid. Please re-enter.")
+                if print_result:
+                    info_print("Credentials in file are invalid. Please re-enter.")
         except Exception as e:
-            error_print(f"Error loading credentials file: {e}")
+            if print_result:
+                error_print(f"Error loading credentials file: {e}")
             debug_print(f"Credentials loading error: {type(e).__name__}: {str(e)}")
             creds = None
 
-    # If not found or invalid, try default location if different
     if credentials_path != CREDENTIALS_FILE and os.path.exists(CREDENTIALS_FILE):
         try:
             with open(CREDENTIALS_FILE, 'r') as f:
@@ -2330,24 +2350,28 @@ async def load_credentials_from_file(credentials_path):
             if result:
                 return result
             else:
-                info_print("Credentials in default location are invalid. Please re-enter.")
+                if print_result:
+                    info_print("Credentials in default location are invalid. Please re-enter.")
         except Exception as e:
-            error_print(f"Error loading credentials file: {e}")
+            if print_result:
+                error_print(f"Error loading credentials file: {e}")
             debug_print(f"Credentials loading error: {type(e).__name__}: {str(e)}")
             creds = None
 
-    # If still not found or invalid, prompt user
-    for attempt in range(2):  # Allow up to 2 attempts
+    for attempt in range(2):
         creds = prompt_for_credentials()
         if not creds:
-            error_print("No credentials provided. Exiting.")
+            if print_result:
+                error_print("No credentials provided. Exiting.")
             return None
         result = await validate_and_save(creds)
         if result:
             return result
         else:
-            info_print("Credentials invalid. Please try again.")
-    error_print("Failed to provide valid credentials after multiple attempts or timeout.")
+            if print_result:
+                info_print("Credentials invalid. Please try again.")
+    if print_result:
+        error_print("Failed to provide valid credentials after multiple attempts or timeout.")
     return None
     
 async def test_credentials(api_id, api_hash, phone_number, session_file=SESSION_FILE, proxy=None):
