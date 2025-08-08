@@ -9,6 +9,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import SessionNotCreatedException
+from selenium.webdriver.chrome.service import Service as ChromeService
+from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import time
 import random
@@ -204,7 +206,7 @@ class FacebookScraper:
         options.add_argument("--lang=en-US.UTF-8")
         options.add_argument("--disable-features=RendererCodeIntegrity")  # Sometimes helps with emoji rendering
             
-        self.driver = webdriver.Chrome(options=options)    
+        self.driver = webdriver.Chrome(options=options,service=ChromeService(ChromeDriverManager().install()))    
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         self.log("Webdriver initialized successfully")
         
