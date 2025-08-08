@@ -549,8 +549,7 @@ def request_paper_by_doi(doi, headless=True):
                     def get_user_response():
                         try:
                             prompt_msg = (
-                                "\nDo you want to request this paper? (Y/n): "
-                                "[You have 30 seconds to respond, otherwise the request will proceed automatically]"
+                                "\nDo you want to request this paper? (Y/n) (timeout: 30 seconds): "
                             )
                             if hasattr(signal, 'SIGALRM'):
                                 def timeout_handler(_, __):
