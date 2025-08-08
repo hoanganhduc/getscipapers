@@ -2568,7 +2568,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
         print(f"📖 Trying LibGen for DOI: {doi}...")
         try:
             # Call the libgen module's download_by_doi function
-            result = libgen.download_libgen_paper_by_doi(doi, dest_folder=download_folder)
+            result = libgen.download_libgen_paper_by_doi(doi, dest_folder=download_folder, print_result=False)
             if result:
                 print(f"\n📥 Download Summary:")
                 print(f"✅ Successfully downloaded: 1 PDF")

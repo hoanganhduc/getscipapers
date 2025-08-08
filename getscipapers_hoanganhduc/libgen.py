@@ -456,7 +456,7 @@ def print_libgen_doi_result(result):
                 print("    🔸 None")
         print("-" * 40)
 
-def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, verbose=False):
+def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, verbose=False, print_result=True):
     """
     Download the first available file for a given DOI from LibGen.
 
@@ -465,6 +465,7 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
         dest_folder (str): Folder to save the downloaded file. If None, uses default.
         preferred_exts (list): List of preferred file extensions (e.g., ["pdf", "epub"]).
         verbose (bool): If True, print debug information.
+        print_result (bool): If True, print download summary. If False, suppress output.
 
     Returns:
         str or None: File path if download succeeded, None otherwise.
@@ -477,9 +478,10 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
     if not result:
         if verbose:
             print("No result found for DOI:", doi)
-        print("\nDownload Summary:")
-        print("❌ Failed downloads:")
-        print(f"  ❌ DOI: {doi} (No result found)")
+        if print_result:
+            print("\nDownload Summary:")
+            print("❌ Failed downloads:")
+            print(f"  ❌ DOI: {doi} (No result found)")
         return None
 
     # Flatten result to first entry
@@ -488,18 +490,20 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
     else:
         if verbose:
             print("Unexpected result format.")
-        print("\nDownload Summary:")
-        print("❌ Failed downloads:")
-        print(f"  ❌ DOI: {doi} (Unexpected result format)")
+        if print_result:
+            print("\nDownload Summary:")
+            print("❌ Failed downloads:")
+            print(f"  ❌ DOI: {doi} (Unexpected result format)")
         return None
 
     files = entry.get("files", {})
     if not files:
         if verbose:
             print("No downloadable files found for DOI:", doi)
-        print("\nDownload Summary:")
-        print("❌ Failed downloads:")
-        print(f"  ❌ DOI: {doi} (No downloadable files found)")
+        if print_result:
+            print("\nDownload Summary:")
+            print("❌ Failed downloads:")
+            print(f"  ❌ DOI: {doi} (No downloadable files found)")
         return None
 
     # Select file by preferred extension
@@ -533,9 +537,10 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
     if not urls_to_try:
         if verbose:
             print("No download URL found for DOI:", doi)
-        print("\nDownload Summary:")
-        print("❌ Failed downloads:")
-        print(f"  ❌ DOI: {doi} (No download URL found)")
+        if print_result:
+            print("\nDownload Summary:")
+            print("❌ Failed downloads:")
+            print(f"  ❌ DOI: {doi} (No download URL found)")
         return None
 
     filename = entry.get("title", "libgen_paper")
@@ -601,24 +606,23 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
             failures.append((label, str(e)))
             # Try next mirror
 
-    # Print summary
-    print("\nDownload Summary:")
-    if successes:
-        print("✅ Successful downloads:")
-        for label, path in successes:
-            print(f"  ✅ Mirror '{label}': {path}")
-        return successes[0][1]
-    else:
-        print("No successful downloads.")
+    if print_result:
+        print("\nDownload Summary:")
+        if successes:
+            print("✅ Successful downloads:")
+            for label, path in successes:
+                print(f"  ✅ Mirror '{label}': {path}")
+        else:
+            print("No successful downloads.")
 
-    if failures:
-        print("❌ Failed downloads:")
-        for label, reason in failures:
-            print(f"  ❌ Mirror '{label}': {reason}")
-    else:
-        print("No failed downloads.")
+        if failures:
+            print("❌ Failed downloads:")
+            for label, reason in failures:
+                print(f"  ❌ Mirror '{label}': {reason}")
+        else:
+            print("No failed downloads.")
 
-    return None
+    return successes[0][1] if successes else None
 
 def search_libgen_by_query(
     query,
