@@ -942,19 +942,33 @@ def extract_dois_from_text(text: str) -> list:
     return valid_dois
 
 def extract_dois_from_file(input_file: str):
-    """Extract DOI numbers from a text file and write them to a new file. Returns the list of extracted DOIs."""
+    """
+    Extract DOI numbers from a text file and write them to a new file.
+    Returns the list of extracted DOIs.
+    Prints status messages with icons for better readability.
+    """
+    ICON_START = "🚀"
+    ICON_FILE = "📄"
+    ICON_SUCCESS = "✅"
+    ICON_FAIL = "❌"
+    ICON_DOI = "🔎"
+    ICON_OUTPUT = "📝"
+    ICON_WARN = "⚠️"
+
+    vprint(f"{ICON_START} Extracting DOIs from file: {input_file}")
     try:
         with open(input_file, 'r', encoding='utf-8') as f:
             content = f.read()
+        vprint(f"{ICON_FILE} Read input file: {input_file}")
     except Exception as e:
-        print(f"Failed to read input file: {e}")
+        vprint(f"{ICON_FAIL} Failed to read input file: {e}")
         return []
 
     # Use the new extract_dois_from_text function
     filtered_dois = extract_dois_from_text(content)
 
     if not filtered_dois:
-        print(f"No valid paper DOIs found in {input_file}")
+        print(f"{ICON_WARN} No valid paper DOIs found in {input_file}")
         return []
 
     base_name = os.path.splitext(input_file)[0]
@@ -964,10 +978,10 @@ def extract_dois_from_file(input_file: str):
         with open(output_file, 'w', encoding='utf-8') as f:
             for doi in filtered_dois:
                 f.write(f"{doi}\n")
-        print(f"Extracted {len(filtered_dois)} paper DOIs from {input_file} to {output_file}")
-        vprint(f"DOIs found: {filtered_dois}")
+        print(f"{ICON_SUCCESS} Extracted {len(filtered_dois)} paper DOIs")
+        print(f"{ICON_DOI} DOIs found: {filtered_dois}")
     except Exception as e:
-        print(f"Failed to write DOIs to output file: {e}")
+        print(f"{ICON_FAIL} Failed to write DOIs to output file: {e}")
         return []
 
     return filtered_dois
@@ -2617,39 +2631,30 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
     return False
 
 async def download_by_doi_list(doi_file: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER, db: str = "all", no_download: bool = False):
-    vprint(f"Starting download_by_doi_list for file: {doi_file}, folder: {download_folder}, db: {db}, no_download: {no_download}")
+    ICON_START = "🚀"
+    ICON_DOI = "🔎"
+    ICON_SUCCESS = "✅"
+    ICON_FAIL = "❌"
+    ICON_SKIP = "🚫"
+    ICON_OA = "🟢"
+    ICON_CLOSED = "🔒"
+    ICON_FILE = "📄"
+    ICON_SUMMARY = "📥"
+    ICON_STEP = "➡️"
+    ICON_WARN = "⚠️"
+
+    vprint(f"{ICON_START} Starting download_by_doi_list for file: {doi_file}, folder: {download_folder}, db: {db}, no_download: {no_download}")
     
-    # Check if the file contains only DOIs (one per line)
+    # Always extract DOIs from the file using extract_dois_from_file
     try:
-        with open(doi_file, "r", encoding="utf-8") as f:
-            lines = [line.strip() for line in f if line.strip()]
-        
-        # Check if all lines are DOIs
-        doi_pattern = r'^10\.\d{4,}[^\s]*[a-zA-Z0-9]$'
-        all_dois = all(re.match(doi_pattern, line) for line in lines)
-        
-        if not all_dois:
-            vprint(f"File {doi_file} does not contain only DOIs. Extracting DOIs...")
-            extract_dois_from_file(doi_file)
-            # Use the generated .dois.txt file
-            base_name = os.path.splitext(doi_file)[0]
-            doi_file = f"{base_name}.dois.txt"
-            
-            # Check if the extracted DOI file exists
-            if not os.path.exists(doi_file):
-                print(f"Error: DOI numbers cannot be extracted from {base_name}.txt.")
-                return {}
-            
-            vprint(f"Using extracted DOI file: {doi_file}")
-            
-            # Read the new file
-            with open(doi_file, "r", encoding="utf-8") as f:
-                dois = [line.strip() for line in f if line.strip()]
-        else:
-            dois = lines
-            
+        print(f"{ICON_STEP} Extracting DOIs from file: {doi_file}")
+        dois = extract_dois_from_file(doi_file)
+        if not dois:
+            print(f"{ICON_FAIL} Error: No valid DOI numbers could be extracted from {doi_file}.")
+            return {}
+        vprint(f"{ICON_STEP} Using extracted DOIs from file: {doi_file}")
     except Exception as e:
-        print(f"Failed to read DOI file: {e}")
+        print(f"{ICON_FAIL} Failed to extract DOIs from file: {e}")
         return {}
 
     download_results = {}
@@ -2657,10 +2662,11 @@ async def download_by_doi_list(doi_file: str, download_folder: str = DEFAULT_DOW
     failed_downloads = []
     
     for doi in dois:
-        print(f"Processing DOI: {doi}")
+        print(f"{ICON_DOI} Processing DOI: {doi}")
         # Get open access status
         oa_status = await is_open_access_unpaywall(doi)
         oa_status_text = "Open Access" if oa_status else "Closed Access"
+        oa_icon = ICON_OA if oa_status else ICON_CLOSED
         
         result = await download_by_doi(doi, download_folder=download_folder, db=db, no_download=no_download)
         
@@ -2701,26 +2707,35 @@ async def download_by_doi_list(doi_file: str, download_folder: str = DEFAULT_DOW
             
             download_results[doi] = ["success", downloaded_file if downloaded_file else "file_not_found"]
             successful_downloads.append((doi, oa_status))
+            print(f"{ICON_SUCCESS} Downloaded: {doi} [{oa_status_text}] {oa_icon} {ICON_FILE if downloaded_file else ''}")
             
         elif result is False:
             download_results[doi] = ["failed", None]
             failed_downloads.append((doi, oa_status))
+            print(f"{ICON_FAIL} Failed: {doi} [{oa_status_text}] {oa_icon}")
         else:  # result is None when no_download is True or no document found
-            download_results[doi] = ["no_download" if no_download else "not_found", None]
+            status = "no_download" if no_download else "not_found"
+            download_results[doi] = [status, None]
+            if no_download:
+                print(f"{ICON_SKIP} Skipped download for: {doi} [{oa_status_text}] {oa_icon}")
+            else:
+                print(f"{ICON_FAIL} Not found: {doi} [{oa_status_text}] {oa_icon}")
     
     if not no_download:
-        print(f"\nDownload Summary:")
-        print(f"Successfully downloaded: {len(successful_downloads)} PDFs")
+        print(f"\n{ICON_SUMMARY} Download Summary:")
+        print(f"{ICON_SUCCESS} Successfully downloaded: {len(successful_downloads)} PDFs")
         if successful_downloads:
             for doi, oa_status in successful_downloads:
                 oa_status_text = "Open Access" if oa_status else "Closed Access"
-                print(f"  ✓ {doi} [{oa_status_text}]")
+                oa_icon = ICON_OA if oa_status else ICON_CLOSED
+                print(f"  {ICON_SUCCESS} {doi} [{oa_status_text}] {oa_icon}")
         
-        print(f"Failed to download: {len(failed_downloads)} PDFs")
+        print(f"{ICON_FAIL} Failed to download: {len(failed_downloads)} PDFs")
         if failed_downloads:
             for doi, oa_status in failed_downloads:
                 oa_status_text = "Open Access" if oa_status else "Closed Access"
-                print(f"  ✗ {doi} [{oa_status_text}]")
+                oa_icon = ICON_OA if oa_status else ICON_CLOSED
+                print(f"  {ICON_FAIL} {doi} [{oa_status_text}] {oa_icon}")
     
     return download_results
 

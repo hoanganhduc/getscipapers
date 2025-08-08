@@ -1193,7 +1193,7 @@ async def handle_search_message(get_bot_reply, set_bot_reply):
     """Handle 'searching...' message and wait for actual result"""
     bot_reply = get_bot_reply()
     if bot_reply and "searching..." in bot_reply.get("text", "").lower():
-        info_print("Searching by Nexus bot, waiting for final result...")
+        debug_print("Searching by Nexus bot, waiting for final result...")
         debug_print("Detected 'searching...' message, resetting bot_reply to wait for actual result")
         set_bot_reply(None)  # Reset to wait for the next message
         
@@ -1440,9 +1440,9 @@ async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, mess
             info_print("After that, the session will be saved and you can run without manual input.")
             return {"error": "Session file not found. Run script interactively first to create session."}
 
-        info_print("Using cached session...")
+        debug_print("Using cached session...")
         if proxy_config:
-            info_print(f"Connecting through proxy: {proxy_config['type']}://{proxy_config['addr']}:{proxy_config['port']}")
+            debug_print(f"Connecting through proxy: {proxy_config['type']}://{proxy_config['addr']}:{proxy_config['port']}")
 
         debug_print("Starting Telegram client...")
         await client.start()
