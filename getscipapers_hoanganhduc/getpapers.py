@@ -2504,6 +2504,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
         print("🚫 --no-download specified, skipping download.")
         return None
 
+    print(f"📥 Attempting to download PDF for DOI: {doi} (ID: {id})")
     # Check if the DOI is open access via Unpaywall
     is_oa = await is_open_access_unpaywall(doi)
     oa_status_text = "Open Access" if is_oa else "Closed Access"
