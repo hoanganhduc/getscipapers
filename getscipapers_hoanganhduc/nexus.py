@@ -1178,14 +1178,14 @@ def create_message_handler(bot_entity):
 async def wait_for_reply(get_bot_reply, timeout=30):
     """Wait for bot reply with timeout"""
     elapsed = 0
-    info_print("Waiting for bot reply...")
+    debug_print("Waiting for bot reply...")
     while get_bot_reply() is None and elapsed < timeout:
         await asyncio.sleep(0.1)
         elapsed += 0.1
         if int(elapsed) != int(elapsed - 0.1):  # Print every second
             debug_print(f"Waiting for reply... {int(elapsed)}s / {timeout}s")
             if int(elapsed) % 5 == 0:  # Print progress every 5 seconds
-                info_print(f"Still waiting... {int(elapsed)}s")
+                debug_print(f"Still waiting... {int(elapsed)}s")
     
     return get_bot_reply()
 
@@ -1193,7 +1193,7 @@ async def handle_search_message(get_bot_reply, set_bot_reply):
     """Handle 'searching...' message and wait for actual result"""
     bot_reply = get_bot_reply()
     if bot_reply and "searching..." in bot_reply.get("text", "").lower():
-        info_print("Bot is searching, waiting for final result...")
+        info_print("Searching by Nexus bot, waiting for final result...")
         debug_print("Detected 'searching...' message, resetting bot_reply to wait for actual result")
         set_bot_reply(None)  # Reset to wait for the next message
         
@@ -1204,7 +1204,7 @@ async def handle_search_message(get_bot_reply, set_bot_reply):
 
 async def fetch_recent_messages(client, bot_entity, sent_message):
     """Fetch recent messages from bot if no immediate reply"""
-    info_print("No immediate reply received, checking for recent messages...")
+    debug_print("No immediate reply received, checking for recent messages...")
     debug_print("Attempting to fetch recent messages from bot...")
     await asyncio.sleep(5)  # Wait a bit more
     
@@ -1233,7 +1233,7 @@ async def fetch_recent_messages(client, bot_entity, sent_message):
                 "text": message.text,
                 "buttons": buttons
             }
-            info_print("Found recent message from bot!")
+            debug_print("Found recent message from bot!")
             return bot_reply
     
     debug_print(f"No newer messages found among {len(seen_messages)} unique recent messages")
@@ -1504,7 +1504,7 @@ async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, mess
         # Send message to the bot
         debug_print(f"Sending message to bot: '{message}'")
         result = await client.send_message(bot_username, message)
-        info_print(f"Message sent successfully. Message ID: {result.id}")
+        debug_print(f"Message sent successfully. Message ID: {result.id}")
 
         # Wait for bot reply
         bot_reply = await wait_for_reply(get_bot_reply, timeout=30)

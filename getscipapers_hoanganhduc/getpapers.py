@@ -89,7 +89,12 @@ def save_credentials(email: str = None, elsevier_api_key: str = None,
     Save credentials and API keys to a JSON configuration file.
     Only updates provided values, preserving existing ones.
     If the config file's parent directory does not exist, create it.
+    Prints status messages with icons for better readability.
     """
+    ICON_SUCCESS = "✅"
+    ICON_ERROR = "❌"
+    ICON_INFO = "ℹ️"
+
     if config_file is None:
         config_file = GETPAPERS_CONFIG_FILE
 
@@ -98,9 +103,9 @@ def save_credentials(email: str = None, elsevier_api_key: str = None,
     if not os.path.exists(config_dir):
         try:
             os.makedirs(config_dir, exist_ok=True)
-            vprint(f"Created config directory: {config_dir}")
+            vprint(f"{ICON_SUCCESS} Created config directory: {config_dir}")
         except Exception as e:
-            vprint(f"Error creating config directory {config_dir}: {e}")
+            vprint(f"{ICON_ERROR} Error creating config directory {config_dir}: {e}")
             return False
 
     # Load existing config or create new one
@@ -110,7 +115,7 @@ def save_credentials(email: str = None, elsevier_api_key: str = None,
             with open(config_file, 'r', encoding='utf-8') as f:
                 existing_config = json.load(f)
         except Exception as e:
-            vprint(f"Warning: Could not read existing config file {config_file}: {e}")
+            vprint(f"{ICON_INFO} Warning: Could not read existing config file {config_file}: {e}")
 
     # Update with new values if provided
     if email is not None:
@@ -125,10 +130,10 @@ def save_credentials(email: str = None, elsevier_api_key: str = None,
     try:
         with open(config_file, 'w', encoding='utf-8') as f:
             json.dump(existing_config, f, indent=2)
-        vprint(f"Saved credentials to {config_file}")
+        vprint(f"{ICON_SUCCESS} Saved credentials to {config_file}")
         return True
     except Exception as e:
-        vprint(f"Error saving config file {config_file}: {e}")
+        vprint(f"{ICON_ERROR} Error saving config file {config_file}: {e}")
         return False
 
 def load_credentials(config_file: str = None):
@@ -137,34 +142,40 @@ def load_credentials(config_file: str = None):
     If the file doesn't exist or has empty values, prompt user for input and create/update the file.
     If no response from user after 30 seconds, report loading fails.
     Returns a dictionary with the loaded configuration.
+    Prints status messages with icons for better readability.
     """
+    ICON_SUCCESS = "✅"
+    ICON_ERROR = "❌"
+    ICON_INFO = "ℹ️"
+    ICON_INPUT = "📝"
+    ICON_TIMEOUT = "⏰"
+    ICON_WARNING = "⚠️"
+
     global EMAIL, ELSEVIER_API_KEY, WILEY_TDM_TOKEN, IEEE_API_KEY
-    
+
     if config_file is None:
         config_file = GETPAPERS_CONFIG_FILE
-    
+
     default_config = {
         "email": "",
         "elsevier_api_key": "",
         "wiley_tdm_token": "",
         "ieee_api_key": ""
     }
-    
+
     existing_config = default_config.copy()
     file_exists = os.path.exists(config_file)
-    
+
     if file_exists:
-        # Try to load existing config
         try:
             with open(config_file, 'r', encoding='utf-8') as f:
                 existing_config = json.load(f)
-            vprint(f"Loaded existing config from {config_file}")
+            vprint(f"{ICON_SUCCESS} Loaded existing config from {config_file}")
         except (json.JSONDecodeError, Exception) as e:
-            vprint(f"Error loading config file {config_file}: {e}")
-            print(f"Configuration file {config_file} is corrupted. Will recreate.")
+            vprint(f"{ICON_ERROR} Error loading config file {config_file}: {e}")
+            print(f"{ICON_ERROR} Configuration file {config_file} is corrupted. Will recreate.")
             file_exists = False
 
-    # After loading, save to default config file if it does not exist
     if file_exists and config_file != GETPAPERS_CONFIG_FILE and not os.path.exists(GETPAPERS_CONFIG_FILE):
         save_credentials(
             email=existing_config.get("email"),
@@ -173,92 +184,87 @@ def load_credentials(config_file: str = None):
             ieee_api_key=existing_config.get("ieee_api_key"),
             config_file=GETPAPERS_CONFIG_FILE
         )
-    
-    # Check if any required fields are empty
-    needs_input = (not file_exists or 
+
+    needs_input = (not file_exists or
                    not existing_config.get("email", "").strip() or
                    not existing_config.get("elsevier_api_key", "").strip() or
                    not existing_config.get("wiley_tdm_token", "").strip() or
                    not existing_config.get("ieee_api_key", "").strip())
-    
+
     if needs_input:
         if file_exists:
-            vprint(f"Configuration file found but some values are empty: {config_file}")
+            vprint(f"{ICON_WARNING} Configuration file found but some values are empty: {config_file}")
         else:
-            vprint(f"Configuration file not found: {config_file}")
-        print("Please enter credentials:")
+            vprint(f"{ICON_INFO} Configuration file not found: {config_file}")
+        print(f"{ICON_INPUT} Please enter credentials:")
         print("You will be asked for the following information:")
         print("  - Email address (required, for Unpaywall and polite API usage)")
         print("  - Elsevier API Key (optional, for Elsevier Full-Text API)")
         print("  - Wiley TDM Token (optional, for Wiley TDM API)")
         print("  - IEEE API Key (optional, for IEEE Xplore API)")
-        
-        # Prompt for input with timeout
+
         try:
             if platform.system() != "Windows":
-                # Unix-like systems - use signal
                 def timeout_handler(signum, frame):
                     raise TimeoutError("Input timeout")
-                
+
                 signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(60)  # 30 second timeout
-                
+                signal.alarm(60)
+
                 try:
                     current_email = existing_config.get("email", "")
                     email_prompt = f"Email (current: '{current_email}', press Enter to keep): " if current_email else "Email (required): "
                     email = input(email_prompt).strip()
                     if not email and current_email:
                         email = current_email
-                    
+
                     current_elsevier = existing_config.get("elsevier_api_key", "")
                     elsevier_prompt = f"Elsevier API Key (current: '{current_elsevier[:10]}...', press Enter to keep): " if current_elsevier else "Elsevier API Key (press Enter to skip): "
                     elsevier_key = input(elsevier_prompt).strip()
                     if not elsevier_key and current_elsevier:
                         elsevier_key = current_elsevier
-                    
+
                     current_wiley = existing_config.get("wiley_tdm_token", "")
                     wiley_prompt = f"Wiley TDM Token (current: '{current_wiley[:10]}...', press Enter to keep): " if current_wiley else "Wiley TDM Token (press Enter to skip): "
                     wiley_token = input(wiley_prompt).strip()
                     if not wiley_token and current_wiley:
                         wiley_token = current_wiley
-                    
+
                     current_ieee = existing_config.get("ieee_api_key", "")
                     ieee_prompt = f"IEEE API Key (current: '{current_ieee[:10]}...', press Enter to keep): " if current_ieee else "IEEE API Key (press Enter to skip): "
                     ieee_key = input(ieee_prompt).strip()
                     if not ieee_key and current_ieee:
                         ieee_key = current_ieee
-                    
-                    signal.alarm(0)  # Cancel timeout
-                    
+
+                    signal.alarm(0)
                 except TimeoutError:
                     signal.alarm(0)
-                    print("\nTimeout: No input received within 30 seconds.")
+                    print(f"\n{ICON_TIMEOUT} Timeout: No input received within 30 seconds.")
                     return default_config
             else:
-                # Windows - use threading with timeout
                 def get_input(prompt, result_queue):
                     try:
                         result = input(prompt).strip()
                         result_queue.put(result)
                     except (KeyboardInterrupt, EOFError):
                         result_queue.put(None)
-                
+
                 def get_input_with_timeout(prompt, timeout_seconds=30):
                     result_queue = queue.Queue()
                     thread = threading.Thread(target=get_input, args=(prompt, result_queue))
                     thread.daemon = True
                     thread.start()
                     thread.join(timeout_seconds)
-                    
+
                     if thread.is_alive():
-                        print(f"\nTimeout: No input received within {timeout_seconds} seconds.")
+                        print(f"\n{ICON_TIMEOUT} Timeout: No input received within {timeout_seconds} seconds.")
                         return None
-                    
+
                     try:
                         return result_queue.get_nowait()
                     except queue.Empty:
                         return None
-                
+
                 current_email = existing_config.get("email", "")
                 email_prompt = f"Email (current: '{current_email}', press Enter to keep): " if current_email else "Email (required): "
                 email = get_input_with_timeout(email_prompt)
@@ -266,7 +272,7 @@ def load_credentials(config_file: str = None):
                     return default_config
                 if not email and current_email:
                     email = current_email
-                
+
                 current_elsevier = existing_config.get("elsevier_api_key", "")
                 elsevier_prompt = f"Elsevier API Key (current: '{current_elsevier[:10]}...', press Enter to keep): " if current_elsevier else "Elsevier API Key (press Enter to skip): "
                 elsevier_key = get_input_with_timeout(elsevier_prompt)
@@ -274,7 +280,7 @@ def load_credentials(config_file: str = None):
                     return default_config
                 if not elsevier_key and current_elsevier:
                     elsevier_key = current_elsevier
-                
+
                 current_wiley = existing_config.get("wiley_tdm_token", "")
                 wiley_prompt = f"Wiley TDM Token (current: '{current_wiley[:10]}...', press Enter to keep): " if current_wiley else "Wiley TDM Token (press Enter to skip): "
                 wiley_token = get_input_with_timeout(wiley_prompt)
@@ -282,7 +288,7 @@ def load_credentials(config_file: str = None):
                     return default_config
                 if not wiley_token and current_wiley:
                     wiley_token = current_wiley
-                
+
                 current_ieee = existing_config.get("ieee_api_key", "")
                 ieee_prompt = f"IEEE API Key (current: '{current_ieee[:10]}...', press Enter to keep): " if current_ieee else "IEEE API Key (press Enter to skip): "
                 ieee_key = get_input_with_timeout(ieee_prompt)
@@ -290,47 +296,43 @@ def load_credentials(config_file: str = None):
                     return default_config
                 if not ieee_key and current_ieee:
                     ieee_key = current_ieee
-            
-            # Create config with user input
+
             new_config = {
                 "email": email or "",
                 "elsevier_api_key": elsevier_key or "",
                 "wiley_tdm_token": wiley_token or "",
                 "ieee_api_key": ieee_key or ""
             }
-            
-            # Save to config file
-            if save_credentials(email=new_config["email"], 
-                              elsevier_api_key=new_config["elsevier_api_key"],
-                              wiley_tdm_token=new_config["wiley_tdm_token"], 
-                              ieee_api_key=new_config["ieee_api_key"],
-                              config_file=config_file):
-                vprint(f"Configuration file {'updated' if file_exists else 'created'}: {config_file}")
+
+            if save_credentials(email=new_config["email"],
+                               elsevier_api_key=new_config["elsevier_api_key"],
+                               wiley_tdm_token=new_config["wiley_tdm_token"],
+                               ieee_api_key=new_config["ieee_api_key"],
+                               config_file=config_file):
+                vprint(f"{ICON_SUCCESS} Configuration file {'updated' if file_exists else 'created'}: {config_file}")
             else:
-                vprint("Warning: Failed to save configuration file.")
-            
-            # Update global variables
+                vprint(f"{ICON_ERROR} Failed to save configuration file.")
+
             EMAIL = new_config["email"]
             ELSEVIER_API_KEY = new_config["elsevier_api_key"]
             WILEY_TDM_TOKEN = new_config["wiley_tdm_token"]
             IEEE_API_KEY = new_config["ieee_api_key"]
-            
+
             return new_config
-                
+
         except (KeyboardInterrupt, EOFError):
-            print("\nConfiguration input cancelled.")
+            print(f"\n{ICON_ERROR} Configuration input cancelled.")
             return default_config
         except Exception as e:
-            vprint(f"Error during input: {e}")
+            vprint(f"{ICON_ERROR} Error during input: {e}")
             return default_config
-    
-    # File exists and has all values, use existing config
+
     EMAIL = existing_config.get("email", EMAIL)
     ELSEVIER_API_KEY = existing_config.get("elsevier_api_key", ELSEVIER_API_KEY)
     WILEY_TDM_TOKEN = existing_config.get("wiley_tdm_token", WILEY_TDM_TOKEN)
     IEEE_API_KEY = existing_config.get("ieee_api_key", IEEE_API_KEY)
-    
-    vprint(f"Using existing credentials from {config_file}")
+
+    vprint(f"{ICON_SUCCESS} Using existing credentials from {config_file}")
     return existing_config
 
 # def is_paper_doi(doi: str) -> bool:
@@ -1145,8 +1147,20 @@ async def search_documents(query: str, limit: int = 1):
     Build a StcGeck-style document with all fields empty, and iteratively fill fields
     by searching each source in order. Return up to the requested limit of results.
     Always tries all sources before returning results.
+    Prints important search steps with icons for better readability.
     """
-    vprint(f"Searching for: {query} (limit={limit})")
+    ICON_SEARCH = "🔎"
+    ICON_SUCCESS = "✅"
+    ICON_WARNING = "⚠️"
+    ICON_ERROR = "❌"
+    ICON_STEP = "➡️"
+    ICON_SOURCE = {
+        "stcgeck": "🪐",
+        "nexus": "🤖",
+        "crossref": "🌐"
+    }
+
+    vprint(f"{ICON_SEARCH} Searching for: {query} (limit={limit})")
 
     # Helper: create empty stcgeck-style doc
     def empty_doc():
@@ -1185,6 +1199,7 @@ async def search_documents(query: str, limit: int = 1):
     collected = {}
 
     # 1. StcGeck
+    print(f"{ICON_STEP} {ICON_SOURCE['stcgeck']} Searching with StcGeck...")
     try:
         vprint("Trying StcGeck search...")
         geck = StcGeck(
@@ -1210,9 +1225,9 @@ async def search_documents(query: str, limit: int = 1):
                 }
             )
             stc_results = search_response.collector_outputs[0].documents.scored_documents
+            print(f"{ICON_SUCCESS} StcGeck returned {len(stc_results)} results.")
             for scored in stc_results:
                 doc = json.loads(scored.document)
-                # Use DOI as key if present, else fallback to id or title
                 doi = None
                 for uri in doc.get('uris', []):
                     if uri.startswith('doi:'):
@@ -1223,16 +1238,18 @@ async def search_documents(query: str, limit: int = 1):
                     base = empty_doc()
                     merge_doc(base, doc)
                     collected[key] = base
-            vprint(f"StcGeck returned {len(stc_results)} results.")
         finally:
             await geck.stop()
     except Exception as e:
+        print(f"{ICON_ERROR} StcGeck failed")
         vprint(f"StcGeck failed: {e}")
 
     # 2. Nexus bot
+    print(f"{ICON_STEP} {ICON_SOURCE['nexus']} Searching with Nexus bot...")
     try:
         vprint("Trying Nexus bot search...")
         nexus_results = await search_with_nexus_bot(query, limit)
+        print(f"{ICON_SUCCESS} Nexus bot returned {len(nexus_results)} results.")
         for scored in nexus_results:
             doc = json.loads(scored.document)
             doi = None
@@ -1247,14 +1264,16 @@ async def search_documents(query: str, limit: int = 1):
                 base = empty_doc()
                 merge_doc(base, doc)
                 collected[key] = base
-        vprint(f"Nexus bot returned {len(nexus_results)} results.")
     except Exception as e:
+        print(f"{ICON_ERROR} Nexus bot failed: {e}")
         vprint(f"Nexus bot failed: {e}")
 
     # 3. Crossref
+    print(f"{ICON_STEP} {ICON_SOURCE['crossref']} Searching with Crossref...")
     try:
         vprint("Trying Crossref search...")
         crossref_results = await search_with_crossref(query, limit)
+        print(f"{ICON_SUCCESS} Crossref returned {len(crossref_results)} results.")
         for scored in crossref_results:
             doc = json.loads(scored.document)
             doi = None
@@ -1269,14 +1288,16 @@ async def search_documents(query: str, limit: int = 1):
                 base = empty_doc()
                 merge_doc(base, doc)
                 collected[key] = base
-        vprint(f"Crossref returned {len(crossref_results)} results.")
     except Exception as e:
+        print(f"{ICON_ERROR} Crossref failed: {e}")
         vprint(f"Crossref failed: {e}")
 
     if not collected:
+        print(f"{ICON_WARNING} No results found from any source.")
         vprint("No results found from any source.")
         return []
 
+    print(f"{ICON_SUCCESS} Search complete. Returning {min(len(collected), limit)} result(s).")
     # Wrap as ScoredDocument-like objects
     return [type('ScoredDocument', (), {'document': json.dumps(doc)})() for doc in list(collected.values())[:limit]]
 
@@ -2341,7 +2362,7 @@ async def download_from_nexus_bot(doi: str, download_folder: str = DEFAULT_DOWNL
                 print(f"Downloaded file not found at {nexus_bot_download_file}.")
                 return False
         else:
-            print(f"PDF file is not available from Nexus bot for DOI: {doi}.")
+            # print(f"PDF file is not available from Nexus bot for DOI: {doi}.")
             return False
     except Exception as e:
         print(f"Error downloading PDF from Nexus bot for DOI {doi}: {e}")
@@ -2460,14 +2481,14 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
     if dois:
         doi = dois[0]
     else:
-        print(f"Input does not appear to be a valid DOI or DOI-containing string: {doi}")
+        print(f"❌ Input does not appear to be a valid DOI or DOI-containing string: {doi}")
         return False
     vprint(f"Starting download_by_doi for DOI: {doi}, folder: {download_folder}, db: {db}, no_download: {no_download}")
     results = await search_documents(doi, 1)
     
     if results:
         document = json.loads(results[0].document)
-        print("Search result for DOI:")
+        print("🔎 Search result for DOI:")
         print(format_reference(document))
         if VERBOSE:
             print("Full document JSON:")
@@ -2476,116 +2497,118 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
         
         id = document.get('id')
     else:
-        print(f"No document found for DOI: {doi}")
+        print(f"❌ No document found for DOI: {doi}")
         id = None
 
     if no_download:
-        print("--no-download specified, skipping download.")
+        print("🚫 --no-download specified, skipping download.")
         return None
 
     # Check if the DOI is open access via Unpaywall
     is_oa = await is_open_access_unpaywall(doi)
     oa_status_text = "Open Access" if is_oa else "Closed Access"
+    oa_icon = "🟢" if is_oa else "🔒"
     
     if is_oa:
-        print(f"DOI {doi} is Open Access. Using Unpaywall for download...")
+        print(f"🌐 DOI {doi} is Open Access. Using Unpaywall for download...")
         if await download_from_unpaywall(doi, download_folder):
-            print(f"\nDownload Summary:")
-            print(f"Successfully downloaded: 1 PDF")
-            print(f"  ✓ {doi} [{oa_status_text}]")
+            print(f"\n📥 Download Summary:")
+            print(f"✅ Successfully downloaded: 1 PDF")
+            print(f"  ✓ {doi} [{oa_status_text}] {oa_icon}")
             return True
-        print(f"Failed to download from Unpaywall for DOI: {doi}. Trying other sources...")
+        print(f"⚠️ Failed to download from Unpaywall for DOI: {doi}. Trying other sources...")
 
     if not id and db in ["all", "nexus"]:
-        print(f"No ID available for Nexus download for DOI: {doi}.")
+        print(f"❌ No ID available for Nexus download for DOI: {doi}.")
 
     tried = False
 
     if db in ["all", "nexus"] and id:
         tried = True
         vprint(f"Trying Nexus download for id: {id}, doi: {doi}")
+        print(f"🪐 Trying Nexus for DOI: {doi}...")
         if await download_from_nexus(id, doi, download_folder):
-            print(f"\nDownload Summary:")
-            print(f"Successfully downloaded: 1 PDF")
-            print(f"  ✓ {doi} [{oa_status_text}]")
+            print(f"\n📥 Download Summary:")
+            print(f"✅ Successfully downloaded: 1 PDF")
+            print(f"  ✓ {doi} [{oa_status_text}] {oa_icon}")
             return True
-        print(f"PDF file is not available on the Nexus server for DOI: {doi}.")
+        print(f"❌ PDF file is not available on the Nexus server for DOI: {doi}.")
         # Try Nexus bot as fallback
-        print(f"Trying Nexus bot for DOI: {doi}...")
+        print(f"🤖 Trying Nexus bot for DOI: {doi}...")
         if await download_from_nexus_bot(doi, download_folder):
-            print(f"\nDownload Summary:")
-            print(f"Successfully downloaded: 1 PDF")
-            print(f"  ✓ {doi} [{oa_status_text}]")
+            print(f"\n📥 Download Summary:")
+            print(f"✅ Successfully downloaded: 1 PDF")
+            print(f"  ✓ {doi} [{oa_status_text}] {oa_icon}")
             return True
-        print(f"PDF file is not available from Nexus bot for DOI: {doi}.")
+        print(f"❌ PDF file is not available from Nexus bot for DOI: {doi}.")
 
     if db in ["all", "scihub"]:
         tried = True
-        print(f"Trying Sci-Hub for DOI: {doi}...")
+        print(f"🧪 Trying Sci-Hub for DOI: {doi}...")
         if await download_from_scihub(doi, download_folder):
-            print(f"\nDownload Summary:")
-            print(f"Successfully downloaded: 1 PDF")
-            print(f"  ✓ {doi} [{oa_status_text}]")
+            print(f"\n📥 Download Summary:")
+            print(f"✅ Successfully downloaded: 1 PDF")
+            print(f"  ✓ {doi} [{oa_status_text}] {oa_icon}")
             return True
-        print(f"PDF file is not available on Sci-Hub for DOI: {doi}.")
+        print(f"❌ PDF file is not available on Sci-Hub for DOI: {doi}.")
 
     if db in ["all", "anna"]:
         tried = True
-        print(f"Trying Anna's Archive for DOI: {doi}...")
+        print(f"📚 Trying Anna's Archive for DOI: {doi}...")
         if await download_from_anna_archive(doi, download_folder):
-            print(f"\nDownload Summary:")
-            print(f"Successfully downloaded: 1 PDF")
-            print(f"  ✓ {doi} [{oa_status_text}]")
+            print(f"\n📥 Download Summary:")
+            print(f"✅ Successfully downloaded: 1 PDF")
+            print(f"  ✓ {doi} [{oa_status_text}] {oa_icon}")
             return True
-        print(f"PDF file is not available on Anna's Archive for DOI: {doi}.")
+        print(f"❌ PDF file is not available on Anna's Archive for DOI: {doi}.")
 
     if db in ["all", "libgen"]:
         tried = True
-        print(f"Trying LibGen for DOI: {doi}...")
+        print(f"📖 Trying LibGen for DOI: {doi}...")
         try:
             # Call the libgen module's download_by_doi function
             result = libgen.download_libgen_paper_by_doi(doi, dest_folder=download_folder)
             if result:
-                print(f"\nDownload Summary:")
-                print(f"Successfully downloaded: 1 PDF")
-                print(f"  ✓ {doi} [{oa_status_text}]")
+                print(f"\n📥 Download Summary:")
+                print(f"✅ Successfully downloaded: 1 PDF")
+                print(f"  ✓ {doi} [{oa_status_text}] {oa_icon}")
                 return True
             else:
-                print(f"PDF file is not available on LibGen for DOI: {doi}.")
+                print(f"❌ PDF file is not available on LibGen for DOI: {doi}.")
         except Exception as e:
-            print(f"Error downloading from LibGen for DOI {doi}: {e}")
+            print(f"❌ Error downloading from LibGen for DOI {doi}: {e}")
 
     if db in ["all", "unpaywall"]:
         tried = True
-        print(f"Trying Unpaywall for DOI: {doi}...")
+        print(f"🌐 Trying Unpaywall for DOI: {doi}...")
         if await download_from_unpaywall(doi, download_folder):
-            print(f"\nDownload Summary:")
-            print(f"Successfully downloaded: 1 PDF")
-            print(f"  ✓ {doi} [{oa_status_text}]")
+            print(f"\n📥 Download Summary:")
+            print(f"✅ Successfully downloaded: 1 PDF")
+            print(f"  ✓ {doi} [{oa_status_text}] {oa_icon}")
             return True
-        print(f"PDF file is not available on Unpaywall for DOI: {doi}.")
+        print(f"❌ PDF file is not available on Unpaywall for DOI: {doi}.")
 
     # Special handling for Elsevier and Wiley DOIs
     if is_elsevier_doi(doi):
-        print(f"DOI {doi} appears to be an Elsevier article. Attempting Elsevier Full-Text API download...")
+        print(f"🧬 DOI {doi} appears to be an Elsevier article. Attempting Elsevier Full-Text API download...")
         if await download_elsevier_pdf_by_doi(doi=doi, download_folder=download_folder, api_key=ELSEVIER_API_KEY):
-            print(f"\nDownload Summary:")
-            print(f"Successfully downloaded: 1 PDF")
-            print(f"  ✓ {doi} [{oa_status_text}]")
+            print(f"\n📥 Download Summary:")
+            print(f"✅ Successfully downloaded: 1 PDF")
+            print(f"  ✓ {doi} [{oa_status_text}] {oa_icon}")
             return True
-        print(f"PDF file is not available from Elsevier Full-Text API for DOI: {doi}.")
+        print(f"❌ PDF file is not available from Elsevier Full-Text API for DOI: {doi}.")
 
     if is_wiley_doi(doi):
-        print(f"DOI {doi} appears to be a Wiley article. Attempting Wiley TDM API download...")
+        print(f"🧑‍🔬 DOI {doi} appears to be a Wiley article. Attempting Wiley TDM API download...")
         if await download_wiley_pdf_by_doi(doi, download_folder, tdm_token=WILEY_TDM_TOKEN):
-            print(f"\nDownload Summary:")
-            print(f"Successfully downloaded: 1 PDF")
-            print(f"  ✓ {doi} [{oa_status_text}]")
+            print(f"\n📥 Download Summary:")
+            print(f"✅ Successfully downloaded: 1 PDF")
+            print(f"  ✓ {doi} [{oa_status_text}] {oa_icon}")
             return True
-        print(f"PDF file is not available from Wiley TDM API for DOI: {doi}.")
+        print(f"❌ PDF file is not available from Wiley TDM API for DOI: {doi}.")
 
     if not tried:
-        print(f"No valid database specified for DOI: {doi}.")
+        print(f"❓ No valid database specified for DOI: {doi}.")
     
     # print(f"\nDownload Summary:")
     # print(f"Failed to download: 1 PDF")
