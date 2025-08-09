@@ -515,6 +515,7 @@ def normalize_publisher_name(name):
     """
     Normalize publisher name and map to corresponding typeid.
     Returns typeid if found, else typeid for 'Other'.
+    Handles both cases: name can contain mapping and mapping can contain name.
     """
     if not name:
         return PUBLISHER_TYPEIDS["Other"]
@@ -523,9 +524,9 @@ def normalize_publisher_name(name):
     # Try exact match
     if name in mapping:
         return mapping[name]
-    # Try partial match
+    # Try partial match: name in mapping key or mapping key in name
     for k in mapping:
-        if name in k:
+        if name in k or k in name:
             return mapping[k]
     # Try removing special characters and spaces
     name_clean = re.sub(r'[^a-z0-9]', '', name)
