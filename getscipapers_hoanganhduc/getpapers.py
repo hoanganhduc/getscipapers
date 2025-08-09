@@ -626,77 +626,97 @@ def fetch_dois_from_url(url: str, doi_pattern: str) -> list:
 
 def is_valid_doi(doi: str) -> bool:
     """
-    Check if a single DOI is valid (resolves at doi.org or found in Crossref).
+    Check if a single DOI is valid using the DOI System Proxy Server REST API.
+    Returns True if the DOI exists and resolves properly.
+    Falls back to Crossref if the API doesn't work.
     """
-    browser_headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.67"
-        ),
-        "Accept": (
-            "text/html,application/xhtml+xml,application/xml;"
-            "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,"
-            "application/signed-exchange;v=b3;q=0.9"
-        ),
+    vprint(f"Checking validity of DOI: {doi}")
+    
+    # First, try using the DOI System Proxy Server REST API with comprehensive headers
+    api_url = f"https://doi.org/api/handles/{doi}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.67",
+        "Accept": "application/json, text/plain, */*",
         "Accept-Language": "en-US,en;q=0.9",
         "Accept-Encoding": "gzip, deflate, br",
+        "Referer": "https://doi.org/",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
-        "DNT": "1",
-        "Referer": "https://doi.org/",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-Site": "none",
         "Sec-Fetch-User": "?1",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "DNT": "1"
     }
-    json_headers = {
-        "User-Agent": browser_headers["User-Agent"],
-        "Accept": "application/json",
-        "Referer": "https://doi.org/",
-        "DNT": "1",
-    }
+    
     try:
-        url = f"https://doi.org/{doi}"
-        resp = requests.head(url, allow_redirects=True, timeout=20, headers=browser_headers)
-        browser_ok = resp.status_code in (200, 301, 302)
-        forbidden = resp.status_code == 403
-        json_ok = False
-        try:
-            json_resp = requests.get(url, headers=json_headers, timeout=20)
-            if json_resp.status_code == 200:
-                try:
-                    data = json_resp.json()
-                    if "publisher" in data or "title" in data:
-                        json_ok = True
-                except Exception:
-                    pass
-            elif json_resp.status_code == 403:
-                vprint(f"DOI {doi} returned 403 for JSON metadata, may be rate-limited, treating as valid")
-                json_ok = True
-        except Exception as e:
-            vprint(f"Error fetching machine-readable metadata for DOI {doi}: {e}")
+        response = requests.get(api_url, headers=headers, timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            response_code = data.get("responseCode")
+            
+            # Response code 1 means success (DOI exists)
+            if response_code == 1:
+                vprint(f"DOI {doi} is valid (responseCode=1)")
+                return True
+                
+            # Response code 100 means handle not found (DOI doesn't exist)
+            elif response_code == 100:
+                vprint(f"DOI {doi} is invalid (responseCode=100, handle not found)")
+                return False
+                
+            # Response code 200 means values not found (handle exists but has no values)
+            elif response_code == 200:
+                vprint(f"DOI {doi} exists but has no values (responseCode=200)")
+                return True
+                
+            else:
+                vprint(f"DOI {doi} check returned unexpected responseCode: {response_code}")
+        else:
+            vprint(f"DOI API returned status code {response.status_code} for {doi}")
+            
+    except Exception as e:
+        vprint(f"Error checking DOI via REST API: {doi}: {e}")
 
-        if browser_ok and json_ok:
-            return True
-        elif browser_ok or json_ok or forbidden:
-            vprint(f"DOI {doi} partially valid (browser_ok={browser_ok}, json_ok={json_ok}, forbidden={forbidden}), treating as valid")
+    # Fallback: Try using Crossref API
+    vprint(f"Using Crossref as fallback for DOI validation: {doi}")
+    try:
+        works = Works()
+        result = works.doi(doi)
+        if result:
+            vprint(f"DOI {doi} found in Crossref, treating as valid")
             return True
         else:
-            works = Works()
-            try:
-                result = works.doi(doi)
-                if result:
-                    vprint(f"DOI {doi} found in Crossref, treating as valid")
-                    return True
-                else:
-                    vprint(f"DOI {doi} does not resolve at doi.org and not found in Crossref")
-            except Exception as e:
-                vprint(f"Error checking DOI in Crossref: {doi}: {e}")
+            vprint(f"DOI {doi} not found in Crossref")
     except Exception as e:
-        vprint(f"Error checking DOI at doi.org: {doi}: {e}")
+        vprint(f"Error checking DOI in Crossref: {doi}: {e}")
+
+    # Last resort: try a HEAD request to see if doi.org redirects properly
+    try:
+        browser_headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.67",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate", 
+            "Sec-Fetch-Site": "none",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+            "DNT": "1"
+        }
+        url = f"https://doi.org/{doi}"
+        resp = requests.head(url, allow_redirects=True, timeout=10, headers=browser_headers)
+        if resp.status_code in (200, 301, 302):
+            vprint(f"DOI {doi} resolves via HEAD request (status={resp.status_code})")
+            return True
+    except Exception as e:
+        vprint(f"Error on HEAD request for DOI {doi}: {e}")
+    
     return False
 
 def validate_dois(dois: list) -> list:
@@ -880,6 +900,9 @@ def extract_dois_from_text(text: str) -> list:
                     else:
                         dois.append(match)
 
+    # Remove trailing dot from DOIs
+    dois = [doi[:-1] if doi.endswith('.') else doi for doi in dois]
+
     dois = list(dict.fromkeys(dois))
 
     url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+[^\s<>"{}|\\^`\[\].,;:!?]|https?://[^\s<>"{}|\\^`\[\]]+\.\.\.[^\s<>"{}|\\^`\[\]]+[^\s<>"{}|\\^`\[\].,;:!?]'
@@ -905,6 +928,8 @@ def extract_dois_from_text(text: str) -> list:
                 vprint(f"Detected ScienceDirect PII in URL: {pii}")
                 doi = resolve_pii_to_doi(pii)
                 if doi:
+                    # Remove trailing dot if present
+                    doi = doi[:-1] if doi.endswith('.') else doi
                     dois.append(doi)
                 else:
                     vprint(f"Could not resolve PII {pii} to DOI")
@@ -915,12 +940,15 @@ def extract_dois_from_text(text: str) -> list:
         if "mdpi.com" in url:
             mdpi_doi = extract_mdpi_doi_from_url(url)
             if mdpi_doi:
+                mdpi_doi = mdpi_doi[:-1] if mdpi_doi.endswith('.') else mdpi_doi
                 dois.append(mdpi_doi)
             continue
 
         vprint(f"Checking URL for DOI: {url}")
         for doi_pattern in doi_patterns:
             page_dois = fetch_dois_from_url(url, doi_pattern)
+            # Remove trailing dot from DOIs found in page
+            page_dois = [d[:-1] if d.endswith('.') else d for d in page_dois]
             dois.extend(page_dois)
 
     unique_dois = list(dict.fromkeys(dois))
@@ -934,6 +962,7 @@ def extract_dois_from_text(text: str) -> list:
             # isbn_results is a list of (isbn, doi) tuples
             for isbn, doi in isbn_results:
                 if doi:
+                    doi = doi[:-1] if doi.endswith('.') else doi
                     vprint(f"Resolved ISBN {isbn} to DOI {doi}")
                     valid_dois = [doi]
                     break
