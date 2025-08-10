@@ -1751,6 +1751,7 @@ def convert_doi_rest_to_stc_format(rest_data: dict) -> dict:
     """
     Convert DOI REST API response to StcGeck compatible document format.
     Only fills fields available in the REST API response.
+    Handles cases where 'DESCRIPTION', 'EMAIL', etc. may not be present.
     """
     doc = {
         'id': None,
@@ -1764,8 +1765,9 @@ def convert_doi_rest_to_stc_format(rest_data: dict) -> dict:
     if not rest_data or rest_data.get("responseCode") != 1:
         return doc
     handle = rest_data.get("handle")
-    doc['id'] = handle
-    doc['uris'].append(f"doi:{handle}")
+    if handle:
+        doc['id'] = handle
+        doc['uris'].append(f"doi:{handle}")
     elements = rest_data.get("values", [])
     url = None
     description = None
@@ -1773,14 +1775,19 @@ def convert_doi_rest_to_stc_format(rest_data: dict) -> dict:
     timestamp = None
     for el in elements:
         typ = el.get("type", "").upper()
-        val = el.get("data", {}).get("value")
-        fmt = el.get("data", {}).get("format")
-        if typ == "URL" and fmt == "string":
+        data = el.get("data", {})
+        fmt = data.get("format")
+        val = data.get("value")
+        # URL field
+        if typ == "URL" and fmt == "string" and isinstance(val, str):
             url = val
-        elif typ == "DESCRIPTION" and fmt == "string":
+        # DESCRIPTION field
+        elif typ == "DESCRIPTION" and fmt == "string" and isinstance(val, str):
             description = val
-        elif typ == "EMAIL" and fmt == "string":
+        # EMAIL field
+        elif typ == "EMAIL" and fmt == "string" and isinstance(val, str):
             email = val
+        # Try to get timestamp from any element
         if not timestamp and el.get("timestamp"):
             timestamp = el.get("timestamp")
     if url:
@@ -1791,6 +1798,7 @@ def convert_doi_rest_to_stc_format(rest_data: dict) -> dict:
         doc['metadata']['email'] = email
     if timestamp:
         try:
+            # DOI REST API timestamp is usually ISO format with Z
             dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
             doc['issued_at'] = int(dt.timestamp())
         except Exception:

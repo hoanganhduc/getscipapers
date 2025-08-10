@@ -1480,37 +1480,33 @@ def get_latest_waiting_request(driver, article_title=None, doi=None):
 
 def fetch_doi_rest_info(doi):
     """
-    Fetch article info from DOI REST API (https://doi.org/api/handles/<doi>?pretty=true&type=URL,EMAIL,description).
-    Returns a dict with keys: title, url, email, desc.
+    Fetch article info from DOI REST API (https://doi.org/api/handles/<doi>?pretty=true).
+    Returns a dict with all available keys found: title, url, email, desc, and any other fields present.
+    Handles both string and dict values in the "value" field.
     """
-    api_url = f"https://doi.org/api/handles/{doi}?pretty=true&type=URL,EMAIL,description"
+    api_url = f"https://doi.org/api/handles/{doi}?pretty=true"
     try:
         resp = pyrequests.get(api_url, timeout=15)
         if resp.status_code == 200:
             data = resp.json()
-            title = ""
-            url = ""
-            email = ""
-            desc = ""
+            info = {}
             for elem in data.get("values", []):
                 t = elem.get("type", "").upper()
                 v = elem.get("data", {}).get("value", "")
-                if t == "DESCRIPTION" and not desc:
-                    desc = v
-                elif t == "URL" and not url:
-                    url = v
-                elif t == "EMAIL" and not email:
-                    email = v
-            if desc:
-                title = desc
-            elif url:
-                title = url
-            return {
-                "title": title,
-                "url": url,
-                "email": email,
-                "desc": desc
-            }
+                # If value is a dict, flatten its keys
+                if isinstance(v, dict):
+                    for k, val in v.items():
+                        info[f"{t.lower()}_{k.lower()}"] = val
+                else:
+                    info[t.lower()] = v
+            # Set title preference: description > url > email > first available string value
+            info["title"] = (
+                info.get("description") or
+                info.get("url") or
+                info.get("email") or
+                next((v for v in info.values() if isinstance(v, str) and v), "")
+            )
+            return info
         else:
             error_print(f"DOI REST API failed: {resp.status_code}")
             return None
@@ -1524,7 +1520,7 @@ def request_by_doi(doi, headless=True):
     Default: paste the DOI to the quick search box and press the quick search button
     to let Wosonhj auto-fetch and fill DOI info, then continue to select 7 days, send email notification, and submit.
     If quick search fails, as a fallback, fetch article info from Crossref and fill all required fields manually.
-    If Crossref fails, try DOI REST API (https://doi.org/api/handles/<doi>?pretty=true&type=URL,EMAIL,description).
+    If Crossref fails, use DOI REST API.
     After pressing New Reward, get the latest post in the list of waiting requests; if such a post has the same title as the paper with corresponding doi then request is successful.
     Returns True if successful, False otherwise.
     """
@@ -1594,8 +1590,8 @@ def request_by_doi(doi, headless=True):
             warning_print("Quick search failed, using fallback: fill manually from Crossref.")
             info = get_crossref_info(doi)
             if not info or not info.get("title"):
-                warning_print("Crossref fetch failed, trying DOI REST API...")
-                # Use the new function for DOI REST API
+                warning_print("Crossref fetch failed, using DOI REST API fallback...")
+                # Always use DOI REST API as fallback if Crossref fails
                 rest_info = fetch_doi_rest_info(doi)
                 if rest_info:
                     article_title = rest_info.get("title", "")
@@ -1749,7 +1745,11 @@ def request_by_doi(doi, headless=True):
             # Try to get article_title from Crossref or REST API if available
             if not article_title:
                 info = get_crossref_info(doi)
-                article_title = info.get("title", "")
+                if not info or not info.get("title"):
+                    rest_info = fetch_doi_rest_info(doi)
+                    article_title = rest_info.get("title", "") if rest_info else ""
+                else:
+                    article_title = info.get("title", "")
             latest_req = get_latest_waiting_request(driver, article_title=article_title, doi=doi)
             if latest_req:
                 success_print("New request posted successfully and verified by title and DOI!")
