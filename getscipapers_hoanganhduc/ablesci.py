@@ -1015,14 +1015,47 @@ def get_fulfilled_requests(headless=True):
     finally:
         debug_print("Closing fulfilled requests driver")
         driver.quit()
+
+def string_to_valid_filename(s, max_length=100, replacement='_'):
+    """
+    Convert a long string into a valid file name for all OSes.
+    Removes or replaces invalid characters and trims length.
+    Replaces spaces with the replacement character.
+
+    Args:
+        s (str): Input string.
+        max_length (int): Maximum length of filename (default: 100).
+        replacement (str): Replacement character for invalid chars.
+
+    Returns:
+        str: Valid filename string.
+    """
+    # Remove/replace invalid characters for Windows, macOS, Linux
+    invalid_chars = r'<>,:"/\\|?*\0'
+    # Also remove control characters
+    s = ''.join(c if c not in invalid_chars and ord(c) >= 32 else replacement for c in s)
+    # Replace spaces with replacement character
+    s = s.replace(' ', replacement)
+    # Remove leading/trailing spaces and dots
+    s = s.strip(' .')
+    # Collapse multiple replacements
+    while replacement*2 in s:
+        s = s.replace(replacement*2, replacement)
+    # Limit length
+    if len(s) > max_length:
+        s = s[:max_length]
+    # If empty, use a default name
+    if not s:
+        s = 'file'
+    return s
         
 def download_file_from_fulfilled_request(detail_url, download_folder=None, headless=True):
     """
     Download file from a fulfilled request detail page.
-    First navigates to the detail page to extract the actual download URL,
+    Navigates to the detail page to extract the actual download URL,
     then downloads the file (can be PDF or other formats).
     Only handles files with extensions like pdf, txt, mp4, pptx, doc, docx, xlsx, and similar.
-    Renames the downloaded file to <request_article_title>.<extension>, but strips to first 3-4 words if too long.
+    Renames the downloaded file using string_to_valid_filename for safe naming.
     
     Args:
         detail_url: URL of the fulfilled request detail page
@@ -1165,17 +1198,9 @@ def download_file_from_fulfilled_request(detail_url, download_folder=None, headl
             title_elem = driver.find_element(By.CSS_SELECTOR, '.assist-detail .assist-title, .assist-detail .fly-detail-title')
             article_title = title_elem.text.strip()
         except Exception:
-            # Fallback: try to extract from page title or use filename without extension
             article_title = os.path.splitext(filename)[0]
-        # Clean up title for filesystem
-        safe_title = re.sub(r'[\\/*?:"<>|]', '_', article_title)
-        safe_title = safe_title.strip()
-        # If title is too long, strip to first 3-4 words
-        max_title_len = 60
-        if len(safe_title) > max_title_len:
-            words = safe_title.split()
-            safe_title = '_'.join(words[:4]) if len(words) >= 4 else '_'.join(words)
-            safe_title = safe_title[:max_title_len]
+        # Use string_to_valid_filename for safe file naming
+        safe_title = string_to_valid_filename(article_title, max_length=60, replacement='_')
         # Get list of existing files before download
         existing_files = set(os.listdir(abs_download_path))
         debug_print(f"Found {len(existing_files)} existing files")
@@ -1206,7 +1231,7 @@ def download_file_from_fulfilled_request(detail_url, download_folder=None, headl
             downloaded_path = os.path.join(abs_download_path, downloaded_file)
             actual_size = os.path.getsize(downloaded_path)
             file_extension = os.path.splitext(downloaded_file)[1].lower()
-            # Rename file to <request_article_title>.<extension>
+            # Rename file using string_to_valid_filename
             new_filename = f"{safe_title}{file_extension}"
             new_path = os.path.join(abs_download_path, new_filename)
             try:
