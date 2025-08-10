@@ -1478,58 +1478,58 @@ def get_latest_waiting_request(driver, article_title=None, doi=None):
         debug_print(f"Error in get_latest_waiting_request: {e}")
     return None
 
+def fetch_doi_rest_info(doi):
+    """
+    Fetch article info from DOI REST API (https://doi.org/api/handles/<doi>?pretty=true&type=URL,EMAIL,description).
+    Returns a dict with keys: title, url, email, desc.
+    """
+    api_url = f"https://doi.org/api/handles/{doi}?pretty=true&type=URL,EMAIL,description"
+    try:
+        resp = pyrequests.get(api_url, timeout=15)
+        if resp.status_code == 200:
+            data = resp.json()
+            title = ""
+            url = ""
+            email = ""
+            desc = ""
+            for elem in data.get("values", []):
+                t = elem.get("type", "").upper()
+                v = elem.get("data", {}).get("value", "")
+                if t == "DESCRIPTION" and not desc:
+                    desc = v
+                elif t == "URL" and not url:
+                    url = v
+                elif t == "EMAIL" and not email:
+                    email = v
+            if desc:
+                title = desc
+            elif url:
+                title = url
+            return {
+                "title": title,
+                "url": url,
+                "email": email,
+                "desc": desc
+            }
+        else:
+            error_print(f"DOI REST API failed: {resp.status_code}")
+            return None
+    except Exception as e:
+        error_print(f"DOI REST API error: {e}")
+        return None
+
 def request_by_doi(doi, headless=True):
     """
     Go to the new request page and post a new request by DOI number.
-    Gets article info from Crossref, fills all required fields except DOI, and posts the request.
-    If normal filling fails, as a fallback, paste the DOI to the quick search box and press the quick search button
+    Default: paste the DOI to the quick search box and press the quick search button
     to let Wosonhj auto-fetch and fill DOI info, then continue to select 7 days, send email notification, and submit.
+    If quick search fails, as a fallback, fetch article info from Crossref and fill all required fields manually.
+    If Crossref fails, try DOI REST API (https://doi.org/api/handles/<doi>?pretty=true&type=URL,EMAIL,description).
     After pressing New Reward, get the latest post in the list of waiting requests; if such a post has the same title as the paper with corresponding doi then request is successful.
     Returns True if successful, False otherwise.
     """
-    # Get Crossref info
-    info = get_crossref_info(doi)
-    debug_print(f"Crossref info: {info}")
 
-    publisher_name = info.get("Article_Source", "")
-    publisher_text = publisher_name.strip()
-    journal = info.get("journal", "")
-    authors = info.get("authors", "")
-    published_date = info.get("published_date", "")
-    article_link = info.get("Article_link", "")
-    pdf_link = info.get("PDF_link", "")
-    article_title = info.get("title", "")
-
-    # Compose description (raw text, keep new lines)
-    req_desc = (
-        f"Journal: {journal}\n"
-        f"Authors: {authors}\n"
-        f"Published date: {published_date}\n"
-        f"DOI: {doi}\n"
-        f"PDF link: {pdf_link}\n"
-        f"Article link: {article_link}\n"
-        f"Publisher: {publisher_text}\n"
-    )
-    debug_print(f"Request description:\n{req_desc}")
-
-    # Normalize publisher for easy detection
-    bracket_match = re.search(r'\(([^)]+)\)', publisher_text)
-    if bracket_match:
-        normalized_publisher = bracket_match.group(1).lower().replace(" ", "").replace("&", "and")
-    else:
-        normalized_publisher = publisher_text.lower().replace(" ", "").replace("&", "and")
-    debug_print(f"Normalized publisher: {normalized_publisher}")
-
-    # Get publisher typeid
-    publisher_typeid = normalize_publisher_name(normalized_publisher)
-    debug_print(f"Publisher typeid: {publisher_typeid}")
-
-    # Default article type is Journal (1)
-    article_type = 1
-    default_points = 10
-    points = default_points
-
-    post_url = f"{WOSONHJ_HOME_URL}/forum.php?mod=post&action=newthread&fid=66&special=3&typeid={publisher_typeid}"
+    post_url = f"{WOSONHJ_HOME_URL}/forum.php?mod=post&action=newthread&fid=66&special=3&typeid={normalize_publisher_name('Other')}"
     debug_print(f"Request by DOI: {doi}")
     debug_print(f"Post URL: {post_url}")
 
@@ -1542,169 +1542,178 @@ def request_by_doi(doi, headless=True):
         time.sleep(3)
         filled = False
 
-        # Try normal filling
+        # Default: use quick search box
         try:
-            # If article_title is not available, skip normal filling and fallback
-            if not article_title:
-                debug_print("No article title available, skipping normal filling and using fallback.")
-                filled = False
-                raise Exception("No article title, fallback to quick search")
-            # Select article type radio (name="doi_type", value=article_type)
-            article_type_radios = driver.find_elements(By.NAME, "doi_type")
-            debug_print(f"Found {len(article_type_radios)} article type radios")
-            for radio in article_type_radios:
-                if radio.get_attribute("value") == str(article_type):
-                    driver.execute_script("arguments[0].scrollIntoView(true);", radio)
-                    driver.execute_script("arguments[0].click();", radio)
-                    debug_print("Selected article type radio")
-                    break
-
-            # Fill in points
-            points_input = None
-            points_inputs = driver.find_elements(By.NAME, "rewardprice")
-            if points_inputs:
-                points_input = points_inputs[0]
-            if points_input:
-                driver.execute_script("arguments[0].scrollIntoView(true);", points_input)
-                points_input.clear()
-                points_input.send_keys(str(points))
-                debug_print("Filled in points")
-            else:
-                warning_print("Points input not found, skipping.")
-
-            # Fill in title
-            title_input = None
+            quicksearch_input = None
             try:
-                title_input = driver.find_element(By.ID, "subject")
+                quicksearch_input = driver.find_element(By.ID, "DOI")
             except Exception:
                 try:
-                    title_input = driver.find_element(By.NAME, "subject")
+                    quicksearch_input = driver.find_element(By.NAME, "DOI")
                 except Exception:
                     pass
-            if title_input:
-                driver.execute_script("arguments[0].scrollIntoView(true);", title_input)
-                title_input.clear()
-                title_input.send_keys(article_title)
-                debug_print("Filled in title input with article title")
+            if quicksearch_input:
+                quicksearch_input.clear()
+                quicksearch_input.send_keys(doi)
+                debug_print("Pasted DOI to quick search box")
             else:
-                warning_print("Title input not found, skipping.")
+                error_print("Quick search input not found.")
+                raise Exception("Quick search input not found.")
 
-            # Format description in HTML for Discuz editor
-            req_desc_html = (
-                f"<b>Journal:</b> {journal}<br>"
-                f"<b>Authors:</b> {authors}<br>"
-                f"<b>Published date:</b> {published_date}<br>"
-                f"<b>DOI:</b> <a href='https://doi.org/{doi}' target='_blank'>{doi}</a><br>"
-                f"<b>PDF link:</b> <a href='{pdf_link}' target='_blank'>{pdf_link}</a><br>"
-                f"<b>Article link:</b> <a href='{article_link}' target='_blank'>{article_link}</a><br>"
-                f"<b>Publisher:</b> {publisher_text}<br>"
-            )
-
-            # Paste description into <textarea id="e_textarea">
-            textarea = driver.find_element(By.ID, "e_textarea")
-            driver.execute_script("""
-            try {
-                if (typeof writeEditorContents === 'function') {
-                    writeEditorContents(arguments[0]);
-                } else {
-                    arguments[1].value = arguments[0];
-                }
-            } catch (e) {
-                arguments[1].value = arguments[0];
-            }
-            """, req_desc_html, textarea)
-            debug_print("Filled in description textarea using Discuz editor API")
-
-            # Save after pasting
+            # Find and click quick search button (name="DOIsubmit" or button with onclick containing DOI_To_Title)
+            quicksearch_btn = None
             try:
-                driver.execute_script("""
-                if (typeof saveEditorContents === 'function') {
-                    saveEditorContents();
-                } else {
-                    var evt = new Event('change', { bubbles: true });
-                    arguments[0].dispatchEvent(evt);
-                }
-                """, textarea)
-                debug_print("Triggered save after pasting description.")
-            except Exception as e2:
-                debug_print(f"Failed to trigger save after pasting: {e2}")
+                quicksearch_btn = driver.find_element(By.NAME, "DOIsubmit")
+            except Exception:
+                btns = driver.find_elements(By.TAG_NAME, "button")
+                for btn in btns:
+                    onclick = btn.get_attribute("onclick") or ""
+                    if "DOI_To_Title" in onclick:
+                        quicksearch_btn = btn
+                        break
+            if quicksearch_btn:
+                driver.execute_script("arguments[0].scrollIntoView(true);", quicksearch_btn)
+                driver.execute_script("arguments[0].click();", quicksearch_btn)
+                debug_print("Clicked quick search button")
+            else:
+                error_print("Quick search button not found.")
+                raise Exception("Quick search button not found.")
 
+            # Wait for Wosonhj to auto-fetch and fill DOI info
+            info_print("Waiting for Wosonhj to auto-fetch and fill DOI info (about 30 seconds)...")
+            time.sleep(60)
             filled = True
         except Exception as e:
-            debug_print(f"Normal filling failed: {e}")
+            warning_print(f"Quick search failed: {e}")
+            filled = False
 
-        # Fallback: use quick search box if normal filling failed
+        # Fallback: use Crossref info and fill manually
+        info = None
+        article_title = ""
         if not filled:
-            warning_print("Normal filling failed, using fallback: quick search by DOI.")
-            try:
-                # Find quick search box (id="DOI" or name="DOI")
-                quicksearch_input = None
+            warning_print("Quick search failed, using fallback: fill manually from Crossref.")
+            info = get_crossref_info(doi)
+            if not info or not info.get("title"):
+                warning_print("Crossref fetch failed, trying DOI REST API...")
+                # Use the new function for DOI REST API
+                rest_info = fetch_doi_rest_info(doi)
+                if rest_info:
+                    article_title = rest_info.get("title", "")
+                    url = rest_info.get("url", "")
+                    desc = rest_info.get("desc", "")
+                    info = {
+                        "journal": "",
+                        "title": article_title,
+                        "authors": "",
+                        "published_date": "",
+                        "DOI": doi,
+                        "PDF_link": url,
+                        "Article_link": url,
+                        "Article_Source": "",
+                    }
+                    debug_print(f"DOI REST API info: {info}")
+                else:
+                    info = None
+            else:
+                article_title = info.get("title", "")
+
+            if info:
+                publisher_name = info.get("Article_Source", "")
+                publisher_text = publisher_name.strip()
+                journal = info.get("journal", "")
+                authors = info.get("authors", "")
+                published_date = info.get("published_date", "")
+                article_link = info.get("Article_link", "")
+                pdf_link = info.get("PDF_link", "")
+                article_title = info.get("title", "")
+
+                req_desc_html = (
+                    f"<b>Journal:</b> {journal}<br>"
+                    f"<b>Authors:</b> {authors}<br>"
+                    f"<b>Published date:</b> {published_date}<br>"
+                    f"<b>DOI:</b> <a href='https://doi.org/{doi}' target='_blank'>{doi}</a><br>"
+                    f"<b>PDF link:</b> <a href='{pdf_link}' target='_blank'>{pdf_link}</a><br>"
+                    f"<b>Article link:</b> <a href='{article_link}' target='_blank'>{article_link}</a><br>"
+                    f"<b>Publisher:</b> {publisher_text}<br>"
+                )
+
+                # Select article type radio (name="doi_type", value=1)
+                article_type_radios = driver.find_elements(By.NAME, "doi_type")
+                for radio in article_type_radios:
+                    if radio.get_attribute("value") == "1":
+                        driver.execute_script("arguments[0].scrollIntoView(true);", radio)
+                        driver.execute_script("arguments[0].click();", radio)
+                        break
+
+                # Fill in points
+                points_input = None
+                points_inputs = driver.find_elements(By.NAME, "rewardprice")
+                if points_inputs:
+                    points_input = points_inputs[0]
+                if points_input:
+                    driver.execute_script("arguments[0].scrollIntoView(true);", points_input)
+                    points_input.clear()
+                    points_input.send_keys("10")
+
+                # Fill in title
+                title_input = None
                 try:
-                    quicksearch_input = driver.find_element(By.ID, "DOI")
+                    title_input = driver.find_element(By.ID, "subject")
                 except Exception:
                     try:
-                        quicksearch_input = driver.find_element(By.NAME, "DOI")
+                        title_input = driver.find_element(By.NAME, "subject")
                     except Exception:
                         pass
-                if quicksearch_input:
-                    quicksearch_input.clear()
-                    quicksearch_input.send_keys(doi)
-                    debug_print("Pasted DOI to quick search box")
-                else:
-                    error_print("Quick search input not found.")
-                    driver.quit()
-                    return False
+                if title_input and article_title:
+                    driver.execute_script("arguments[0].scrollIntoView(true);", title_input)
+                    title_input.clear()
+                    title_input.send_keys(article_title)
 
-                # Find and click quick search button (name="DOIsubmit" or button with onclick containing DOI_To_Title)
-                quicksearch_btn = None
+                # Paste description into <textarea id="e_textarea">
                 try:
-                    quicksearch_btn = driver.find_element(By.NAME, "DOIsubmit")
+                    textarea = driver.find_element(By.ID, "e_textarea")
+                    driver.execute_script("""
+                    try {
+                        if (typeof writeEditorContents === 'function') {
+                            writeEditorContents(arguments[0]);
+                        } else {
+                            arguments[1].value = arguments[0];
+                        }
+                    } catch (e) {
+                        arguments[1].value = arguments[0];
+                    }
+                    """, req_desc_html, textarea)
                 except Exception:
-                    # Try to find button with onclick containing DOI_To_Title
-                    btns = driver.find_elements(By.TAG_NAME, "button")
-                    for btn in btns:
-                        onclick = btn.get_attribute("onclick") or ""
-                        if "DOI_To_Title" in onclick:
-                            quicksearch_btn = btn
-                            break
-                if quicksearch_btn:
-                    driver.execute_script("arguments[0].scrollIntoView(true);", quicksearch_btn)
-                    driver.execute_script("arguments[0].click();", quicksearch_btn)
-                    debug_print("Clicked quick search button")
-                else:
-                    error_print("Quick search button not found.")
-                    driver.quit()
-                    return False
+                    pass
 
-                # Wait for Wosonhj to auto-fetch and fill DOI info
-                info_print("Waiting for Wosonhj to auto-fetch and fill DOI info (about 30 seconds)...")
-                time.sleep(60)
-            except Exception as e:
-                error_print(f"Fallback quick search failed: {e}")
-                driver.quit()
-                return False
+                # Save after pasting
+                try:
+                    driver.execute_script("""
+                    if (typeof saveEditorContents === 'function') {
+                        saveEditorContents();
+                    } else {
+                        var evt = new Event('change', { bubbles: true });
+                        arguments[0].dispatchEvent(evt);
+                    }
+                    """, textarea)
+                except Exception:
+                    pass
 
         # Select "7 Days" in close thread date dropdown (id="lootan_closethreadthreaddate")
         try:
             close_thread_date_select = driver.find_element(By.ID, "lootan_closethreadthreaddate")
-            found_7days = False
             for option in close_thread_date_select.find_elements(By.TAG_NAME, "option"):
                 if "7" in option.text:
                     option.click()
-                    found_7days = True
-                    debug_print("Selected 7 days for close thread")
                     break
-            if not found_7days:
-                warning_print("Could not find '7 days' option for close thread.")
-        except Exception as e:
-            debug_print(f"Exception selecting close thread date: {e}")
+        except Exception:
+            pass
 
         # Select e-mail notification checkbox (id="zzbuluo_replyemail"), ignore if not found
         try:
             email_alert_checkbox = driver.find_element(By.ID, "zzbuluo_replyemail")
             if not email_alert_checkbox.is_selected():
                 email_alert_checkbox.click()
-                debug_print("Selected e-mail notification (zzbuluo_replyemail)")
         except Exception:
             pass
 
@@ -1717,25 +1726,18 @@ def request_by_doi(doi, headless=True):
                 if "new reward" in btn_text or "新悬赏" in btn_text or "发布" in btn_text:
                     driver.execute_script("arguments[0].click();", btn)
                     clicked = True
-                    debug_print("Clicked New Reward button")
                     break
             if not clicked:
-                # Try fallback submit button
                 try:
                     submit_btn = driver.find_element(By.ID, "postsubmit")
                     submit_btn.click()
-                    debug_print("Clicked fallback submit button")
                 except Exception:
                     pass
-        except Exception as e:
-            debug_print(f"Exception clicking submit button: {e}")
+        except Exception:
             try:
                 submit_btn = driver.find_element(By.ID, "postsubmit")
                 submit_btn.click()
-                debug_print("Clicked fallback submit button in exception")
-            except Exception as e2:
-                error_print("Failed to locate and click submit button.")
-                debug_print(f"Exception details: {e2}")
+            except Exception:
                 driver.quit()
                 return False
 
@@ -1744,6 +1746,10 @@ def request_by_doi(doi, headless=True):
         time.sleep(5)
         # After submitting, check waiting requests for a post with the same title and DOI
         try:
+            # Try to get article_title from Crossref or REST API if available
+            if not article_title:
+                info = get_crossref_info(doi)
+                article_title = info.get("title", "")
             latest_req = get_latest_waiting_request(driver, article_title=article_title, doi=doi)
             if latest_req:
                 success_print("New request posted successfully and verified by title and DOI!")
