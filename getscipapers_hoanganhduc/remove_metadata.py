@@ -418,6 +418,22 @@ def remove_watermark(input_pdf, output_pdf, watermark_patterns=None, verbose=Fal
     if verbose:
         print("Done.")
 
+def remove_watermark_inplace(input_pdf, verbose=False, page_range=None):
+    """
+    Remove watermarks from a PDF file in-place.
+    """
+    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+        temp_output = tmp_file.name
+
+    remove_watermark(
+        input_pdf,
+        temp_output,
+        verbose=verbose,
+        page_range=page_range
+    )
+
+    shutil.move(temp_output, input_pdf)
+
 def main():
     # Get the parent package name from the module's __name__
     parent_package = __name__.split('.')[0] if '.' in __name__ else None
