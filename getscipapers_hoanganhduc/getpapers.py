@@ -1186,7 +1186,7 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
 
 async def search_documents(query: str, limit: int = 1):
     """
-    Search for documents using StcGeck, Nexus bot, and Crossref in order.
+    Search for documents using StcGeck, Nexus bot, Crossref, and DOI REST API in order.
     Build a StcGeck-style document with all fields empty, and iteratively fill fields
     by searching each source in order. Return up to the requested limit of results.
     Always tries all sources before returning results.
@@ -1200,7 +1200,8 @@ async def search_documents(query: str, limit: int = 1):
     ICON_SOURCE = {
         "stcgeck": "🪐",
         "nexus": "🤖",
-        "crossref": "🌐"
+        "crossref": "🌐",
+        "doi_rest": "🔗"
     }
 
     vprint(f"{ICON_SEARCH} Searching for: {query} (limit={limit})")
@@ -1241,51 +1242,51 @@ async def search_documents(query: str, limit: int = 1):
     # Try each source, collect up to limit unique DOIs
     collected = {}
 
-    # 1. StcGeck
-    print(f"{ICON_STEP} {ICON_SOURCE['stcgeck']} Searching with StcGeck...")
-    try:
-        vprint("Trying StcGeck search...")
-        geck = StcGeck(
-            ipfs_http_base_url="http://127.0.0.1:8080",
-            timeout=300,
-        )
-        try:
-            await geck.start()
-            summa_client = geck.get_summa_client()
-            if query.lower().startswith("10."):
-                search_query = {"term": {"field": "uris", "value": f"doi:{query}"}}
-                vprint(f"StcGeck: Searching by DOI: {query}")
-            else:
-                search_query = {"match": {"value": f"{query}"}}
-                vprint(f"StcGeck: Searching by keyword: {query}")
+    # # 1. StcGeck
+    # print(f"{ICON_STEP} {ICON_SOURCE['stcgeck']} Searching with StcGeck...")
+    # try:
+    #     vprint("Trying StcGeck search...")
+    #     geck = StcGeck(
+    #         ipfs_http_base_url="http://127.0.0.1:8080",
+    #         timeout=300,
+    #     )
+    #     try:
+    #         await geck.start()
+    #         summa_client = geck.get_summa_client()
+    #         if query.lower().startswith("10."):
+    #             search_query = {"term": {"field": "uris", "value": f"doi:{query}"}}
+    #             vprint(f"StcGeck: Searching by DOI: {query}")
+    #         else:
+    #             search_query = {"match": {"value": f"{query}"}}
+    #             vprint(f"StcGeck: Searching by keyword: {query}")
 
-            search_response = await summa_client.search(
-                {
-                    "index_alias": "stc",
-                    "query": search_query,
-                    "collectors": [{"top_docs": {"limit": limit}}],
-                    "is_fieldnorms_scoring_enabled": False,
-                }
-            )
-            stc_results = search_response.collector_outputs[0].documents.scored_documents
-            print(f"{ICON_SUCCESS} StcGeck returned {len(stc_results)} results.")
-            for scored in stc_results:
-                doc = json.loads(scored.document)
-                doi = None
-                for uri in doc.get('uris', []):
-                    if uri.startswith('doi:'):
-                        doi = uri[4:]
-                        break
-                key = doi or doc.get('id') or doc.get('title')
-                if key and key not in collected:
-                    base = empty_doc()
-                    merge_doc(base, doc)
-                    collected[key] = base
-        finally:
-            await geck.stop()
-    except Exception as e:
-        print(f"{ICON_ERROR} StcGeck failed")
-        vprint(f"StcGeck failed: {e}")
+    #         search_response = await summa_client.search(
+    #             {
+    #                 "index_alias": "stc",
+    #                 "query": search_query,
+    #                 "collectors": [{"top_docs": {"limit": limit}}],
+    #                 "is_fieldnorms_scoring_enabled": False,
+    #             }
+    #         )
+    #         stc_results = search_response.collector_outputs[0].documents.scored_documents
+    #         print(f"{ICON_SUCCESS} StcGeck returned {len(stc_results)} results.")
+    #         for scored in stc_results:
+    #             doc = json.loads(scored.document)
+    #             doi = None
+    #             for uri in doc.get('uris', []):
+    #                 if uri.startswith('doi:'):
+    #                     doi = uri[4:]
+    #                     break
+    #             key = doi or doc.get('id') or doc.get('title')
+    #             if key and key not in collected:
+    #                 base = empty_doc()
+    #                 merge_doc(base, doc)
+    #                 collected[key] = base
+    #     finally:
+    #         await geck.stop()
+    # except Exception as e:
+    #     print(f"{ICON_ERROR} StcGeck failed")
+    #     vprint(f"StcGeck failed: {e}")
 
     # 2. Nexus bot
     print(f"{ICON_STEP} {ICON_SOURCE['nexus']} Searching with Nexus bot...")
@@ -1334,6 +1335,30 @@ async def search_documents(query: str, limit: int = 1):
     except Exception as e:
         print(f"{ICON_ERROR} Crossref failed: {e}")
         vprint(f"Crossref failed: {e}")
+
+    # 4. DOI REST API
+    print(f"{ICON_STEP} {ICON_SOURCE['doi_rest']} Searching with DOI REST API...")
+    try:
+        vprint("Trying DOI REST API search...")
+        doi_rest_results = await search_with_doi_rest_api(query, limit)
+        print(f"{ICON_SUCCESS} DOI REST API returned {len(doi_rest_results)} results.")
+        for scored in doi_rest_results:
+            doc = json.loads(scored.document)
+            doi = None
+            for uri in doc.get('uris', []):
+                if uri.startswith('doi:'):
+                    doi = uri[4:]
+                    break
+            key = doi or doc.get('id') or doc.get('title')
+            if key in collected:
+                merge_doc(collected[key], doc)
+            elif key:
+                base = empty_doc()
+                merge_doc(base, doc)
+                collected[key] = base
+    except Exception as e:
+        print(f"{ICON_ERROR} DOI REST API failed: {e}")
+        vprint(f"DOI REST API failed: {e}")
 
     if not collected:
         print(f"{ICON_WARNING} No results found from any source.")
@@ -1697,6 +1722,94 @@ def convert_crossref_to_stc_format(crossref_item):
 
     return doc
 
+def fetch_doi_rest_api(doi: str, params: dict = None) -> dict:
+    """
+    Fetch DOI metadata using the DOI Proxy REST API.
+    Returns the parsed JSON response, or None if not found/error.
+    """
+    base_url = f"https://doi.org/api/handles/{doi}"
+    if params:
+        query = "&".join(f"{k}={quote_plus(str(v))}" for k, v in params.items())
+        url = f"{base_url}?{query}"
+    else:
+        url = base_url
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json",
+        "Referer": "https://doi.org/",
+        "DNT": "1",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        vprint(f"Error fetching DOI REST API for {doi}: {e}")
+        return None
+
+def convert_doi_rest_to_stc_format(rest_data: dict) -> dict:
+    """
+    Convert DOI REST API response to StcGeck compatible document format.
+    Only fills fields available in the REST API response.
+    """
+    doc = {
+        'id': None,
+        'title': None,
+        'authors': [],
+        'metadata': {},
+        'uris': [],
+        'issued_at': None,
+        'oa_status': None
+    }
+    if not rest_data or rest_data.get("responseCode") != 1:
+        return doc
+    handle = rest_data.get("handle")
+    doc['id'] = handle
+    doc['uris'].append(f"doi:{handle}")
+    elements = rest_data.get("values", [])
+    url = None
+    description = None
+    email = None
+    timestamp = None
+    for el in elements:
+        typ = el.get("type", "").upper()
+        val = el.get("data", {}).get("value")
+        fmt = el.get("data", {}).get("format")
+        if typ == "URL" and fmt == "string":
+            url = val
+        elif typ == "DESCRIPTION" and fmt == "string":
+            description = val
+        elif typ == "EMAIL" and fmt == "string":
+            email = val
+        if not timestamp and el.get("timestamp"):
+            timestamp = el.get("timestamp")
+    if url:
+        doc['metadata']['url'] = url
+    if description:
+        doc['title'] = description
+    if email:
+        doc['metadata']['email'] = email
+    if timestamp:
+        try:
+            dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            doc['issued_at'] = int(dt.timestamp())
+        except Exception:
+            pass
+    return doc
+
+async def search_with_doi_rest_api(query: str, limit: int = 1):
+    """
+    Search for a DOI using the DOI REST API and convert to StcGeck format.
+    Returns a list of ScoredDocument-like objects.
+    """
+    if not query.lower().startswith("10."):
+        return []
+    rest_data = fetch_doi_rest_api(query, params={"pretty": "true"})
+    doc = convert_doi_rest_to_stc_format(rest_data)
+    if doc and doc.get("uris"):
+        return [type('ScoredDocument', (), {'document': json.dumps(doc)})()]
+    return []
+
 def format_reference(document):
     title = document.get('title', 'N/A')
     authors = document.get('authors', [])
@@ -1769,9 +1882,28 @@ async def search_and_print(query: str, limit: int):
 def is_elsevier_doi(doi: str) -> bool:
     """
     Check if a DOI is published by Elsevier.
-    Returns True if the DOI prefix matches known Elsevier prefixes
-    and resolving https://doi.org/<doi> leads to an Elsevier site.
+    First, try to fetch metadata from DOI REST API and check if publisher is Elsevier.
+    If not available, fallback to prefix/domain check.
+    Returns True if the DOI is published by Elsevier.
     """
+    # Try DOI REST API first
+    try:
+        rest_data = fetch_doi_rest_api(doi)
+        if rest_data and rest_data.get("responseCode") == 1:
+            values = rest_data.get("values", [])
+            publisher = None
+            for el in values:
+                typ = el.get("type", "").upper()
+                val = el.get("data", {}).get("value", "")
+                if typ == "PUBLISHER" and isinstance(val, str):
+                    publisher = val.lower()
+                    break
+            if publisher and "elsevier" in publisher:
+                return True
+    except Exception:
+        pass
+
+    # Fallback: prefix/domain check
     elsevier_prefixes = [
         "10.1016",  # Elsevier
         "10.1017",  # Cambridge/Cell Press (sometimes)
@@ -1788,7 +1920,6 @@ def is_elsevier_doi(doi: str) -> bool:
     if not any(doi.startswith(prefix) for prefix in elsevier_prefixes):
         return False
 
-    # Try to resolve the DOI and check if it leads to an Elsevier domain
     try:
         url = f"https://doi.org/{doi}"
         resp = requests.head(url, allow_redirects=True, timeout=10)
@@ -1931,9 +2062,28 @@ async def download_elsevier_pdf_by_doi(
 def is_wiley_doi(doi: str) -> bool:
     """
     Check if a DOI is published by Wiley.
-    Returns True if the DOI prefix matches known Wiley prefixes
-    and resolving https://doi.org/<doi> leads to a Wiley site.
+    First, try to fetch metadata from DOI REST API and check if publisher is Wiley.
+    If not available, fallback to prefix/domain check.
+    Returns True if the DOI is published by Wiley.
     """
+    # Try DOI REST API first
+    try:
+        rest_data = fetch_doi_rest_api(doi)
+        if rest_data and rest_data.get("responseCode") == 1:
+            values = rest_data.get("values", [])
+            publisher = None
+            for el in values:
+                typ = el.get("type", "").upper()
+                val = el.get("data", {}).get("value", "")
+                if typ == "PUBLISHER" and isinstance(val, str):
+                    publisher = val.lower()
+                    break
+            if publisher and "wiley" in publisher:
+                return True
+    except Exception:
+        pass
+
+    # Fallback: prefix/domain check
     wiley_prefixes = [
         "10.1002",  # Wiley
         "10.1111",  # Wiley
@@ -1946,7 +2096,6 @@ def is_wiley_doi(doi: str) -> bool:
     if not any(doi.startswith(prefix) for prefix in wiley_prefixes):
         return False
 
-    # Try to resolve the DOI and check if it leads to a Wiley domain
     try:
         url = f"https://doi.org/{doi}"
         resp = requests.head(url, allow_redirects=True, timeout=10)
