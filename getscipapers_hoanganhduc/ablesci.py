@@ -2589,7 +2589,7 @@ def main():
     parser.add_argument('--get-waiting-requests', action='store_true', help='Fetch all waiting requests which you made and not yet fulfilled')
     parser.add_argument('--get-fulfilled-requests', action='store_true', help='Fetch all fulfilled requests which you made and fulfilled by others')
     parser.add_argument('--cancel-waiting-requests', action='store_true', help='Interactively cancel waiting requests which you made')
-    parser.add_argument('--download-fulfilled-requests', type=str, nargs='?', const='.', metavar='FOLDER', help='Interactively download files from fulfilled requests (optional download folder, default: current directory)')
+    parser.add_argument('--download-fulfilled-requests', type=str, nargs='?', const=DEFAULT_DOWNLOAD_FOLDER, metavar='FOLDER', help='Interactively download files from fulfilled requests (optional download folder, default: current directory)')
     parser.add_argument('--accept-fulfilled-requests', action='store_true', help='Interactively accept fulfilled requests which you made')
     parser.add_argument('--reject-fulfilled-requests', action='store_true', help='Interactively reject fulfilled requests which you made')
     parser.add_argument('--get-active-requests', type=int, nargs='?', const=20, metavar='LIMIT', help='Fetch all active requests made by users which have not yet been fulfilled (optional limit, default: 20)')
