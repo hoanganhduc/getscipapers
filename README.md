@@ -1,10 +1,32 @@
-# getscipapers ![🐍](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python) ![🐳](https://img.shields.io/badge/Docker-ready-blue?logo=docker) ![🐙](https://img.shields.io/badge/GitHub-Repo-black?logo=github) ![🚧](https://img.shields.io/badge/status-work--in--progress-yellow) ![📝](https://img.shields.io/github/license/hoanganhduc/getscipapers) ![📚](https://img.shields.io/badge/Papers-Search-orange?logo=read-the-docs) ![☁️](https://img.shields.io/badge/Cloud-Ready-blue?logo=cloud)
 
-## Description ![ℹ️](https://img.shields.io/badge/-Info-informational?logo=info) ![🚀](https://img.shields.io/badge/-WIP-yellow?logo=rocket) ![🧪](https://img.shields.io/badge/-Experimental-lightgrey?logo=flask)
+# getscipapers
+
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python) ![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker) ![GitHub](https://img.shields.io/badge/GitHub-Repo-black?logo=github) ![Status](https://img.shields.io/badge/status-work--in--progress-yellow) ![License](https://img.shields.io/github/license/hoanganhduc/getscipapers) ![Papers](https://img.shields.io/badge/Papers-Search-orange?logo=read-the-docs) ![Cloud](https://img.shields.io/badge/Cloud-Ready-blue?logo=cloud)
+
+---
+
+## Table of Contents
+
+1. [Description](#description)
+2. [Prerequisites](#prerequisites)
+3. [Installation](#installation)
+4. [Usage](#usage)
+5. [Running in GitHub Codespace](#running-getscipapers-in-github-codespace)
+6. [Docker Container](#docker-container-for-running-getscipapers)
+7. [Remarks](#remarks)
+
+
+
+## Description
+
+![Info](https://img.shields.io/badge/-Info-informational?logo=info) ![WIP](https://img.shields.io/badge/-WIP-yellow?logo=rocket) ![Experimental](https://img.shields.io/badge/-Experimental-lightgrey?logo=flask)
 
 **getscipapers** is a Python package designed for searching and requesting scientific papers from multiple sources. This project is a **work in progress** and primarily intended for **personal use**. It is not a comprehensive solution for accessing scientific papers. Portions of the code were developed with assistance from [GitHub Copilot](https://github.com/features/copilot).
 
-## Prerequisites ![✅](https://img.shields.io/badge/-Checklist-success?logo=checkmarx) ![🛠️](https://img.shields.io/badge/-Tools-blue?logo=tools) ![🔑](https://img.shields.io/badge/-Keys-orange?logo=keybase)
+
+## Prerequisites
+
+![Checklist](https://img.shields.io/badge/-Checklist-success?logo=checkmarx) ![Tools](https://img.shields.io/badge/-Tools-blue?logo=tools) ![Keys](https://img.shields.io/badge/-Keys-orange?logo=keybase)
 
 * **(Optional)** ![🧊](https://img.shields.io/badge/IPFS-Kubo-green?logo=ipfs) Install [IPFS Kubo](https://docs.ipfs.tech/install/command-line/) to access the [Nexus Search](https://www.reddit.com/r/science_nexus) database:
   ```bash
@@ -25,7 +47,10 @@
 
 * ![🐍](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python) Install [Python](https://www.python.org) (version 3.10 or later).
 
-## Installation ![⬇️](https://img.shields.io/badge/-Install-green?logo=addthis) ![🧪](https://img.shields.io/badge/-Virtualenv-blue?logo=python) ![⚙️](https://img.shields.io/badge/-Setup-lightgrey?logo=settings)
+
+## Installation
+
+![Install](https://img.shields.io/badge/-Install-green?logo=addthis) ![Virtualenv](https://img.shields.io/badge/-Virtualenv-blue?logo=python) ![Setup](https://img.shields.io/badge/-Setup-lightgrey?logo=settings)
 
 It is recommended to use a virtual environment to avoid conflicts with other Python packages. You can use `venv` or `virtualenv`. To set up the environment and install dependencies:
 
@@ -53,7 +78,10 @@ find . -type d -name __pycache__ -exec rm -rf {} +
 find . -type f -name "*.pyc" -delete
 ```
 
-## Usage ![📖](https://img.shields.io/badge/-Usage-blue?logo=read-the-docs) ![💻](https://img.shields.io/badge/-CLI-black?logo=gnubash) ![🔍](https://img.shields.io/badge/-Search-orange?logo=search)
+
+## Usage
+
+![Usage](https://img.shields.io/badge/-Usage-blue?logo=read-the-docs) ![CLI](https://img.shields.io/badge/-CLI-black?logo=gnubash) ![Search](https://img.shields.io/badge/-Search-orange?logo=search)
 
 To use the Nexus Search database, start the IPFS daemon (if this is your first time, run `ipfs init` first) in one terminal:
 
@@ -67,7 +95,10 @@ In another terminal, use the `getscipapers` command to search for and request sc
 getscipapers --help
 ```
 
-# Running getscipapers in GitHub Codespace ![💻](https://img.shields.io/badge/GitHub-Codespaces-blue?logo=github) ![☁️](https://img.shields.io/badge/Cloud-Dev-blue?logo=cloud) ![⚡](https://img.shields.io/badge/-Fast-lightgrey?logo=zap)
+
+## Running getscipapers in GitHub Codespace
+
+![GitHub Codespaces](https://img.shields.io/badge/GitHub-Codespaces-blue?logo=github) ![Cloud Dev](https://img.shields.io/badge/Cloud-Dev-blue?logo=cloud) ![Fast](https://img.shields.io/badge/-Fast-lightgrey?logo=zap)
 
 The fastest way to run `getscipapers` is via GitHub Codespaces. This provides a preconfigured environment, eliminating local setup. To use it:
 
@@ -81,15 +112,27 @@ The fastest way to run `getscipapers` is via GitHub Codespaces. This provides a 
    ![ℹ️](https://img.shields.io/badge/-Info-informational?logo=info) The `basicLinux32gb` machine type provides 2 cores, 8GB RAM, and 32GB storage. See [GitHub Codespaces documentation](https://docs.github.com/en/codespaces/developing-in-a-codespace/creating-a-codespace-for-a-repository) for more machine types such as `standardLinux32gb`, `premiumLinux`, and `largePremiumLinux`.
 4. ![💻](https://img.shields.io/badge/-Terminal-black?logo=gnubash) Once the codespace is ready, open a terminal and run `getscipapers` commands directly.
 
-# Docker Container for Running getscipapers ![🐳](https://img.shields.io/badge/-Docker-blue?logo=docker) ![📦](https://img.shields.io/badge/-Container-green?logo=docker) ![🔒](https://img.shields.io/badge/-Isolated-lightgrey?logo=lock)
 
-## Overview ![ℹ️](https://img.shields.io/badge/-Overview-informational?logo=info) ![📄](https://img.shields.io/badge/-Docs-lightgrey?logo=read-the-docs)
+## Docker Container for Running getscipapers
+
+![Docker](https://img.shields.io/badge/-Docker-blue?logo=docker) ![Container](https://img.shields.io/badge/-Container-green?logo=docker) ![Isolated](https://img.shields.io/badge/-Isolated-lightgrey?logo=lock)
+
+
+### Overview
+
+![Overview](https://img.shields.io/badge/-Overview-informational?logo=info) ![Docs](https://img.shields.io/badge/-Docs-lightgrey?logo=read-the-docs)
 
 This guide explains how to use `getscipapers` inside a Docker container. The container includes all dependencies, so you can start downloading scientific papers immediately—no manual setup required.
 
-## Quick Start ![⚡](https://img.shields.io/badge/-Quick%20Start-yellow?logo=zap) ![🚀](https://img.shields.io/badge/-Start-blue?logo=rocket)
 
-### 1. Pull and Run the Prebuilt Image ![⬇️](https://img.shields.io/badge/-Pull-blue?logo=docker) ![🏗️](https://img.shields.io/badge/-Ready-green?logo=check)
+### Quick Start
+
+![Quick Start](https://img.shields.io/badge/-Quick%20Start-yellow?logo=zap) ![Start](https://img.shields.io/badge/-Start-blue?logo=rocket)
+
+
+#### 1. Pull and Run the Prebuilt Image
+
+![Pull](https://img.shields.io/badge/-Pull-blue?logo=docker) ![Ready](https://img.shields.io/badge/-Ready-green?logo=check)
 
 To get started quickly, pull the latest image from GitHub Container Registry and run it:
 
@@ -100,7 +143,10 @@ docker run -it --rm -v $(pwd):/workspace ghcr.io/hoanganhduc/getscipapers:latest
 
 This mounts your current directory to `/workspace` inside the container for easy file access.
 
-### 2. Build and Run Locally ![🏗️](https://img.shields.io/badge/-Build-blue?logo=docker) ![🛠️](https://img.shields.io/badge/-Local-green?logo=homeassistant)
+
+#### 2. Build and Run Locally
+
+![Build](https://img.shields.io/badge/-Build-blue?logo=docker) ![Local](https://img.shields.io/badge/-Local-green?logo=homeassistant)
 
 To build the image yourself:
 
@@ -109,7 +155,10 @@ docker build -t getscipapers .
 docker run -it --rm -v $(pwd):/workspace getscipapers
 ```
 
-### 3. Run in Detached Mode with Persistent Storage ![💾](https://img.shields.io/badge/-Persistent%20Storage-green?logo=storage) ![🔄](https://img.shields.io/badge/-Detached-blue?logo=autorenew)
+
+#### 3. Run in Detached Mode with Persistent Storage
+
+![Persistent Storage](https://img.shields.io/badge/-Persistent%20Storage-green?logo=storage) ![Detached](https://img.shields.io/badge/-Detached-blue?logo=autorenew)
 
 To keep the container running in the background and ensure downloads and configuration persist:
 
@@ -124,7 +173,10 @@ docker run -d \
 
 This setup saves downloaded papers and settings to your host machine. Adjust folder paths as needed.
 
-## Optional: Integrate with IPFS ![🧊](https://img.shields.io/badge/IPFS-Kubo-green?logo=ipfs) ![🔗](https://img.shields.io/badge/-Integration-blue?logo=link)
+
+### Optional: Integrate with IPFS
+
+![IPFS](https://img.shields.io/badge/IPFS-Kubo-green?logo=ipfs) ![Integration](https://img.shields.io/badge/-Integration-blue?logo=link)
 
 To use IPFS with getscipapers, run an IPFS Kubo daemon in a separate container:
 
@@ -150,7 +202,10 @@ docker run -d \
 
 This starts the IPFS daemon with persistent storage and required ports. Adjust folder paths as needed.
 
-## Running getscipapers Commands ![💻](https://img.shields.io/badge/-CLI-black?logo=gnubash) ![⚙️](https://img.shields.io/badge/-Exec-blue?logo=terminal)
+
+### Running getscipapers Commands
+
+![CLI](https://img.shields.io/badge/-CLI-black?logo=gnubash) ![Exec](https://img.shields.io/badge/-Exec-blue?logo=terminal)
 
 To run `getscipapers` inside the container:
 
@@ -158,7 +213,10 @@ To run `getscipapers` inside the container:
 docker exec -it getscipapers-container getscipapers --help
 ```
 
-### Optional: Create a Convenience Script ![📜](https://img.shields.io/badge/-Script-blue?logo=gnubash) ![⚡](https://img.shields.io/badge/-Shortcut-yellow?logo=zap)
+
+#### Optional: Create a Convenience Script
+
+![Script](https://img.shields.io/badge/-Script-blue?logo=gnubash) ![Shortcut](https://img.shields.io/badge/-Shortcut-yellow?logo=zap)
 
 For easier access, create a script at `~/.local/bin/getscipapers`:
 
@@ -202,7 +260,10 @@ getscipapers --help
 
 For more information, see the official documentation or repository.
 
-### Running Locally with Docker ![🐳](https://img.shields.io/badge/-Docker-blue?logo=docker) ![🏠](https://img.shields.io/badge/-Local-green?logo=homeassistant) ![🔒](https://img.shields.io/badge/-Isolated-lightgrey?logo=lock)
+
+#### Running Locally with Docker
+
+![Docker](https://img.shields.io/badge/-Docker-blue?logo=docker) ![Local](https://img.shields.io/badge/-Local-green?logo=homeassistant) ![Isolated](https://img.shields.io/badge/-Isolated-lightgrey?logo=lock)
 
 You can run **getscipapers** locally using Docker without installing Python or dependencies on your system.
 
@@ -223,8 +284,10 @@ You can run **getscipapers** locally using Docker without installing Python or d
 
 This setup allows you to use **getscipapers** in an isolated environment, keeping your files accessible on your host machine.
 
-## Remarks ![⚠️](https://img.shields.io/badge/-Remarks-yellow?logo=exclamation) ![☢️](https://img.shields.io/badge/-Caution-red?logo=alert) ![📝](https://img.shields.io/badge/-Note-lightgrey?logo=note)
 
+## Remarks
+
+![Remarks](https://img.shields.io/badge/-Remarks-yellow?logo=exclamation) ![Caution](https://img.shields.io/badge/-Caution-red?logo=alert) ![Note](https://img.shields.io/badge/-Note-lightgrey?logo=note)
 
 * This package is a **work in progress** and **may not always function as expected**.
 * Searching with `StcGeck` is slow and generally best avoided, though it may be useful in specific scenarios.
