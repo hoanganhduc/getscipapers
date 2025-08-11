@@ -11,11 +11,18 @@
 		"ghcr.io/devcontainers/features/docker-in-docker:2": {},
 		"ghcr.io/devcontainers/features/sshd:1": {
         	"version": "latest"
-    	}
+    	},
+		"ghcr.io/devcontainers/features/desktop-lite:1": {}
 	},
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
+	"forwardPorts": [6080],
+	"portsAttributes": {
+		"6080": {
+			"label": "Desktop (VNC)"
+		}
+	},
 
 	// Use 'updateContentCommand' to run commands when creating the container.
 	// "updateContentCommand": "",
