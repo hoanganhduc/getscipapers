@@ -10,7 +10,7 @@ import inspect
 getscipapers - A Python package to get and request scientific papers from various sources
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __author__ = "Duc A. Hoang (hoanganhduc)"
 __email__ = "anhduc.hoang1990@gmail.com"
 __description__ = "A Python package to get and request scientific papers from various sources"
