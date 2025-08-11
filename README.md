@@ -1,7 +1,8 @@
 
 # getscipapers
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python) ![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker) ![GitHub](https://img.shields.io/badge/GitHub-Repo-black?logo=github) ![Status](https://img.shields.io/badge/status-work--in--progress-yellow) ![License](https://img.shields.io/github/license/hoanganhduc/getscipapers) ![Papers](https://img.shields.io/badge/Papers-Search-orange?logo=read-the-docs) ![Cloud](https://img.shields.io/badge/Cloud-Ready-blue?logo=cloud)
+
+![Version](https://img.shields.io/github/v/release/hoanganhduc/getscipapers?label=version) ![Pre-release](https://img.shields.io/github/v/tag/hoanganhduc/getscipapers?label=pre-release&sort=semver) ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python) ![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker) ![GitHub](https://img.shields.io/badge/GitHub-Repo-black?logo=github) ![Status](https://img.shields.io/badge/status-work--in--progress-yellow) ![License](https://img.shields.io/github/license/hoanganhduc/getscipapers) ![Papers](https://img.shields.io/badge/Papers-Search-orange?logo=read-the-docs) ![Cloud](https://img.shields.io/badge/Cloud-Ready-blue?logo=cloud)
 
 ---
 
