@@ -1001,7 +1001,7 @@ def extract_dois_from_file(input_file: str):
     filename = os.path.basename(input_file)
     pii_patterns = [
         r'PII([A-Z0-9\-()]+)',  # e.g., PIIS235246422200092X.pdf
-        r'1-s2\.0-([A-Z0-9\-()]+)',  # e.g., 1-s2.0-S2949813924000843-main.pdf
+        r'1-s2\.0-([A-Z0-9\-()]+)-main',  # e.g., 1-s2.0-S2949813924000843-main.pdf
         r'([S][A-Z0-9\-()]{15,})'  # generic S-prefixed PII, at least 15 chars
     ]
     found_pii = set()
@@ -1156,28 +1156,30 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
     Also tries to extract Elsevier PII numbers from the file name and resolve them to DOIs.
     Only considers the first five pages of the PDF.
     Keeps newlines intact when extracting text from PDF pages.
+    Prints more details for debug in verbose mode.
     """
     try:
-        vprint(f"Extracting text from PDF (first 5 pages): {pdf_file}")
+        vprint(f"extract_doi_from_pdf: Extracting text from PDF (first 5 pages): {pdf_file}")
         text = extract_text_from_pdf(pdf_file, max_pages=5)
         if not text:
-            print(f"No text could be extracted from PDF: {pdf_file}")
+            print(f"extract_doi_from_pdf: No text could be extracted from PDF: {pdf_file}")
             return None
-        vprint(f"Extracting text from PDF (first page only): {pdf_file}")
+        vprint(f"extract_doi_from_pdf: Extracting text from PDF (first page only): {pdf_file}")
         first_page_text = extract_text_from_pdf(pdf_file, max_pages=1)
+        vprint(f"extract_doi_from_pdf: First page text length: {len(first_page_text) if first_page_text else 0}")
     except Exception as e:
-        print(f"Failed to extract text from PDF file: {e}")
+        print(f"extract_doi_from_pdf: Failed to extract text from PDF file: {e}")
         return None
 
-    vprint(f"Extracting DOIs from PDF text...")
+    vprint(f"extract_doi_from_pdf: Extracting DOIs from PDF text...")
     dois = extract_dois_from_text(text)
-    vprint(f"DOIs found in PDF: {dois}")
+    vprint(f"extract_doi_from_pdf: DOIs found in PDF: {dois}")
 
     # Try to extract PII numbers from the file name and resolve to DOI
     filename = os.path.basename(pdf_file)
     pii_patterns = [
         r'PII([A-Z0-9\-()]+)',  # e.g., PIIS235246422200092X.pdf
-        r'1-s2\.0-([A-Z0-9\-()]+)',  # e.g., 1-s2.0-S2949813924000843-main.pdf
+        r'1-s2\.0-([A-Z0-9\-()]+)-main',  # e.g., 1-s2.0-S2949813924000843-main.pdf
         r'([S][A-Z0-9\-()]{15,})'  # generic S-prefixed PII, at least 15 chars
     ]
     found_pii = set()
@@ -1185,19 +1187,21 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
         matches = re.findall(pattern, filename, re.IGNORECASE)
         for m in matches:
             found_pii.add(m)
-    vprint(f"PII numbers found in filename: {found_pii}")
+    vprint(f"extract_doi_from_pdf: PII numbers found in filename: {found_pii}")
 
     for pii in found_pii:
         doi_from_pii = resolve_pii_to_doi(pii)
+        vprint(f"extract_doi_from_pdf: resolve_pii_to_doi({pii}) -> {doi_from_pii}")
         if doi_from_pii and doi_from_pii not in dois:
-            vprint(f"Resolved PII {pii} to DOI {doi_from_pii}")
+            vprint(f"extract_doi_from_pdf: Resolved PII {pii} to DOI {doi_from_pii}, inserting at front of DOI list")
             dois.insert(0, doi_from_pii)  # Prefer DOI from PII
 
     if not dois:
+        vprint("extract_doi_from_pdf: No DOIs found after PII resolution.")
         return None
 
     if len(dois) == 1:
-        vprint(f"Only one DOI found, returning: {dois[0]}")
+        vprint(f"extract_doi_from_pdf: Only one DOI found, returning: {dois[0]}")
         return dois[0]
 
     # If multiple DOIs, try to match Crossref title with first page text
@@ -1205,7 +1209,7 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
         return re.sub(r'\W+', '', s or '').lower()
 
     for doi in dois:
-        vprint(f"Fetching Crossref data for DOI: {doi}")
+        vprint(f"extract_doi_from_pdf: Fetching Crossref data for DOI: {doi}")
         crossref_data = fetch_crossref_data(doi)
         title = None
         if crossref_data:
@@ -1214,17 +1218,17 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
                 title = title_list[0]
             elif isinstance(title_list, str):
                 title = title_list
-        vprint(f"Crossref title for DOI {doi}: {title}")
+        vprint(f"extract_doi_from_pdf: Crossref title for DOI {doi}: {title}")
         if title:
             norm_title = normalize(title)
             norm_first_page = normalize(first_page_text)
-            vprint(f"Normalized Crossref title: {norm_title}")
-            vprint(f"Normalized first page text: {norm_first_page[:100]}...")  # Print only first 100 chars
+            vprint(f"extract_doi_from_pdf: Normalized Crossref title: {norm_title}")
+            vprint(f"extract_doi_from_pdf: Normalized first page text (first 100 chars): {norm_first_page[:100]}...")
             if norm_title and norm_title in norm_first_page:
-                vprint(f"Title match found for DOI {doi}, returning this DOI.")
+                vprint(f"extract_doi_from_pdf: Title match found for DOI {doi}, returning this DOI.")
                 return doi
 
-    vprint(f"No title match found, returning first DOI: {dois[0]}")
+    vprint(f"extract_doi_from_pdf: No title match found, returning first DOI: {dois[0]}")
     return dois[0]
 
 async def search_documents(query: str, limit: int = 1):
