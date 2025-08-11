@@ -973,6 +973,7 @@ def extract_dois_from_text(text: str) -> list:
 def extract_dois_from_file(input_file: str):
     """
     Extract DOI numbers from a text file and write them to a new file.
+    Also tries to extract Elsevier PII numbers from the file name and resolve them to DOIs.
     Returns the list of extracted DOIs.
     Prints status messages with icons for better readability.
     """
@@ -995,6 +996,26 @@ def extract_dois_from_file(input_file: str):
 
     # Use the new extract_dois_from_text function
     filtered_dois = extract_dois_from_text(content)
+
+    # Try to extract PII numbers from the file name and resolve to DOI
+    filename = os.path.basename(input_file)
+    pii_patterns = [
+        r'PII([A-Z0-9\-()]+)',  # e.g., PIIS235246422200092X.pdf
+        r'1-s2\.0-([A-Z0-9\-()]+)',  # e.g., 1-s2.0-S2949813924000843-main.pdf
+        r'([S][A-Z0-9\-()]{15,})'  # generic S-prefixed PII, at least 15 chars
+    ]
+    found_pii = set()
+    for pattern in pii_patterns:
+        matches = re.findall(pattern, filename, re.IGNORECASE)
+        for m in matches:
+            found_pii.add(m)
+    vprint(f"PII numbers found in filename: {found_pii}")
+
+    for pii in found_pii:
+        doi = resolve_pii_to_doi(pii)
+        if doi and doi not in filtered_dois:
+            filtered_dois.append(doi)
+            vprint(f"Resolved PII {pii} to DOI {doi}")
 
     if not filtered_dois:
         print(f"{ICON_WARN} No valid paper DOIs found in {input_file}")
@@ -1132,6 +1153,7 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
     If multiple DOIs are found, fetch the paper title from Crossref for each DOI,
     and check if a similar title exists in the first page of the PDF.
     Select the DOI whose title matches; if none match, select the first found.
+    Also tries to extract Elsevier PII numbers from the file name and resolve them to DOIs.
     Only considers the first five pages of the PDF.
     Keeps newlines intact when extracting text from PDF pages.
     """
@@ -1150,6 +1172,27 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
     vprint(f"Extracting DOIs from PDF text...")
     dois = extract_dois_from_text(text)
     vprint(f"DOIs found in PDF: {dois}")
+
+    # Try to extract PII numbers from the file name and resolve to DOI
+    filename = os.path.basename(pdf_file)
+    pii_patterns = [
+        r'PII([A-Z0-9\-()]+)',  # e.g., PIIS235246422200092X.pdf
+        r'1-s2\.0-([A-Z0-9\-()]+)',  # e.g., 1-s2.0-S2949813924000843-main.pdf
+        r'([S][A-Z0-9\-()]{15,})'  # generic S-prefixed PII, at least 15 chars
+    ]
+    found_pii = set()
+    for pattern in pii_patterns:
+        matches = re.findall(pattern, filename, re.IGNORECASE)
+        for m in matches:
+            found_pii.add(m)
+    vprint(f"PII numbers found in filename: {found_pii}")
+
+    for pii in found_pii:
+        doi_from_pii = resolve_pii_to_doi(pii)
+        if doi_from_pii and doi_from_pii not in dois:
+            vprint(f"Resolved PII {pii} to DOI {doi_from_pii}")
+            dois.insert(0, doi_from_pii)  # Prefer DOI from PII
+
     if not dois:
         return None
 
