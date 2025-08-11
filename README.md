@@ -2,7 +2,7 @@
 
 ## Description ![ℹ️](https://img.shields.io/badge/-Info-informational?logo=info) ![🚀](https://img.shields.io/badge/-WIP-yellow?logo=rocket) ![🧪](https://img.shields.io/badge/-Experimental-lightgrey?logo=flask)
 
-**getscipapers** is a Python package for searching and requesting scientific papers from various sources. This project is a **work in progress** and primarily intended for **my personal use**. It is not a comprehensive solution for accessing scientific papers. Parts of the code were developed with assistance from [GitHub Copilot](https://github.com/features/copilot).
+**getscipapers** is a Python package designed for searching and requesting scientific papers from multiple sources. This project is a **work in progress** and primarily intended for **personal use**. It is not a comprehensive solution for accessing scientific papers. Portions of the code were developed with assistance from [GitHub Copilot](https://github.com/features/copilot).
 
 ## Prerequisites ![✅](https://img.shields.io/badge/-Checklist-success?logo=checkmarx) ![🛠️](https://img.shields.io/badge/-Tools-blue?logo=tools) ![🔑](https://img.shields.io/badge/-Keys-orange?logo=keybase)
 
@@ -55,7 +55,7 @@ find . -type f -name "*.pyc" -delete
 
 ## Usage ![📖](https://img.shields.io/badge/-Usage-blue?logo=read-the-docs) ![💻](https://img.shields.io/badge/-CLI-black?logo=gnubash) ![🔍](https://img.shields.io/badge/-Search-orange?logo=search)
 
-If you want to use the Nexus Search database, start the IPFS daemon (if this is the first time running IPFS daemon, run `ipfs init` first) in one terminal:
+To use the Nexus Search database, start the IPFS daemon (if this is your first time, run `ipfs init` first) in one terminal:
 
 ```bash
 ipfs daemon
@@ -69,23 +69,23 @@ getscipapers --help
 
 # Running getscipapers in GitHub Codespace ![💻](https://img.shields.io/badge/GitHub-Codespaces-blue?logo=github) ![☁️](https://img.shields.io/badge/Cloud-Dev-blue?logo=cloud) ![⚡](https://img.shields.io/badge/-Fast-lightgrey?logo=zap)
 
-The fastest way to run `getscipapers` is to use the GitHub Codespaces feature. This allows you to run the tool in a preconfigured environment without needing to set up anything locally. To use it, follow these steps:
+The fastest way to run `getscipapers` is via GitHub Codespaces. This provides a preconfigured environment, eliminating local setup. To use it:
 
 1. ![🍴](https://img.shields.io/badge/-Fork-black?logo=github) Fork the repository to your GitHub account.
-2. ![🔐](https://img.shields.io/badge/-Secrets-yellow?logo=github) (Optional) Set up codespace secrets for your API keys and other configurations. You can look at the [.devcontainer/set-secrets.sh](.devcontainer/set-secrets.sh) file to see what I did to set up the secrets using [GitHub CLI](https://cli.github.com/).
-3. ![💻](https://img.shields.io/badge/-Codespace-blue?logo=github) Create a new codespace from your forked repository. This will automatically set up the environment with all dependencies installed. You can also use [GitHub CLI](https://cli.github.com/) to create a codespace using (for example) the following command:
+2. ![🔐](https://img.shields.io/badge/-Secrets-yellow?logo=github) (Optional) Set up codespace secrets for your API keys and configurations. See [.devcontainer/set-secrets.sh](.devcontainer/set-secrets.sh) for an example using [GitHub CLI](https://cli.github.com/).
+3. ![💻](https://img.shields.io/badge/-Codespace-blue?logo=github) Create a new codespace from your forked repository. This will automatically set up the environment with all dependencies installed. You can also use [GitHub CLI](https://cli.github.com/) to create a codespace, for example:
 
    ```bash
    gh codespace create --repo hoanganhduc/getscipapers --branch master --machine basicLinux32gb
    ```
-   ![ℹ️](https://img.shields.io/badge/-Info-informational?logo=info) For your information, the `basicLinux32gb` machine type allows you to run with 2 cores, 8GB RAM, and 32GB storage. More information about machine types can be found in the [GitHub Codespaces documentation](https://docs.github.com/en/codespaces/developing-in-a-codespace/creating-a-codespace-for-a-repository). Some other machine types you may use are `standardLinux32gb`, `premiumLinux`, and `largePremiumLinux`.
-4. ![💻](https://img.shields.io/badge/-Terminal-black?logo=gnubash) Once the codespace is ready, you can open a terminal in the codespace and run `getscipapers` commands directly.
+   ![ℹ️](https://img.shields.io/badge/-Info-informational?logo=info) The `basicLinux32gb` machine type provides 2 cores, 8GB RAM, and 32GB storage. See [GitHub Codespaces documentation](https://docs.github.com/en/codespaces/developing-in-a-codespace/creating-a-codespace-for-a-repository) for more machine types such as `standardLinux32gb`, `premiumLinux`, and `largePremiumLinux`.
+4. ![💻](https://img.shields.io/badge/-Terminal-black?logo=gnubash) Once the codespace is ready, open a terminal and run `getscipapers` commands directly.
 
 # Docker Container for Running getscipapers ![🐳](https://img.shields.io/badge/-Docker-blue?logo=docker) ![📦](https://img.shields.io/badge/-Container-green?logo=docker) ![🔒](https://img.shields.io/badge/-Isolated-lightgrey?logo=lock)
 
 ## Overview ![ℹ️](https://img.shields.io/badge/-Overview-informational?logo=info) ![📄](https://img.shields.io/badge/-Docs-lightgrey?logo=read-the-docs)
 
-This guide explains how to use the `getscipapers` tool inside a Docker container. The container includes all necessary dependencies, so you can start downloading scientific papers immediately—no manual setup required.
+This guide explains how to use `getscipapers` inside a Docker container. The container includes all dependencies, so you can start downloading scientific papers immediately—no manual setup required.
 
 ## Quick Start ![⚡](https://img.shields.io/badge/-Quick%20Start-yellow?logo=zap) ![🚀](https://img.shields.io/badge/-Start-blue?logo=rocket)
 
@@ -98,11 +98,11 @@ docker pull ghcr.io/hoanganhduc/getscipapers:latest
 docker run -it --rm -v $(pwd):/workspace ghcr.io/hoanganhduc/getscipapers:latest
 ```
 
-This mounts your current directory to `/workspace` inside the container, so you can easily access your files.
+This mounts your current directory to `/workspace` inside the container for easy file access.
 
 ### 2. Build and Run Locally ![🏗️](https://img.shields.io/badge/-Build-blue?logo=docker) ![🛠️](https://img.shields.io/badge/-Local-green?logo=homeassistant)
 
-If you want to build the image yourself:
+To build the image yourself:
 
 ```bash
 docker build -t getscipapers .
@@ -111,7 +111,7 @@ docker run -it --rm -v $(pwd):/workspace getscipapers
 
 ### 3. Run in Detached Mode with Persistent Storage ![💾](https://img.shields.io/badge/-Persistent%20Storage-green?logo=storage) ![🔄](https://img.shields.io/badge/-Detached-blue?logo=autorenew)
 
-To keep the container running in the background and ensure your downloads and configuration persist:
+To keep the container running in the background and ensure downloads and configuration persist:
 
 ```bash
 docker run -d \
@@ -122,7 +122,7 @@ docker run -d \
     ghcr.io/hoanganhduc/getscipapers:latest
 ```
 
-This setup saves downloaded papers and settings to your host machine. You can change the folder paths as needed.
+This setup saves downloaded papers and settings to your host machine. Adjust folder paths as needed.
 
 ## Optional: Integrate with IPFS ![🧊](https://img.shields.io/badge/IPFS-Kubo-green?logo=ipfs) ![🔗](https://img.shields.io/badge/-Integration-blue?logo=link)
 
@@ -148,11 +148,11 @@ docker run -d \
     ipfs/kubo:latest
 ```
 
-This starts the IPFS daemon with persistent storage and the required ports. You can change the folder paths as needed.
+This starts the IPFS daemon with persistent storage and required ports. Adjust folder paths as needed.
 
 ## Running getscipapers Commands ![💻](https://img.shields.io/badge/-CLI-black?logo=gnubash) ![⚙️](https://img.shields.io/badge/-Exec-blue?logo=terminal)
 
-To run `getscipapers` inside the container, use:
+To run `getscipapers` inside the container:
 
 ```bash
 docker exec -it getscipapers-container getscipapers --help
@@ -225,7 +225,12 @@ This setup allows you to use **getscipapers** in an isolated environment, keepin
 
 ## Remarks ![⚠️](https://img.shields.io/badge/-Remarks-yellow?logo=exclamation) ![☢️](https://img.shields.io/badge/-Caution-red?logo=alert) ![📝](https://img.shields.io/badge/-Note-lightgrey?logo=note)
 
-* This package is a **work in progress** and thus **may not function as expected**.
-* Searching by `StcGeck` takes long time. In general, I tend to avoid it. But the corresponding function may be useful in some cases.
-* Many features in the `ablesci`, `scinet`, `libgen`, and `facebook` modules rely on Selenium and may break if the target websites change. In particular, some features in the `facebook` module may work on the local PC but fail in GitHub Codespace and probably Docker container too. (I have not yet tested in a Docker container.) Also, uploading to `libgen` may fail. (If it does, retrying may fix the issue.)
+
+* This package is a **work in progress** and may not always function as expected.
+* Searching with `StcGeck` is slow and generally best avoided, though it may be useful in specific scenarios.
+* Many features in the `ablesci`, `scinet`, `libgen`, and `facebook` modules rely on Selenium and may break if target websites change.
+  * Some features in the `facebook` module may work locally but fail in GitHub Codespace or Docker containers (Docker not yet tested). Logging in from Codespace may trigger Facebook verification due to unfamiliar IP addresses. To resolve this, run the Facebook login for the first time with the `--no-headless` option and use your browser via noVNC to verify your login. Subsequent logins should work without issues. The noVNC access address will look like `https://<your github codespace machine name>-6080.app.github.dev`.
+  * Uploading to `libgen` may occasionally fail; retrying often resolves the issue.
 * The `nexus` module may not work reliably when using a proxy. Issues such as `307 Temporary Redirect` errors may occur, and downloads may fail if the Nexus Search server or Telegram bot is unavailable.
+* The first time you log in to Telegram (for using Nexus Search bots), you may be required to enter a verification code and password.
+
