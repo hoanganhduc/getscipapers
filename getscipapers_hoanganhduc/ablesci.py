@@ -1860,15 +1860,15 @@ def interactive_reject_fulfilled_requests(headless=True):
     # Ask for rejection reason
     print("\nCommon rejection reasons:")
     reasons_list = [
-        "1. 文件不完整 (File incomplete)",
-        "2. 缺页 (Missing pages)",
-        "3. 标题错误 (Wrong title)",
-        "4. DOI错误 (Wrong DOI)",
-        "5. 不是PDF版 (Not PDF version)",
-        "6. 版本错误 (Wrong version)"
+        "文件不完整 (File incomplete)",
+        "缺页 (Missing pages)",
+        "标题错误 (Wrong title)",
+        "DOI错误 (Wrong DOI)",
+        "不是PDF版 (Not PDF version)",
+        "版本错误 (Wrong version)"
     ]
-    for r in reasons_list:
-        print(r)
+    for i, r in enumerate(reasons_list, 1):
+        print(f"{i}. {r}")
 
     reason_input = input_with_timeout("Enter rejection reason (number or custom, press Enter for default '版本错误'): ", 30)
     if reason_input is None:
@@ -1879,15 +1879,14 @@ def interactive_reject_fulfilled_requests(headless=True):
         if reason_input.isdigit():
             idx = int(reason_input)
             if 1 <= idx <= len(reasons_list):
-                # Extract the Chinese part from the selected reason
-                chinese_part = re.sub(r'^\d+\.\s*', '', reasons_list[idx-1])
-                chinese_part = re.sub(r'\s*\(.*?\)', '', chinese_part)
-                reason = chinese_part.strip()
+                # Use only the Chinese part before the first space or parenthesis
+                chinese_part = reasons_list[idx - 1].split('(')[0].strip()
+                reason = chinese_part
             else:
                 reason = reason_input or "版本错误"
         else:
             reason = reason_input or "版本错误"
-    
+
     print(f"\nUsing rejection reason: {reason}")
 
     for idx in sorted(indices):

@@ -83,10 +83,19 @@ def request_dois(dois, verbose=False, service=None):
                 svc_results = {doi: {"error": str(e)} for doi in dois}
         elif svc == "facebook":
             try:
-                response = facebook.request_multiple_dois(dois)
+                response_list = facebook.request_multiple_dois(dois)
                 if verbose:
                     print("📨 Posted DOIs to Facebook for help.")
-                svc_results = {doi: response.get(doi, {"error": "No response or not found"}) for doi in dois}
+                # Convert list of results to a dict mapping DOI to result
+                response_dict = {}
+                for item in response_list:
+                    doi = item.get('doi')
+                    if item.get('success'):
+                        response_dict[doi] = {"success": True}
+                    else:
+                        response_dict[doi] = {"error": item.get('error', 'Unknown error')}
+                # Ensure all DOIs are present in the result
+                svc_results = {doi: response_dict.get(doi, {"error": "No response or not found"}) for doi in dois}
             except Exception as e:
                 if verbose:
                     print(f"❌ Failed to post DOIs to Facebook: {e}")
