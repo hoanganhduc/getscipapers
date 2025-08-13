@@ -1,5 +1,14 @@
-
 # getscipapers
+
+<div align="center">
+  <a href="https://www.buymeacoffee.com/hoanganhduc" target="_blank" rel="noopener noreferrer">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="40" style="margin-right: 10px;" />
+  </a>
+  <a href="https://ko-fi.com/hoanganhduc" target="_blank" rel="noopener noreferrer">
+    <img src="https://storage.ko-fi.com/cdn/kofi3.png?v=3" alt="Ko-fi" height="40" />
+  </a>
+</div>
+
 
 
 ![Version](https://img.shields.io/github/v/release/hoanganhduc/getscipapers?label=version) ![Pre-release](https://img.shields.io/github/v/tag/hoanganhduc/getscipapers?label=pre-release&sort=semver) ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python) ![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker) ![GitHub](https://img.shields.io/badge/GitHub-Repo-black?logo=github) ![Status](https://img.shields.io/badge/status-work--in--progress-yellow) ![License](https://img.shields.io/github/license/hoanganhduc/getscipapers) ![Papers](https://img.shields.io/badge/Papers-Search-orange?logo=read-the-docs) ![Cloud](https://img.shields.io/badge/Cloud-Ready-blue?logo=cloud)
@@ -291,10 +300,10 @@ This setup allows you to use **getscipapers** in an isolated environment, keepin
 ![Remarks](https://img.shields.io/badge/-Remarks-yellow?logo=exclamation) ![Caution](https://img.shields.io/badge/-Caution-red?logo=alert) ![Note](https://img.shields.io/badge/-Note-lightgrey?logo=note)
 
 * This package is a **work in progress** and **may not always function as expected**.
-* Searching with `StcGeck` is slow and generally best avoided, though it may be useful in specific scenarios. (If you do not want to use `StcGeck`, neither start IPFS Desktop App nor run `ipfs daemon`. The script will return errors and `StcGeck` is not used.)
-* Many features in the `ablesci`, `scinet`, `libgen`, and `facebook` modules rely on Selenium and may break if target websites change.
-  * Some features in the `facebook` module may work locally but fail in GitHub Codespace or Docker containers (Docker not yet tested). Logging in from Codespace may trigger Facebook verification due to unfamiliar IP addresses. To resolve this, run the Facebook login for the first time with the `--no-headless` option and use your browser via noVNC to verify your login. Subsequent logins should work without issues. The noVNC access address will look like `https://<your github codespace machine name>-6080.app.github.dev`.
-  * Uploading to `libgen` may occasionally fail; retrying often resolves the issue.
+* The code is not yet fully clean or easy to follow.
+* Searching with `StcGeck` is slow and generally best avoided, except in specific scenarios (such as when the Nexus bot is maintained). If you do not wish to use `StcGeck`, do not start the IPFS Desktop App or run `ipfs daemon`. In this case, the script will return errors, but `StcGeck` will not be used.
+* Many features in the `ablesci`, `scinet`, `libgen`, `wosonhj`, and `facebook` modules depend on Selenium and may break if the target websites change.
+  * Some features in the `facebook` module may work locally but fail in GitHub Codespace or Docker containers (Docker not yet tested). Logging in from Codespace may trigger Facebook verification due to unfamiliar IP addresses. To resolve this, run the Facebook login for the first time with the `--no-headless` option and use your browser via noVNC to verify your login. Subsequent logins should work without issues. The noVNC access address will look like `https://<your-github-codespace-machine-name>-6080.app.github.dev`.
+  * Uploading to `libgen` may occasionally fail; retrying usually resolves the issue.
 * The `nexus` module may not work reliably when using a proxy. Issues such as `307 Temporary Redirect` errors may occur, and downloads may fail if the Nexus Search server or Telegram bot is unavailable.
 * The first time you log in to Telegram (for using Nexus Search bots), you may be required to enter a verification code and password.
-
