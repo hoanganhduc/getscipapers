@@ -3,6 +3,7 @@ import os
 import re
 import tempfile
 import shutil
+import glob
 import fitz  # PyMuPDF
 
 def parse_page_range(page_range_str, num_pages):
@@ -434,31 +435,58 @@ def remove_watermark_inplace(input_pdf, verbose=False, page_range=None):
 
     shutil.move(temp_output, input_pdf)
 
+def collect_pdf_files(input_arg):
+    # If it's a directory, recursively find all PDFs
+    if os.path.isdir(input_arg):
+        pdfs = []
+        for root, _, files in os.walk(input_arg):
+            for f in files:
+                if f.lower().endswith('.pdf'):
+                    pdfs.append(os.path.join(root, f))
+        return pdfs
+    # If it's a file, just return it
+    elif os.path.isfile(input_arg) and input_arg.lower().endswith('.pdf'):
+        return [input_arg]
+    # If it's a list (comma or space separated), split and collect
+    else:
+        # Try comma or space split
+        parts = re.split(r'[,\s]+', input_arg.strip())
+        pdfs = []
+        for part in parts:
+            if not part:
+                continue
+            if os.path.isdir(part):
+                pdfs.extend(collect_pdf_files(part))
+            elif os.path.isfile(part) and part.lower().endswith('.pdf'):
+                pdfs.append(part)
+        return pdfs
+
 def main():
-    # Get the parent package name from the module's __name__
     parent_package = __name__.split('.')[0] if '.' in __name__ else None
 
     if parent_package is None:
         program_name = 'remove_metadata'
     elif '_' in parent_package:
-        # If the parent package has an underscore, strip it
         parent_package = parent_package[:parent_package.index('_')]
         program_name = f"{parent_package} remove_metadata"
 
     parser = argparse.ArgumentParser(
         prog=program_name,
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Remove metadata and watermarks from PDF while preserving clickable URLs and selectable text.",
+        description="Remove metadata and watermarks from PDF(s) while preserving clickable URLs and selectable text.",
         epilog="""
 Examples:
   %(prog)s input.pdf
+  %(prog)s input1.pdf,input2.pdf
+  %(prog)s input1.pdf input2.pdf
+  %(prog)s folder_with_pdfs/
   %(prog)s input.pdf --inplace
-  %(prog)s input.pdf -v -p "1-3,5,7-9"
+  %(prog)s folder_with_pdfs/ -v -p "1-3,5,7-9"
 """
     )
-    parser.add_argument("input_pdf", help="Input PDF file")
+    parser.add_argument("input_pdf", help="Input PDF file, comma/space-separated list, or folder")
     parser.add_argument(
-        "-i", "--inplace", action="store_true", help="Overwrite the input PDF file"
+        "-i", "--inplace", action="store_true", help="Overwrite the input PDF file(s)"
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Print progress details"
@@ -467,42 +495,47 @@ Examples:
         "-p", "--watermark-pages", type=str, default=None,
         help="Page range to remove watermarks, e.g. '1-3,5,7-9' (1-based)"
     )
-    args = parser.parse_args()
+    args, extra = parser.parse_known_args()
 
-    print(f"Processing file: {args.input_pdf}")
+    # Support space-separated files as extra arguments
+    input_args = [args.input_pdf] + extra
+    pdf_files = []
+    for arg in input_args:
+        pdf_files.extend(collect_pdf_files(arg))
 
-    try:
-        # Create a temporary file for output
-        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
-            temp_output = tmp_file.name
+    if not pdf_files:
+        print("No PDF files found to process.")
+        return
 
-        # Always remove watermarks (option --remove-watermark is ignored)
-        remove_watermark(
-            args.input_pdf,
-            temp_output,
-            verbose=args.verbose,
-            page_range=args.watermark_pages
-        )
+    for pdf_path in pdf_files:
+        print(f"Processing file: {pdf_path}")
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+                temp_output = tmp_file.name
 
-        if args.inplace:
-            # Replace original file with processed file
-            shutil.move(temp_output, args.input_pdf)
-            output_pdf = args.input_pdf
-        else:
-            # Create new file with _no_metadata suffix
-            base, ext = os.path.splitext(args.input_pdf)
-            output_pdf = f"{base}_no_metadata{ext}"
-            shutil.move(temp_output, output_pdf)
+            remove_watermark(
+                pdf_path,
+                temp_output,
+                verbose=args.verbose,
+                page_range=args.watermark_pages
+            )
 
-        print(f"Successfully processed PDF. Output saved to: {output_pdf}")
-    except Exception as e:
-        # Clean up temporary file if something went wrong
-        if 'temp_output' in locals():
-            try:
-                os.unlink(temp_output)
-            except:
-                pass
-        print(f"Failed to process PDF: {e}")
+            if args.inplace:
+                shutil.move(temp_output, pdf_path)
+                output_pdf = pdf_path
+            else:
+                base, ext = os.path.splitext(pdf_path)
+                output_pdf = f"{base}_no_metadata{ext}"
+                shutil.move(temp_output, output_pdf)
+
+            print(f"Successfully processed PDF. Output saved to: {output_pdf}")
+        except Exception as e:
+            if 'temp_output' in locals():
+                try:
+                    os.unlink(temp_output)
+                except:
+                    pass
+            print(f"Failed to process PDF {pdf_path}: {e}")
 
 if __name__ == "__main__":
     main()
