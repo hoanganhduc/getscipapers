@@ -735,6 +735,7 @@ def extract_isbns_from_text(text: str) -> list:
     Returns a list of (isbn, doi) tuples, preferring ISBN-13 if found, otherwise ISBN-10.
     Only includes valid ISBNs (according to Crossref) and their associated DOI(s) if available.
     If multiple DOIs are found for an ISBN, tries to extract the common DOI prefix (e.g., <common doi>.ch001, <common doi>.ch002).
+    If the common prefix is not a valid DOI, returns None for DOI.
     Prints details with vprint.
     Only extracts ISBN-10 if no ISBN-13 is found.
     """
@@ -754,11 +755,8 @@ def extract_isbns_from_text(text: str) -> list:
         """
         if not dois:
             return None
-        # Split DOIs at the last dot (.) or .ch or .[0-9]+
-        # Find the longest common prefix
         split_dois = [re.split(r'(\.ch\d+|\.\d+)$', d)[0] for d in dois]
         prefix = os.path.commonprefix(split_dois)
-        # Remove trailing dot if present
         if prefix.endswith('.'):
             prefix = prefix[:-1]
         return prefix if prefix else None
@@ -797,11 +795,15 @@ def extract_isbns_from_text(text: str) -> list:
                             vprint(f"Found DOI {dois[0]} for ISBN-13 {isbn}")
                             results.append((isbn, dois[0]))
                         else:
-                            # Try to extract common DOI prefix
                             common_prefix = extract_common_doi_prefix(dois)
                             if common_prefix:
-                                vprint(f"Multiple DOIs found for ISBN-13 {isbn}, common prefix: {common_prefix}")
-                                results.append((isbn, common_prefix))
+                                # Check if common prefix is a valid DOI
+                                if is_valid_doi(common_prefix):
+                                    vprint(f"Multiple DOIs found for ISBN-13 {isbn}, common prefix is a valid DOI: {common_prefix}")
+                                    results.append((isbn, common_prefix))
+                                else:
+                                    vprint(f"Common prefix {common_prefix} for ISBN-13 {isbn} is not a valid DOI")
+                                    results.append((isbn, None))
                             else:
                                 vprint(f"Multiple DOIs found for ISBN-13 {isbn}, no common prefix. Returning all DOIs.")
                                 results.append((isbn, dois))
@@ -846,8 +848,12 @@ def extract_isbns_from_text(text: str) -> list:
                     else:
                         common_prefix = extract_common_doi_prefix(dois)
                         if common_prefix:
-                            vprint(f"Multiple DOIs found for ISBN-10 {isbn}, common prefix: {common_prefix}")
-                            results.append((isbn, common_prefix))
+                            if is_valid_doi(common_prefix):
+                                vprint(f"Multiple DOIs found for ISBN-10 {isbn}, common prefix is a valid DOI: {common_prefix}")
+                                results.append((isbn, common_prefix))
+                            else:
+                                vprint(f"Common prefix {common_prefix} for ISBN-10 {isbn} is not a valid DOI")
+                                results.append((isbn, None))
                         else:
                             vprint(f"Multiple DOIs found for ISBN-10 {isbn}, no common prefix. Returning all DOIs.")
                             results.append((isbn, dois))
