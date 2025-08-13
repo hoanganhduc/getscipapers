@@ -291,7 +291,7 @@ This setup allows you to use **getscipapers** in an isolated environment, keepin
 ![Remarks](https://img.shields.io/badge/-Remarks-yellow?logo=exclamation) ![Caution](https://img.shields.io/badge/-Caution-red?logo=alert) ![Note](https://img.shields.io/badge/-Note-lightgrey?logo=note)
 
 * This package is a **work in progress** and **may not always function as expected**.
-* Searching with `StcGeck` is slow and generally best avoided, though it may be useful in specific scenarios.
+* Searching with `StcGeck` is slow and generally best avoided, though it may be useful in specific scenarios. (If you do not want to use `StcGeck`, neither start IPFS Desktop App nor run `ipfs daemon`. The script will return errors and `StcGeck` is not used.)
 * Many features in the `ablesci`, `scinet`, `libgen`, and `facebook` modules rely on Selenium and may break if target websites change.
   * Some features in the `facebook` module may work locally but fail in GitHub Codespace or Docker containers (Docker not yet tested). Logging in from Codespace may trigger Facebook verification due to unfamiliar IP addresses. To resolve this, run the Facebook login for the first time with the `--no-headless` option and use your browser via noVNC to verify your login. Subsequent logins should work without issues. The noVNC access address will look like `https://<your github codespace machine name>-6080.app.github.dev`.
   * Uploading to `libgen` may occasionally fail; retrying often resolves the issue.

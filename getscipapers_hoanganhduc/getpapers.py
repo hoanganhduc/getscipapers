@@ -1289,51 +1289,51 @@ async def search_documents(query: str, limit: int = 1):
     # Try each source, collect up to limit unique DOIs
     collected = {}
 
-    # # 1. StcGeck
-    # print(f"{ICON_STEP} {ICON_SOURCE['stcgeck']} Searching with StcGeck...")
-    # try:
-    #     vprint("Trying StcGeck search...")
-    #     geck = StcGeck(
-    #         ipfs_http_base_url="http://127.0.0.1:8080",
-    #         timeout=300,
-    #     )
-    #     try:
-    #         await geck.start()
-    #         summa_client = geck.get_summa_client()
-    #         if query.lower().startswith("10."):
-    #             search_query = {"term": {"field": "uris", "value": f"doi:{query}"}}
-    #             vprint(f"StcGeck: Searching by DOI: {query}")
-    #         else:
-    #             search_query = {"match": {"value": f"{query}"}}
-    #             vprint(f"StcGeck: Searching by keyword: {query}")
+    # 1. StcGeck
+    print(f"{ICON_STEP} {ICON_SOURCE['stcgeck']} Searching with StcGeck...")
+    try:
+        vprint("Trying StcGeck search...")
+        geck = StcGeck(
+            ipfs_http_base_url="http://127.0.0.1:8080",
+            timeout=300,
+        )
+        try:
+            await geck.start()
+            summa_client = geck.get_summa_client()
+            if query.lower().startswith("10."):
+                search_query = {"term": {"field": "uris", "value": f"doi:{query}"}}
+                vprint(f"StcGeck: Searching by DOI: {query}")
+            else:
+                search_query = {"match": {"value": f"{query}"}}
+                vprint(f"StcGeck: Searching by keyword: {query}")
 
-    #         search_response = await summa_client.search(
-    #             {
-    #                 "index_alias": "stc",
-    #                 "query": search_query,
-    #                 "collectors": [{"top_docs": {"limit": limit}}],
-    #                 "is_fieldnorms_scoring_enabled": False,
-    #             }
-    #         )
-    #         stc_results = search_response.collector_outputs[0].documents.scored_documents
-    #         print(f"{ICON_SUCCESS} StcGeck returned {len(stc_results)} results.")
-    #         for scored in stc_results:
-    #             doc = json.loads(scored.document)
-    #             doi = None
-    #             for uri in doc.get('uris', []):
-    #                 if uri.startswith('doi:'):
-    #                     doi = uri[4:]
-    #                     break
-    #             key = doi or doc.get('id') or doc.get('title')
-    #             if key and key not in collected:
-    #                 base = empty_doc()
-    #                 merge_doc(base, doc)
-    #                 collected[key] = base
-    #     finally:
-    #         await geck.stop()
-    # except Exception as e:
-    #     print(f"{ICON_ERROR} StcGeck failed")
-    #     vprint(f"StcGeck failed: {e}")
+            search_response = await summa_client.search(
+                {
+                    "index_alias": "stc",
+                    "query": search_query,
+                    "collectors": [{"top_docs": {"limit": limit}}],
+                    "is_fieldnorms_scoring_enabled": False,
+                }
+            )
+            stc_results = search_response.collector_outputs[0].documents.scored_documents
+            print(f"{ICON_SUCCESS} StcGeck returned {len(stc_results)} results.")
+            for scored in stc_results:
+                doc = json.loads(scored.document)
+                doi = None
+                for uri in doc.get('uris', []):
+                    if uri.startswith('doi:'):
+                        doi = uri[4:]
+                        break
+                key = doi or doc.get('id') or doc.get('title')
+                if key and key not in collected:
+                    base = empty_doc()
+                    merge_doc(base, doc)
+                    collected[key] = base
+        finally:
+            await geck.stop()
+    except Exception as e:
+        print(f"{ICON_ERROR} StcGeck failed")
+        vprint(f"StcGeck failed: {e}")
 
     # 2. Nexus bot
     print(f"{ICON_STEP} {ICON_SOURCE['nexus']} Searching with Nexus bot...")
