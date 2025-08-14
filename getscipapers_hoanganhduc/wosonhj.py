@@ -1538,6 +1538,22 @@ def request_by_doi(doi, headless=True):
         error_print("Failed to open new request page.")
         return False
 
+    def truncate_title_to_80_bytes(title):
+        # Truncate the title so its UTF-8 encoded length is <= 80 bytes
+        encoded = title.encode("utf-8")
+        if len(encoded) <= 80:
+            return title
+        # Truncate character by character
+        result = ""
+        total = 0
+        for ch in title:
+            ch_bytes = ch.encode("utf-8")
+            if total + len(ch_bytes) > 80:
+                break
+            result += ch
+            total += len(ch_bytes)
+        return result
+
     try:
         time.sleep(3)
         filled = False
@@ -1549,6 +1565,10 @@ def request_by_doi(doi, headless=True):
                 debug_print("No article title available, skipping normal filling and using fallback.")
                 filled = False
                 raise Exception("No article title, fallback to quick search")
+            # Truncate title to 80 bytes
+            truncated_title = truncate_title_to_80_bytes(article_title)
+            if truncated_title != article_title:
+                warning_print(f"Article title exceeds 80 bytes, truncated to: {truncated_title}")
             # Select article type radio (name="doi_type", value=article_type)
             article_type_radios = driver.find_elements(By.NAME, "doi_type")
             debug_print(f"Found {len(article_type_radios)} article type radios")
@@ -1584,7 +1604,7 @@ def request_by_doi(doi, headless=True):
             if title_input:
                 driver.execute_script("arguments[0].scrollIntoView(true);", title_input)
                 title_input.clear()
-                title_input.send_keys(article_title)
+                title_input.send_keys(truncated_title)
                 debug_print("Filled in title input with article title")
             else:
                 warning_print("Title input not found, skipping.")
@@ -1744,7 +1764,7 @@ def request_by_doi(doi, headless=True):
         time.sleep(5)
         # After submitting, check waiting requests for a post with the same title and DOI
         try:
-            latest_req = get_latest_waiting_request(driver, article_title=article_title, doi=doi)
+            latest_req = get_latest_waiting_request(driver, article_title=truncate_title_to_80_bytes(article_title), doi=doi)
             if latest_req:
                 success_print("New request posted successfully and verified by title and DOI!")
                 driver.quit()
