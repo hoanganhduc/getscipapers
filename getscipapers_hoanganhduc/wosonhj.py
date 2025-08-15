@@ -1565,91 +1565,154 @@ def request_by_doi(doi, headless=True):
                 debug_print("No article title available, skipping normal filling and using fallback.")
                 filled = False
                 raise Exception("No article title, fallback to quick search")
-            # Truncate title to 80 bytes
-            truncated_title = truncate_title_to_80_bytes(article_title)
-            if truncated_title != article_title:
-                warning_print(f"Article title exceeds 80 bytes, truncated to: {truncated_title}")
-            # Select article type radio (name="doi_type", value=article_type)
-            article_type_radios = driver.find_elements(By.NAME, "doi_type")
-            debug_print(f"Found {len(article_type_radios)} article type radios")
-            for radio in article_type_radios:
-                if radio.get_attribute("value") == str(article_type):
-                    driver.execute_script("arguments[0].scrollIntoView(true);", radio)
-                    driver.execute_script("arguments[0].click();", radio)
-                    debug_print("Selected article type radio")
-                    break
-
-            # Fill in points
-            points_input = None
-            points_inputs = driver.find_elements(By.NAME, "rewardprice")
-            if points_inputs:
-                points_input = points_inputs[0]
-            if points_input:
-                driver.execute_script("arguments[0].scrollIntoView(true);", points_input)
-                points_input.clear()
-                points_input.send_keys(str(points))
-                debug_print("Filled in points")
+            # Try with original title first
+            title_attempts = [article_title]
+            # Only add truncated title if original title is too long
+            if len(article_title.encode("utf-8")) > 80:
+                truncated_title = truncate_title_to_80_bytes(article_title)
+                if truncated_title != article_title:
+                    title_attempts.append(truncated_title)
             else:
-                warning_print("Points input not found, skipping.")
+                truncated_title = article_title
 
-            # Fill in title
-            title_input = None
-            try:
-                title_input = driver.find_element(By.ID, "subject")
-            except Exception:
+            for title_to_use in title_attempts:
+                # Select article type radio (name="doi_type", value=article_type)
+                article_type_radios = driver.find_elements(By.NAME, "doi_type")
+                debug_print(f"Found {len(article_type_radios)} article type radios")
+                for radio in article_type_radios:
+                    if radio.get_attribute("value") == str(article_type):
+                        driver.execute_script("arguments[0].scrollIntoView(true);", radio)
+                        driver.execute_script("arguments[0].click();", radio)
+                        debug_print("Selected article type radio")
+                        break
+
+                # Fill in points
+                points_input = None
+                points_inputs = driver.find_elements(By.NAME, "rewardprice")
+                if points_inputs:
+                    points_input = points_inputs[0]
+                if points_input:
+                    driver.execute_script("arguments[0].scrollIntoView(true);", points_input)
+                    points_input.clear()
+                    points_input.send_keys(str(points))
+                    debug_print("Filled in points")
+                else:
+                    warning_print("Points input not found, skipping.")
+
+                # Fill in title
+                title_input = None
                 try:
-                    title_input = driver.find_element(By.NAME, "subject")
+                    title_input = driver.find_element(By.ID, "subject")
                 except Exception:
-                    pass
-            if title_input:
-                driver.execute_script("arguments[0].scrollIntoView(true);", title_input)
-                title_input.clear()
-                title_input.send_keys(truncated_title)
-                debug_print("Filled in title input with article title")
-            else:
-                warning_print("Title input not found, skipping.")
+                    try:
+                        title_input = driver.find_element(By.NAME, "subject")
+                    except Exception:
+                        pass
+                if title_input:
+                    driver.execute_script("arguments[0].scrollIntoView(true);", title_input)
+                    title_input.clear()
+                    title_input.send_keys(title_to_use)
+                    debug_print(f"Filled in title input with: {title_to_use}")
+                else:
+                    warning_print("Title input not found, skipping.")
 
-            # Format description in HTML for Discuz editor
-            req_desc_html = (
-                f"<b>Journal:</b> {journal}<br>"
-                f"<b>Authors:</b> {authors}<br>"
-                f"<b>Published date:</b> {published_date}<br>"
-                f"<b>DOI:</b> <a href='https://doi.org/{doi}' target='_blank'>{doi}</a><br>"
-                f"<b>PDF link:</b> <a href='{pdf_link}' target='_blank'>{pdf_link}</a><br>"
-                f"<b>Article link:</b> <a href='{article_link}' target='_blank'>{article_link}</a><br>"
-                f"<b>Publisher:</b> {publisher_text}<br>"
-            )
+                # Format description in HTML for Discuz editor
+                req_desc_html = (
+                    f"<b>Journal:</b> {journal}<br>"
+                    f"<b>Authors:</b> {authors}<br>"
+                    f"<b>Published date:</b> {published_date}<br>"
+                    f"<b>DOI:</b> <a href='https://doi.org/{doi}' target='_blank'>{doi}</a><br>"
+                    f"<b>PDF link:</b> <a href='{pdf_link}' target='_blank'>{pdf_link}</a><br>"
+                    f"<b>Article link:</b> <a href='{article_link}' target='_blank'>{article_link}</a><br>"
+                    f"<b>Publisher:</b> {publisher_text}<br>"
+                )
 
-            # Paste description into <textarea id="e_textarea">
-            textarea = driver.find_element(By.ID, "e_textarea")
-            driver.execute_script("""
-            try {
-                if (typeof writeEditorContents === 'function') {
-                    writeEditorContents(arguments[0]);
-                } else {
+                # Paste description into <textarea id="e_textarea">
+                textarea = driver.find_element(By.ID, "e_textarea")
+                driver.execute_script("""
+                try {
+                    if (typeof writeEditorContents === 'function') {
+                        writeEditorContents(arguments[0]);
+                    } else {
+                        arguments[1].value = arguments[0];
+                    }
+                } catch (e) {
                     arguments[1].value = arguments[0];
                 }
-            } catch (e) {
-                arguments[1].value = arguments[0];
-            }
-            """, req_desc_html, textarea)
-            debug_print("Filled in description textarea using Discuz editor API")
+                """, req_desc_html, textarea)
+                debug_print("Filled in description textarea using Discuz editor API")
 
-            # Save after pasting
-            try:
-                driver.execute_script("""
-                if (typeof saveEditorContents === 'function') {
-                    saveEditorContents();
-                } else {
-                    var evt = new Event('change', { bubbles: true });
-                    arguments[0].dispatchEvent(evt);
-                }
-                """, textarea)
-                debug_print("Triggered save after pasting description.")
-            except Exception as e2:
-                debug_print(f"Failed to trigger save after pasting: {e2}")
+                # Save after pasting
+                try:
+                    driver.execute_script("""
+                    if (typeof saveEditorContents === 'function') {
+                        saveEditorContents();
+                    } else {
+                        var evt = new Event('change', { bubbles: true });
+                        arguments[0].dispatchEvent(evt);
+                    }
+                    """, textarea)
+                    debug_print("Triggered save after pasting description.")
+                except Exception as e2:
+                    debug_print(f"Failed to trigger save after pasting: {e2}")
 
-            filled = True
+                # Click "New Reward" button (button[type='submit'], text contains "New Reward" or "Quick Search" or "发布")
+                try:
+                    buttons = driver.find_elements(By.CSS_SELECTOR, "button[type='submit']")
+                    clicked = False
+                    for btn in buttons:
+                        btn_text = btn.text.strip().lower()
+                        if "new reward" in btn_text or "新悬赏" in btn_text or "发布" in btn_text:
+                            driver.execute_script("arguments[0].click();", btn)
+                            clicked = True
+                            debug_print("Clicked New Reward button")
+                            break
+                    if not clicked:
+                        # Try fallback submit button
+                        try:
+                            submit_btn = driver.find_element(By.ID, "postsubmit")
+                            submit_btn.click()
+                            debug_print("Clicked fallback submit button")
+                        except Exception:
+                            pass
+                except Exception as e:
+                    debug_print(f"Exception clicking submit button: {e}")
+                    try:
+                        submit_btn = driver.find_element(By.ID, "postsubmit")
+                        submit_btn.click()
+                        debug_print("Clicked fallback submit button in exception")
+                    except Exception as e2:
+                        error_print("Failed to locate and click submit button.")
+                        debug_print(f"Exception details: {e2}")
+                        driver.quit()
+                        return False
+
+                info_print("Submitted new request, waiting for response...")
+
+                time.sleep(5)
+                # After submitting, check waiting requests for a post with the same title and DOI
+                try:
+                    latest_req = get_latest_waiting_request(driver, article_title=title_to_use, doi=doi)
+                    if latest_req:
+                        success_print("New request posted successfully and verified by title and DOI!")
+                        driver.quit()
+                        return True
+                    else:
+                        warning_print(f"Could not verify new request by title '{title_to_use}' and DOI in waiting requests.")
+                        # If this was the first attempt (original title), try truncated title if available
+                        if title_to_use == article_title and len(title_attempts) > 1:
+                            debug_print("Trying with truncated title due to verification failure.")
+                            continue
+                        else:
+                            driver.quit()
+                            return False
+                except Exception as e:
+                    error_print(f"Failed to verify new request after posting: {e}")
+                    driver.quit()
+                    return False
+
+            # If we reach here, all title attempts failed
+            filled = False
         except Exception as e:
             debug_print(f"Normal filling failed: {e}")
 
@@ -1764,15 +1827,21 @@ def request_by_doi(doi, headless=True):
         time.sleep(5)
         # After submitting, check waiting requests for a post with the same title and DOI
         try:
-            latest_req = get_latest_waiting_request(driver, article_title=truncate_title_to_80_bytes(article_title), doi=doi)
-            if latest_req:
-                success_print("New request posted successfully and verified by title and DOI!")
-                driver.quit()
-                return True
-            else:
-                warning_print("Could not verify new request by title and DOI in waiting requests.")
-                driver.quit()
-                return False
+            # Try with original title first, then truncated if needed
+            title_attempts = [article_title]
+            if len(article_title.encode("utf-8")) > 80:
+                truncated_title = truncate_title_to_80_bytes(article_title)
+                if truncated_title != article_title:
+                    title_attempts.append(truncated_title)
+            for title_to_use in title_attempts:
+                latest_req = get_latest_waiting_request(driver, article_title=title_to_use, doi=doi)
+                if latest_req:
+                    success_print("New request posted successfully and verified by title and DOI!")
+                    driver.quit()
+                    return True
+            warning_print("Could not verify new request by title and DOI in waiting requests.")
+            driver.quit()
+            return False
         except Exception as e:
             error_print(f"Failed to verify new request after posting: {e}")
             driver.quit()
