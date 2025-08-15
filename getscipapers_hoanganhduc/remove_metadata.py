@@ -140,12 +140,13 @@ def remove_repeated_text(input_pdf, output_pdf, verbose=False, page_range=None, 
         page = doc[i]
         
         # Extract potential repeating text (longer than min_length)
-        words = page.get_text("words")
         for line in page.get_text().split('\n'):
             line = line.strip()
             if len(line) >= min_length:
                 # Find position of this line
                 rects = page.search_for(line)
+                if rects is None:
+                    continue
                 for rect in rects:
                     # Create position key (rounded to handle small differences)
                     position_key = (
@@ -325,6 +326,8 @@ def remove_watermark(input_pdf, output_pdf, watermark_patterns=None, verbose=Fal
     with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_img_file:
         tmp_img_pdf = tmp_img_file.name
 
+    if verbose:
+        print("Step 1: Removing repeated images (possible image watermarks)...")
     remove_repeated_images(
         input_pdf,
         tmp_img_pdf,
@@ -336,6 +339,8 @@ def remove_watermark(input_pdf, output_pdf, watermark_patterns=None, verbose=Fal
     with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_text_file:
         tmp_text_pdf = tmp_text_file.name
 
+    if verbose:
+        print("Step 2: Removing repeated text (possible header/footer watermarks)...")
     remove_repeated_text(
         tmp_img_pdf,
         tmp_text_pdf,
@@ -346,8 +351,11 @@ def remove_watermark(input_pdf, output_pdf, watermark_patterns=None, verbose=Fal
     # Clean up the first temporary file
     try:
         os.unlink(tmp_img_pdf)
-    except Exception:
-        pass
+        if verbose:
+            print(f"Deleted temporary file: {tmp_img_pdf}")
+    except Exception as e:
+        if verbose:
+            print(f"Could not delete temporary file {tmp_img_pdf}: {e}")
 
     # Use the new temporary file for the next steps
     tmp_img_pdf = tmp_text_pdf
@@ -360,61 +368,81 @@ def remove_watermark(input_pdf, output_pdf, watermark_patterns=None, verbose=Fal
         if verbose:
             print(f"Processing only pages: {sorted([p+1 for p in pages_to_process])}")
 
+    total_watermarks_found = 0
+    total_watermarks_redacted = 0
+
     for i in range(num_pages):
         if i not in pages_to_process:
             continue
         page = doc[i]
         if verbose:
-            print(f"Processing page {i+1}/{num_pages}")
-        
+            print(f"Step 3: Processing page {i+1}/{num_pages}")
+
         # Extract text
         text = page.get_text()
-        
+
         # Search for watermark patterns
-        for pattern in watermark_patterns:
-            for match in pattern.finditer(text):
+        for pattern_idx, pattern in enumerate(watermark_patterns):
+            matches = list(pattern.finditer(text))
+            if verbose and matches:
+                print(f"  Pattern {pattern_idx+1}/{len(watermark_patterns)}: {pattern.pattern}")
+                print(f"    Found {len(matches)} matches")
+            for match_idx, match in enumerate(matches):
                 matched_text = match.group()
-                
+                total_watermarks_found += 1
+
                 # Skip if the text contains a DOI, unless it's from specific sources we want to remove
                 if doi_pattern.search(matched_text) and not ("academic.oup.com" in matched_text or 
                                                             "aacrjournals.org" in matched_text or
                                                             "onlinelibrary.wiley.com" in matched_text):
                     if verbose:
-                        print(f"Skipping watermark containing DOI: {matched_text}")
+                        print(f"    Skipping watermark containing DOI: {matched_text[:80]}{'...' if len(matched_text)>80 else ''}")
                     continue
-                
+
                 if verbose:
-                    print(f"Found watermark: {matched_text}")
-                
+                    print(f"    Watermark match {match_idx+1}: {matched_text[:80]}{'...' if len(matched_text)>80 else ''}")
+
                 # Search for the text on the page
                 text_instances = page.search_for(matched_text)
-                
+                if verbose:
+                    print(f"      Found {len(text_instances)} instance(s) on page for redaction.")
+
                 # To avoid white boxes, use redaction with fill=None and keep_appearance=True,
                 # which tries to preserve the background as much as possible.
-                for inst in text_instances:
+                for inst_idx, inst in enumerate(text_instances):
                     annot = page.add_redact_annot(inst)
                     annot.set_colors(stroke=None, fill=None)
                     annot.update()
-                
+                    total_watermarks_redacted += 1
+                    if verbose:
+                        print(f"        Redacted instance {inst_idx+1}: {inst}")
+
                 # Apply all redactions on the page
-                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
-    
+                if text_instances:
+                    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+                    if verbose:
+                        print(f"      Applied redactions for this match.")
+
     # Remove metadata
     if verbose:
-        print("Removing metadata...")
+        print("Step 4: Removing metadata...")
     doc.set_metadata({})
-    
+
     if verbose:
-        print(f"Writing output PDF: {output_pdf}")
-    
+        print(f"Step 5: Writing output PDF: {output_pdf}")
+        print(f"Summary: {total_watermarks_found} watermark(s) found, {total_watermarks_redacted} instance(s) redacted.")
+
     doc.save(output_pdf)
     doc.close()
 
     # Clean up temporary file
     try:
         os.unlink(tmp_img_pdf)
-    except Exception:
-        pass
+        if verbose:
+            print(f"Deleted temporary file: {tmp_img_pdf}")
+    except Exception as e:
+        if verbose:
+            print(f"Could not delete temporary file {tmp_img_pdf}: {e}")
 
     if verbose:
         print("Done.")
