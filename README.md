@@ -7,6 +7,9 @@
   <a href="https://ko-fi.com/hoanganhduc" target="_blank" rel="noopener noreferrer">
     <img src="https://storage.ko-fi.com/cdn/kofi3.png?v=3" alt="Ko-fi" height="40" />
   </a>
+  <a href="https://bmacc.app/tip/hoanganhduc" target="_blank" rel="noopener noreferrer">
+		<img src="https://bmacc.app/images/bmacc-logo.png" alt="Buy Me a Crypto Coffee" style="height: 40px;">
+	</a>
 </div>
 
 
