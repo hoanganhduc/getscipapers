@@ -107,118 +107,127 @@ def remove_repeated_images(input_pdf, output_pdf, verbose=False, page_range=None
 
 def remove_repeated_text(input_pdf, output_pdf, verbose=False, page_range=None, min_pages_ratio=0.9, min_occurrences=3, min_length=10, position_tolerance=5):
     """
-    Remove text patterns that appear at the same position on multiple pages (likely headers, footers, watermarks).
-    
-    Args:
-        input_pdf: Path to input PDF
-        output_pdf: Path to output PDF
-        verbose: Print progress information
-        page_range: Optional page range string (e.g. "1-5,7,9-12")
-        min_pages_ratio: Ratio of pages a text must appear on to be considered for removal
-        min_occurrences: Minimum number of occurrences across all pages
-        min_length: Minimum length of text to consider (to avoid removing short common words)
-        position_tolerance: Tolerance in points for position matching
+    Remove repeated text fragments that contain private information about the account/institute used to download a paper.
+    Only removes fragments matching known private info patterns (not all repeated text).
     """
+    # Patterns for private info (account/institute download info)
+    private_patterns = [
+        re.compile(r"Authorized\s*licensed\s*use\s*limited\s*to:.*?Restrictions\s*apply\.", re.IGNORECASE | re.DOTALL),
+        re.compile(r"Downloaded\s*on.*?from\s*IEEE\s*Xplore", re.IGNORECASE | re.DOTALL),
+        re.compile(r"Downloaded\s*from\s*.+?\s*on\s*\w+\s*\d{1,2},\s*\d{4}\s*at\s*\d{2}:\d{2}:\d{2}\s*UTC", re.IGNORECASE),
+        re.compile(r"Downloaded\s*from\s*.+?\s*on\s*\w+\s*\d{1,2},\s*\d{4}", re.IGNORECASE),
+        re.compile(r"Downloaded\s*from\s*.*", re.IGNORECASE),
+        re.compile(r"Authorized\s*licensed\s*use\s*limited\s*to:.*?downloaded.*", re.IGNORECASE | re.DOTALL),
+        re.compile(r"Licensed\s+to\s+.+?\.\s+Prepared\s+on\s+\w{3}\s+\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\w+\s+\d{4}for\s+download\s+from\s+IP\s+\d{1,3}(?:\.\d{1,3}){3}\.", re.IGNORECASE),
+        re.compile(r"Licensed\s+to\s+.+?\.\s+Prepared\s+on\s+\w{3}\s+\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\w+\s+\d{4}.*?download\s+from\s+IP\s+\d{1,3}(?:\.\d{1,3}){3}\.", re.IGNORECASE),
+        re.compile(r"Downloaded\s+via\s+[A-Z][A-Za-z\s\.'&-]+\s+on\s+\w+\s+\d{1,2},?\s+\d{4}\s+at\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:\(UTC\))?\.", re.IGNORECASE),
+        re.compile(r"Downloaded\s+via\s+[A-Z][A-Za-z\s\.'&-]+\s+on\s+\w+.*", re.IGNORECASE),
+        re.compile(r"Downloaded\s+by\s+\[\s*\"?[^\]]+\"?\s*\]\s+on\s+\[\s*[\d/]+\s*\]\.", re.IGNORECASE),
+        re.compile(
+            r"by\s+([A-Z][A-Za-z&\-\s\.']+University|[A-Z][A-Za-z&\-\s\.']+UNIVERSITY|[A-Z\s]+UNIVERSITY)\s+on\s+\d{2}/\d{2}/\d{2,4}\.\s*Re-use\s+and\s+distribution\s+is\s+strictly\s+not\s+permitted,?\s*except\s+for\s+Open\s+Access\s+articles\.?",
+            re.IGNORECASE
+        ),
+        re.compile(
+            r"by\s+([A-Z][A-Za-z&\-\s\.']+University|[A-Z][A-Za-z&\-\s\.']+UNIVERSITY|[A-Z\s]+UNIVERSITY)\s+on\s+\d{2}/\d{2}/\d{2,4}\.",
+            re.IGNORECASE
+        ),
+        re.compile(
+            r"Downloaded\s+by\s+([A-Z][A-Za-z&\-\s\.']+University|[A-Z][A-Za-z&\-\s\.']+UNIVERSITY|[A-Z\s]+UNIVERSITY)[^\.]*\.",
+            re.IGNORECASE
+        ),
+        re.compile(
+            r"Downloaded\s+for\s+([A-Z][A-Za-z&\-\s\.']+University|[A-Z][A-Za-z&\-\s\.']+UNIVERSITY|[A-Z\s]+UNIVERSITY)[^\.]*\.",
+            re.IGNORECASE
+        ),
+        re.compile(r"via\s+[A-Z][A-Za-z\s\.'&-]+\s+University\s+(?:Main\s+)?Library", re.IGNORECASE),
+        re.compile(r"via\s+[A-Z][A-Za-z\s\.'&-]+\s+College\s+(?:Main\s+)?Library", re.IGNORECASE),
+        re.compile(r"via\s+[A-Z][A-Za-z\s\.'&-]+\s+Libraries", re.IGNORECASE),
+    ]
+
     if verbose:
         print(f"Reading input PDF: {input_pdf}")
-    
+
     doc = fitz.open(input_pdf)
     num_pages = len(doc)
     pages_to_process = set(range(num_pages))
-    
+
     if page_range:
         pages_to_process = parse_page_range(page_range, num_pages)
         if verbose:
             print(f"Processing only pages: {sorted([p+1 for p in pages_to_process])}")
-    
+
     # Track text fragments by content and position
-    # Format: {text: {position_key: set(page_indices)}}
     text_positions = {}
-    
+
     # Extract text with positions from each page
     for i in pages_to_process:
         page = doc[i]
-        
-        # Extract potential repeating text (longer than min_length)
         for line in page.get_text().split('\n'):
             line = line.strip()
             if len(line) >= min_length:
-                # Find position of this line
+                # Only consider lines matching private info patterns
+                if not any(pat.search(line) for pat in private_patterns):
+                    continue
                 rects = page.search_for(line)
                 if rects is None:
                     continue
                 for rect in rects:
-                    # Create position key (rounded to handle small differences)
                     position_key = (
                         round(rect.x0 / position_tolerance) * position_tolerance,
                         round(rect.y0 / position_tolerance) * position_tolerance
                     )
-                    
                     if line not in text_positions:
                         text_positions[line] = {}
-                    
                     if position_key not in text_positions[line]:
                         text_positions[line][position_key] = set()
-                        
                     text_positions[line][position_key].add(i)
-    
+
     # Identify text that appears at the same position on multiple pages
-    repeated_fragments = {}  # {(text, position): set(pages)}
-    
+    repeated_fragments = {}
     threshold_pages = max(min_occurrences, int(len(pages_to_process) * min_pages_ratio))
-    
     for text, positions in text_positions.items():
         for pos, pages in positions.items():
             if len(pages) >= threshold_pages:
                 repeated_fragments[(text, pos)] = pages
-    
+
     if verbose:
-        print(f"Found {len(repeated_fragments)} text fragments appearing at the same position on at least {threshold_pages} pages")
+        print(f"Found {len(repeated_fragments)} private info text fragments appearing at the same position on at least {threshold_pages} pages")
         for (fragment, pos), pages in list(repeated_fragments.items())[:5]:
             truncated = fragment[:50] + ('...' if len(fragment) > 50 else '')
             print(f"- '{truncated}' at position {pos} appears on {len(pages)} pages")
-    
+
     # Remove repeated text fragments
     for i in pages_to_process:
         page = doc[i]
         redact_count = 0
-        
-        # Process each repeated fragment
         for (fragment, pos), pages in repeated_fragments.items():
             if i in pages:
-                # Search for this text on the page
                 instances = page.search_for(fragment)
-                
-                # Only redact instances that match the position (with tolerance)
                 for inst in instances:
                     instance_pos = (
                         round(inst.x0 / position_tolerance) * position_tolerance,
                         round(inst.y0 / position_tolerance) * position_tolerance
                     )
-                    
                     if instance_pos == pos:
                         annot = page.add_redact_annot(inst)
                         annot.set_colors(stroke=None, fill=(1, 1, 1))
                         annot.update()
                         redact_count += 1
-        
-        # Apply all redactions at once
         if redact_count > 0:
             page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
             if verbose:
-                print(f"Page {i+1}: Removed {redact_count} text instances")
-    
-    # Remove metadata
+                print(f"Page {i+1}: Removed {redact_count} private info text instances")
+
     if verbose:
         print("Removing metadata...")
     doc.set_metadata({})
-    
+
     if verbose:
         print(f"Writing output PDF: {output_pdf}")
-    
+
     doc.save(output_pdf)
     doc.close()
-    
+
     if verbose:
         print("Done.")
 
