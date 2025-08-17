@@ -802,8 +802,33 @@ def extract_isbns_from_text(text: str) -> list:
                                     vprint(f"Multiple DOIs found for ISBN-13 {isbn}, common prefix is a valid DOI: {common_prefix}")
                                     results.append((isbn, common_prefix))
                                 else:
-                                    vprint(f"Common prefix {common_prefix} for ISBN-13 {isbn} is not a valid DOI")
-                                    results.append((isbn, None))
+                                    vprint(f"Common prefix {common_prefix} for ISBN-13 {isbn} is not a valid DOI. Trying to append ISBN to the prefix...")
+                                    # Try appending the ISBN in a few plausible ways and test validity
+                                    tried_candidates = []
+                                    candidates = [
+                                        f"{common_prefix}.{isbn}",
+                                        f"{common_prefix}{isbn}",
+                                        f"{common_prefix}-{isbn}"
+                                    ]
+                                    found_candidate = None
+                                    for cand in candidates:
+                                        if cand in tried_candidates:
+                                            continue
+                                        tried_candidates.append(cand)
+                                        try:
+                                            vprint(f"Testing candidate DOI: {cand}")
+                                            if is_valid_doi(cand):
+                                                vprint(f"Appended ISBN produced a valid DOI: {cand}")
+                                                found_candidate = cand
+                                                break
+                                        except Exception as e:
+                                            vprint(f"Error validating candidate DOI {cand}: {e}")
+                                            continue
+                                    if found_candidate:
+                                        results.append((isbn, found_candidate))
+                                    else:
+                                        vprint(f"No valid DOI found by appending ISBN {isbn} to prefix {common_prefix}")
+                                        results.append((isbn, None))
                             else:
                                 vprint(f"Multiple DOIs found for ISBN-13 {isbn}, no common prefix. Returning all DOIs.")
                                 results.append((isbn, dois))
@@ -980,6 +1005,7 @@ def extract_dois_from_file(input_file: str):
     """
     Extract DOI numbers from a text file and write them to a new file.
     Also tries to extract Elsevier PII numbers from the file name and resolve them to DOIs.
+    Additionally attempts to extract ISBN numbers from the file name and resolve them to DOIs via Crossref.
     Returns the list of extracted DOIs.
     Prints status messages with icons for better readability.
     """
@@ -990,6 +1016,7 @@ def extract_dois_from_file(input_file: str):
     ICON_DOI = "🔎"
     ICON_OUTPUT = "📝"
     ICON_WARN = "⚠️"
+    ICON_ISBN = "📚"
 
     vprint(f"{ICON_START} Extracting DOIs from file: {input_file}")
     try:
@@ -1023,6 +1050,36 @@ def extract_dois_from_file(input_file: str):
             filtered_dois.append(doi)
             vprint(f"Resolved PII {pii} to DOI {doi}")
 
+    # Additionally, try to extract ISBN from the file name and resolve to DOI(s)
+    # This uses extract_isbns_from_text which queries Crossref for ISBN -> DOI mapping.
+    try:
+        vprint(f"{ICON_ISBN} Attempting to extract ISBN(s) from filename: {filename}")
+        isbn_results = extract_isbns_from_text(filename)
+        vprint(f"{ICON_ISBN} ISBN resolution results: {isbn_results}")
+        for isbn, doi_info in isbn_results:
+            if not doi_info:
+                vprint(f"{ICON_ISBN} ISBN {isbn} did not resolve to a DOI")
+                continue
+            # doi_info can be a string DOI, None, or a list of DOIs
+            doi_candidates = doi_info if isinstance(doi_info, list) else [doi_info]
+            for candidate in doi_candidates:
+                if not candidate:
+                    continue
+                # Normalize candidate and validate
+                candidate = candidate.rstrip('.')
+                try:
+                    if is_valid_doi(candidate):
+                        if candidate not in filtered_dois:
+                            filtered_dois.append(candidate)
+                            vprint(f"{ICON_ISBN} Resolved ISBN {isbn} -> DOI {candidate} (added)")
+                        break  # stop after first valid DOI for this ISBN
+                    else:
+                        vprint(f"{ICON_ISBN} Candidate DOI {candidate} for ISBN {isbn} is not valid")
+                except Exception as e:
+                    vprint(f"{ICON_ISBN} Error validating DOI {candidate} for ISBN {isbn}: {e}")
+    except Exception as e:
+        vprint(f"{ICON_ISBN} Error while extracting ISBN from filename: {e}")
+
     if not filtered_dois:
         print(f"{ICON_WARN} No valid paper DOIs found in {input_file}")
         return []
@@ -1036,6 +1093,7 @@ def extract_dois_from_file(input_file: str):
                 f.write(f"{doi}\n")
         print(f"{ICON_SUCCESS} Extracted {len(filtered_dois)} paper DOIs")
         print(f"{ICON_DOI} DOIs found: {filtered_dois}")
+        print(f"{ICON_OUTPUT} Written DOIs to: {output_file}")
     except Exception as e:
         print(f"{ICON_FAIL} Failed to write DOIs to output file: {e}")
         return []
@@ -1163,22 +1221,25 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
     Only considers the first five pages of the PDF.
     Keeps newlines intact when extracting text from PDF pages.
     Prints more details for debug in verbose mode.
+
+    Fallback: if no DOI can be extracted from text or PII, try to extract ISBN(s)
+    from the file name and resolve them to DOI(s) via Crossref (using extract_isbns_from_text).
     """
     try:
         vprint(f"extract_doi_from_pdf: Extracting text from PDF (first 5 pages): {pdf_file}")
         text = extract_text_from_pdf(pdf_file, max_pages=5)
         if not text:
             print(f"extract_doi_from_pdf: No text could be extracted from PDF: {pdf_file}")
-            return None
+            text = ""
         vprint(f"extract_doi_from_pdf: Extracting text from PDF (first page only): {pdf_file}")
-        first_page_text = extract_text_from_pdf(pdf_file, max_pages=1)
-        vprint(f"extract_doi_from_pdf: First page text length: {len(first_page_text) if first_page_text else 0}")
+        first_page_text = extract_text_from_pdf(pdf_file, max_pages=1) or ""
+        vprint(f"extract_doi_from_pdf: First page text length: {len(first_page_text)}")
     except Exception as e:
         print(f"extract_doi_from_pdf: Failed to extract text from PDF file: {e}")
         return None
 
     vprint(f"extract_doi_from_pdf: Extracting DOIs from PDF text...")
-    dois = extract_dois_from_text(text)
+    dois = extract_dois_from_text(text) if text else []
     vprint(f"extract_doi_from_pdf: DOIs found in PDF: {dois}")
 
     # Try to extract PII numbers from the file name and resolve to DOI
@@ -1202,8 +1263,40 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
             vprint(f"extract_doi_from_pdf: Resolved PII {pii} to DOI {doi_from_pii}, inserting at front of DOI list")
             dois.insert(0, doi_from_pii)  # Prefer DOI from PII
 
+    # If no DOIs found from text or PII, try ISBN extraction from filename as a fallback
     if not dois:
-        vprint("extract_doi_from_pdf: No DOIs found after PII resolution.")
+        vprint("extract_doi_from_pdf: No DOIs found in text or via PII, attempting ISBN extraction from filename...")
+        try:
+            isbn_results = extract_isbns_from_text(filename)
+            vprint(f"extract_doi_from_pdf: ISBN extraction results: {isbn_results}")
+            if isbn_results:
+                # isbn_results is a list of (isbn, doi_info) tuples
+                for isbn, doi_info in isbn_results:
+                    if not doi_info:
+                        vprint(f"extract_doi_from_pdf: ISBN {isbn} did not resolve to a DOI")
+                        continue
+                    candidates = doi_info if isinstance(doi_info, list) else [doi_info]
+                    for candidate in candidates:
+                        if not candidate:
+                            continue
+                        candidate = candidate.rstrip('.')
+                        vprint(f"extract_doi_from_pdf: Validating candidate DOI from ISBN {isbn}: {candidate}")
+                        try:
+                            if is_valid_doi(candidate):
+                                vprint(f"extract_doi_from_pdf: Candidate DOI {candidate} validated, returning it.")
+                                return candidate
+                            else:
+                                vprint(f"extract_doi_from_pdf: Candidate DOI {candidate} is not valid.")
+                        except Exception as e:
+                            vprint(f"extract_doi_from_pdf: Error validating DOI {candidate}: {e}")
+                vprint("extract_doi_from_pdf: No valid DOI found from ISBN extraction.")
+            else:
+                vprint("extract_doi_from_pdf: No ISBNs found in filename.")
+        except Exception as e:
+            vprint(f"extract_doi_from_pdf: Error during ISBN extraction from filename: {e}")
+
+    if not dois:
+        vprint("extract_doi_from_pdf: No DOIs found after all fallbacks.")
         return None
 
     if len(dois) == 1:
