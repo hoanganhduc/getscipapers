@@ -873,12 +873,38 @@ def extract_isbns_from_text(text: str) -> list:
                     else:
                         common_prefix = extract_common_doi_prefix(dois)
                         if common_prefix:
+                            # If common prefix is already a valid DOI, use it
                             if is_valid_doi(common_prefix):
                                 vprint(f"Multiple DOIs found for ISBN-10 {isbn}, common prefix is a valid DOI: {common_prefix}")
                                 results.append((isbn, common_prefix))
                             else:
-                                vprint(f"Common prefix {common_prefix} for ISBN-10 {isbn} is not a valid DOI")
-                                results.append((isbn, None))
+                                vprint(f"Common prefix {common_prefix} for ISBN-10 {isbn} is not a valid DOI. Trying to append ISBN to the prefix...")
+                                # Try appending the ISBN in a few plausible ways and test validity
+                                tried_candidates = []
+                                candidates = [
+                                    f"{common_prefix}.{isbn}",
+                                    f"{common_prefix}{isbn}",
+                                    f"{common_prefix}-{isbn}"
+                                ]
+                                found_candidate = None
+                                for cand in candidates:
+                                    if cand in tried_candidates:
+                                        continue
+                                    tried_candidates.append(cand)
+                                    try:
+                                        vprint(f"Testing candidate DOI: {cand}")
+                                        if is_valid_doi(cand):
+                                            vprint(f"Appended ISBN produced a valid DOI: {cand}")
+                                            found_candidate = cand
+                                            break
+                                    except Exception as e:
+                                        vprint(f"Error validating candidate DOI {cand}: {e}")
+                                        continue
+                                if found_candidate:
+                                    results.append((isbn, found_candidate))
+                                else:
+                                    vprint(f"No valid DOI found by appending ISBN {isbn} to prefix {common_prefix}")
+                                    results.append((isbn, None))
                         else:
                             vprint(f"Multiple DOIs found for ISBN-10 {isbn}, no common prefix. Returning all DOIs.")
                             results.append((isbn, dois))
@@ -1001,11 +1027,49 @@ def extract_dois_from_text(text: str) -> list:
                     vprint(f"ISBN {isbn} did not resolve to a DOI")
     return valid_dois
 
+def extract_doi_from_title(title: str) -> str:
+    """
+    Search Crossref for a given paper title and return the DOI if there is a unique match.
+    If Crossref returns more than one matching item, return None.
+    """
+    if not title or not title.strip():
+        vprint("extract_doi_from_title: empty title provided")
+        return None
+
+    try:
+        works = Works()
+        # Query Crossref for the title. Limit scanning to two results:
+        # if more than one result is found we will bail out.
+        results = works.query(title).select(['DOI', 'title']).sort('relevance').order('desc')
+
+        found = []
+        for item in results:
+            doi = item.get('DOI')
+            if doi:
+                found.append(item)
+            # Stop early if more than one match
+            if len(found) > 1:
+                vprint(f"extract_doi_from_title: more than one Crossref result for title '{title}' -> giving up")
+                return None
+
+        if len(found) == 1:
+            doi = found[0].get('DOI')
+            vprint(f"extract_doi_from_title: unique DOI found for title '{title}': {doi}")
+            return doi
+
+        vprint(f"extract_doi_from_title: no Crossref results for title '{title}'")
+        return None
+
+    except Exception as e:
+        vprint(f"extract_doi_from_title: Crossref query failed for title '{title}': {e}")
+        return None
+
 def extract_dois_from_file(input_file: str):
     """
     Extract DOI numbers from a text file and write them to a new file.
     Also tries to extract Elsevier PII numbers from the file name and resolve them to DOIs.
     Additionally attempts to extract ISBN numbers from the file name and resolve them to DOIs via Crossref.
+    As a final fallback, use the file name (cleaned) as a title and try to extract a DOI via Crossref title search.
     Returns the list of extracted DOIs.
     Prints status messages with icons for better readability.
     """
@@ -1017,6 +1081,7 @@ def extract_dois_from_file(input_file: str):
     ICON_OUTPUT = "📝"
     ICON_WARN = "⚠️"
     ICON_ISBN = "📚"
+    ICON_TITLE = "📰"
 
     vprint(f"{ICON_START} Extracting DOIs from file: {input_file}")
     try:
@@ -1079,6 +1144,31 @@ def extract_dois_from_file(input_file: str):
                     vprint(f"{ICON_ISBN} Error validating DOI {candidate} for ISBN {isbn}: {e}")
     except Exception as e:
         vprint(f"{ICON_ISBN} Error while extracting ISBN from filename: {e}")
+
+    # Final fallback: use filename (without extension) as a title and try Crossref title search
+    if not filtered_dois:
+        try:
+            base_name = os.path.splitext(filename)[0]
+            # Clean the base name to make a reasonable title: replace underscores/dashes/dots with spaces
+            title_candidate = re.sub(r'[_\-\.\s]+', ' ', base_name).strip()
+            vprint(f"{ICON_TITLE} No DOIs found yet. Trying to use filename as title: '{title_candidate}'")
+            if title_candidate:
+                doi_from_title = extract_doi_from_title(title_candidate)
+                if doi_from_title:
+                    doi_from_title = doi_from_title.rstrip('.')
+                    vprint(f"{ICON_TITLE} Crossref returned DOI '{doi_from_title}' for title candidate")
+                    try:
+                        if is_valid_doi(doi_from_title):
+                            filtered_dois.append(doi_from_title)
+                            vprint(f"{ICON_TITLE} Added DOI from title fallback: {doi_from_title}")
+                        else:
+                            vprint(f"{ICON_TITLE} DOI from title '{doi_from_title}' did not validate as a resolvable DOI")
+                    except Exception as e:
+                        vprint(f"{ICON_TITLE} Error validating DOI from title '{doi_from_title}': {e}")
+                else:
+                    vprint(f"{ICON_TITLE} No unique DOI found for title candidate via Crossref")
+        except Exception as e:
+            vprint(f"{ICON_TITLE} Error during title-fallback DOI extraction: {e}")
 
     if not filtered_dois:
         print(f"{ICON_WARN} No valid paper DOIs found in {input_file}")
