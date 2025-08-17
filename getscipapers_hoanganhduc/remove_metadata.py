@@ -67,8 +67,19 @@ def remove_repeated_images(input_pdf, output_pdf, verbose=False, page_range=None
     image_xref_pages = {}
     for i in pages_to_process:
         page = doc[i]
-        for img in page.get_images(full=True):
-            xref = img[0]
+        try:
+            images = page.get_images(full=True)
+        except Exception as e:
+            # If getting images fails for a page, skip it with a warning
+            if verbose:
+                print(f"Warning: could not list images on page {i+1}: {e}")
+            continue
+        for img in images:
+            # Ensure xref is an integer and skip invalid values
+            try:
+                xref = int(img[0])
+            except Exception:
+                continue
             image_xref_pages.setdefault(xref, set()).add(i)
 
     # Find images that appear on enough pages
@@ -80,28 +91,98 @@ def remove_repeated_images(input_pdf, output_pdf, verbose=False, page_range=None
     # Actually remove the images by replacing them with white rectangles
     for i in pages_to_process:
         page = doc[i]
-        img_list = page.get_images(full=True)
+        try:
+            img_list = page.get_images(full=True)
+        except Exception as e:
+            if verbose:
+                print(f"Warning: could not list images on page {i+1} for redaction: {e}")
+            continue
         for img in img_list:
-            xref = img[0]
+            try:
+                xref = int(img[0])
+            except Exception:
+                continue
             if xref in repeated_xrefs:
                 # Find all rectangles for this image on the page
                 img_rects = []
-                # Use get_image_info if available, else fallback to guessing
+                # Check if xref exists in the document before calling image info
                 try:
-                    img_rects = [inst["bbox"] for inst in page.get_image_info(xref)]
-                except Exception:
-                    # Fallback: use the whole page (not ideal)
+                    if not doc.xref_exists(xref):
+                        if verbose:
+                            print(f"Warning: xref {xref} not found in document, skipping.")
+                        continue
+                except Exception as e:
+                    # If xref_exists itself fails, skip this xref
+                    if verbose:
+                        print(f"Warning: error checking xref {xref}: {e}")
+                    continue
+
+                # Try to get image placement info using available APIs, fall back to whole page
+                try:
+                    get_info = getattr(page, "get_image_info", None)
+                    if callable(get_info):
+                        img_rects = [inst.get("bbox", page.rect) for inst in get_info(xref)]
+                    else:
+                        # Older/newer PyMuPDF may not provide image bbox info; fall back
+                        img_rects = [page.rect]
+                except Exception as e:
+                    if verbose:
+                        print(f"Warning: Could not get image info for xref {xref} on page {i+1}: {e}")
                     img_rects = [page.rect]
+
                 for rect in img_rects:
-                    # Draw a white rectangle over the image
-                    page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1), overlay=True)
+                    try:
+                        # Draw a white rectangle over the image; guard against drawing errors
+                        page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1), overlay=True)
+                    except Exception as e:
+                        if verbose:
+                            print(f"Warning: failed to draw rect on page {i+1} for xref {xref}: {e}")
+                        # continue to other rects/xrefs
+
     if verbose:
         print("Removing metadata...")
-    doc.set_metadata({})
+    try:
+        doc.set_metadata({})
+    except Exception as e:
+        if verbose:
+            print(f"Warning: failed to set metadata: {e}")
+
     if verbose:
         print(f"Writing output PDF: {output_pdf}")
-    doc.save(output_pdf)
-    doc.close()
+    # Try a normal save first, then retry with garbage cleanup if it fails (helps with broken xref tables).
+    # If both fail, rebuild the PDF by copying pages into a new document and save that instead.
+    try:
+        doc.save(output_pdf)
+    except Exception as e:
+        if verbose:
+            print(f"Warning: save failed: {e}; retrying with garbage cleanup")
+        try:
+            doc.save(output_pdf, garbage=4)
+        except Exception as e2:
+            if verbose:
+                print(f"Warning: garbage cleanup save failed: {e2}; attempting to rebuild PDF by copying pages into a new document")
+            try:
+                new_doc = fitz.open()  # create an empty document
+                new_doc.insert_pdf(doc)  # copy pages to rebuild xref table
+                try:
+                    new_doc.set_metadata({})
+                except Exception:
+                    pass
+                new_doc.save(output_pdf)
+                new_doc.close()
+                if verbose:
+                    print("Successfully rebuilt PDF and saved.")
+            except Exception as e3:
+                if verbose:
+                    print(f"Warning: failed to rebuild and save PDF: {e3}")
+                doc.close()
+                raise
+    finally:
+        try:
+            doc.close()
+        except Exception:
+            pass
+
     if verbose:
         print("Done.")
 
