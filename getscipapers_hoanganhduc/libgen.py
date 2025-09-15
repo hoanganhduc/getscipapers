@@ -21,7 +21,7 @@ import threading
 
 # List of LibGen mirror domains (main alternatives)
 LIBGEN_MIRRORS = [
-    "libgen.gs",
+    # "libgen.gs",
     "libgen.li",
     "libgen.vg",
     "libgen.la",
@@ -1230,7 +1230,7 @@ def is_file_on_libgen(md5sum, verbose=False):
 
 def upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbose=False):
     """
-    Upload a file to ftp://ftp.libgen.gs/upload and return the file URL if successful.
+    Upload a file to ftp://ftp.libgen.li/upload and return the file URL if successful.
     Before uploading, check if the file (by md5sum) already exists in LibGen.
 
     Args:
@@ -1243,7 +1243,7 @@ def upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbo
         str or None: The URL of the uploaded file if successful, else None.
     """
 
-    ftp_host = "ftp.libgen.gs"
+    ftp_host = "ftp.libgen.li"
     ftp_dir = "upload"
     filename = os.path.basename(filepath)
 
@@ -1297,7 +1297,7 @@ def create_chrome_driver(headless=True, extra_prefs=None):
     options.add_argument('--disable-web-security')              # Disable web security for broader bypass
     # Option to not automatically change to https
     options.add_argument('--allow-insecure-localhost')
-    options.add_argument('--unsafely-treat-insecure-origin-as-secure=http://libgen.gs')
+    options.add_argument('--unsafely-treat-insecure-origin-as-secure=http://libgen.li')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-features=UpgradeInsecureRequests')
     options.add_argument('--disable-features=BlockInsecurePrivateNetworkRequests')
@@ -1321,7 +1321,7 @@ def create_chrome_driver(headless=True, extra_prefs=None):
 
 def selenium_libgen_login(username="genesis", password="upload", headless=True, verbose=False):
     """
-    Open Chrome with Selenium, load http://libgen.gs/librarian.php,
+    Open Chrome with Selenium, load http://libgen.li/librarian.php,
     find and follow the login link if present, and login with phpBB forum settings.
     Checks "remember me" and "hide my online status this session" before login.
     If already logged in (by detecting upload form), skip login.
@@ -1331,7 +1331,7 @@ def selenium_libgen_login(username="genesis", password="upload", headless=True, 
     driver = None
     try:
         driver = create_chrome_driver(headless=headless)
-        driver.get("http://libgen.gs/librarian.php")
+        driver.get("http://libgen.li/librarian.php")
         if verbose:
             print("Opened librarian page.")
 
@@ -1405,7 +1405,7 @@ def selenium_libgen_login(username="genesis", password="upload", headless=True, 
                     if verbose:
                         print("Submitted login form.")
                     time.sleep(2)
-                    driver.get("http://libgen.gs/librarian.php")
+                    driver.get("http://libgen.li/librarian.php")
                     WebDriverWait(driver, 10).until(
                         EC.presence_of_element_located((By.TAG_NAME, "body"))
                     )
@@ -1447,7 +1447,7 @@ def selenium_libgen_login(username="genesis", password="upload", headless=True, 
 
 def selenium_libgen_upload(local_file_path, bib_id, username="genesis", password="upload", headless=True, verbose=False):
     """
-    Upload a local file to http://libgen.gs/librarian.php after logging in with Selenium.
+    Upload a local file to http://libgen.li/librarian.php after logging in with Selenium.
     Fills the FTP path in the upload form and clicks the Upload button.
     After upload, finds the bibliography search form, selects the appropriate source (crossref for DOI, goodreads for ISBN),
     fills the bib_id in the bibliography search input, and clicks the Search button.
@@ -1479,7 +1479,7 @@ def selenium_libgen_upload(local_file_path, bib_id, username="genesis", password
     driver = None
     try:
         driver = create_chrome_driver(headless=headless)
-        driver.get("http://libgen.gs/librarian.php")
+        driver.get("http://libgen.li/librarian.php")
         if verbose:
             print("🌐 Opened librarian page for upload.")
 
