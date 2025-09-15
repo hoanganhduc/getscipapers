@@ -1230,7 +1230,7 @@ def is_file_on_libgen(md5sum, verbose=False):
 
 def upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbose=False):
     """
-    Upload a file to ftp://ftp.libgen.li/upload and return the file URL if successful.
+    Upload a file to ftp://ftp.libgen.bz/upload and return the file URL if successful.
     Before uploading, check if the file (by md5sum) already exists in LibGen.
 
     Args:
@@ -1243,7 +1243,7 @@ def upload_file_to_libgen_ftp(filepath, username='anonymous', password='', verbo
         str or None: The URL of the uploaded file if successful, else None.
     """
 
-    ftp_host = "ftp.libgen.li"
+    ftp_host = "ftp.libgen.bz"
     ftp_dir = "upload"
     filename = os.path.basename(filepath)
 
