@@ -19,6 +19,7 @@ import tkinter as tk
 import webbrowser
 from collections.abc import Callable
 from contextlib import redirect_stdout, redirect_stderr
+from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
@@ -36,13 +37,27 @@ def _append_output(widget: tk.Text, text: str) -> None:
     widget.configure(state="disabled")
 
 
+def _append_log(widget: tk.Text, text: str) -> None:
+    widget.configure(state="normal")
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    for line in text.splitlines():
+        widget.insert(tk.END, f"[{timestamp}] {line}\n")
+    widget.see(tk.END)
+    widget.configure(state="disabled")
+
+
 def _run_getpapers_async(
-    argv: list[str], widget: tk.Text, on_complete: Callable[[], None] | None = None
+    argv: list[str],
+    widget: tk.Text,
+    on_complete: Callable[[], None] | None = None,
+    *,
+    log_widget: tk.Text | None = None,
 ) -> None:
     """Execute the async ``getpapers`` entry point on a background thread."""
 
+    buffer = io.StringIO()
+
     def _target() -> None:
-        buffer = io.StringIO()
         try:
             with redirect_stdout(buffer), redirect_stderr(buffer):
                 asyncio.run(getpapers_main(argv))
@@ -52,7 +67,10 @@ def _run_getpapers_async(
             widget.after(0, _deliver)
 
     def _deliver() -> None:
-        _append_output(widget, buffer.getvalue())
+        text = buffer.getvalue()
+        _append_output(widget, text)
+        if log_widget is not None:
+            _append_log(log_widget, text)
         if on_complete:
             on_complete()
 
@@ -66,11 +84,10 @@ class GetSciPapersGUI(ttk.Frame):
     def __init__(self, master: tk.Tk | None = None) -> None:
         super().__init__(master)
         self.master.title(f"GetSciPapers {__version__}")
-        self.master.geometry("760x520")
-        self.master.resizable(True, True)
         self.profile_path = Path.home() / ".getscipapers_gui_profile.json"
         self._build_widgets()
         self._load_profile()
+        self._configure_initial_size()
 
     def _set_running_state(self, running: bool, message: str = "Ready") -> None:
         self.status_var.set(message)
@@ -91,9 +108,20 @@ class GetSciPapersGUI(ttk.Frame):
         padding = {"padx": 8, "pady": 4}
 
         self.status_var = tk.StringVar(value=f"Ready • v{__version__}")
+        self.progress_task_var = tk.StringVar()
+
+        self.main_notebook = ttk.Notebook(self)
+        self.main_notebook.grid(column=0, row=0, sticky="nsew", **padding)
+
+        run_tab = ttk.Frame(self.main_notebook)
+        settings_tab = ttk.Frame(self.main_notebook)
+        about_tab = ttk.Frame(self.main_notebook)
+        self.main_notebook.add(run_tab, text="Run")
+        self.main_notebook.add(settings_tab, text="Settings")
+        self.main_notebook.add(about_tab, text="About")
 
         # Search input
-        search_frame = ttk.LabelFrame(self, text="Search")
+        search_frame = ttk.LabelFrame(run_tab, text="Search")
         search_frame.grid(column=0, row=0, sticky="nsew", **padding)
         ttk.Label(search_frame, text="Keyword or DOI:").grid(column=0, row=0, sticky="w")
         self.search_var = tk.StringVar()
@@ -110,7 +138,7 @@ class GetSciPapersGUI(ttk.Frame):
         )
 
         # DOI inputs
-        doi_frame = ttk.LabelFrame(self, text="DOIs")
+        doi_frame = ttk.LabelFrame(run_tab, text="DOIs")
         doi_frame.grid(column=0, row=1, sticky="nsew", **padding)
         ttk.Label(doi_frame, text="Type DOIs (comma-separated):").grid(column=0, row=0, sticky="w")
         self.doi_input_var = tk.StringVar()
@@ -127,9 +155,28 @@ class GetSciPapersGUI(ttk.Frame):
         self.doi_file_error = ttk.Label(doi_frame, foreground="#b00020")
         self.doi_file_error.grid(column=3, row=1, sticky="w")
 
+        cleanup_frame = ttk.LabelFrame(run_tab, text="Metadata cleanup")
+        cleanup_frame.grid(column=0, row=2, sticky="nsew", **padding)
+        ttk.Label(cleanup_frame, text="PDF to clean metadata:").grid(column=0, row=0, sticky="w")
+        self.metadata_file_var = tk.StringVar()
+        ttk.Entry(cleanup_frame, textvariable=self.metadata_file_var, width=50).grid(
+            column=1, row=0, sticky="ew", **padding
+        )
+        ttk.Button(cleanup_frame, text="Browse", command=self._choose_metadata_file).grid(
+            column=2, row=0, **padding
+        )
+        self.metadata_inplace_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            cleanup_frame,
+            text="Overwrite original (in place)",
+            variable=self.metadata_inplace_var,
+        ).grid(column=3, row=0, sticky="w", **padding)
+        self.metadata_error = ttk.Label(cleanup_frame, foreground="#b00020")
+        self.metadata_error.grid(column=4, row=0, sticky="w")
+
         # Download options
-        options_frame = ttk.LabelFrame(self, text="Options")
-        options_frame.grid(column=0, row=2, sticky="nsew", **padding)
+        options_frame = ttk.LabelFrame(settings_tab, text="Options")
+        options_frame.grid(column=0, row=0, sticky="nsew", **padding)
         self.download_folder_var = tk.StringVar(value=DEFAULT_DOWNLOAD_FOLDER)
         ttk.Label(options_frame, text="Download folder:").grid(column=0, row=0, sticky="w")
         ttk.Entry(options_frame, textvariable=self.download_folder_var, width=50).grid(
@@ -194,31 +241,14 @@ class GetSciPapersGUI(ttk.Frame):
         self.proxy_error = ttk.Label(options_frame, foreground="#b00020")
         self.proxy_error.grid(column=5, row=5, sticky="w")
 
-        ttk.Label(options_frame, text="PDF to clean metadata:").grid(column=0, row=6, sticky="w")
-        self.metadata_file_var = tk.StringVar()
-        ttk.Entry(options_frame, textvariable=self.metadata_file_var, width=50).grid(
-            column=1, row=6, sticky="ew", **padding
-        )
-        ttk.Button(options_frame, text="Browse", command=self._choose_metadata_file).grid(
-            column=2, row=6, **padding
-        )
-        self.metadata_inplace_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            options_frame,
-            text="Overwrite original (in place)",
-            variable=self.metadata_inplace_var,
-        ).grid(column=3, row=6, sticky="w", **padding)
-        self.metadata_error = ttk.Label(options_frame, foreground="#b00020")
-        self.metadata_error.grid(column=4, row=6, sticky="w")
-
-        ttk.Separator(options_frame, orient="horizontal").grid(column=0, row=7, columnspan=6, sticky="ew", pady=(8, 4))
+        ttk.Separator(options_frame, orient="horizontal").grid(column=0, row=6, columnspan=6, sticky="ew", pady=(8, 4))
         profile_buttons = ttk.Frame(options_frame)
-        profile_buttons.grid(column=0, row=8, columnspan=6, sticky="w", **padding)
+        profile_buttons.grid(column=0, row=7, columnspan=6, sticky="w", **padding)
         ttk.Button(profile_buttons, text="Save profile", command=self._save_profile).grid(column=0, row=0, padx=(0, 6))
         ttk.Button(profile_buttons, text="Reload profile", command=self._load_profile).grid(column=1, row=0)
 
         # Action buttons
-        actions = ttk.Frame(self)
+        actions = ttk.Frame(run_tab)
         actions.grid(column=0, row=3, sticky="ew", **padding)
         search_btn = ttk.Button(actions, text="Search", command=self._run_search)
         search_btn.grid(column=0, row=0, **padding)
@@ -231,40 +261,85 @@ class GetSciPapersGUI(ttk.Frame):
         clear_btn = ttk.Button(actions, text="Clear output", command=self._clear_output)
         clear_btn.grid(column=4, row=0, **padding)
         self._action_buttons = (search_btn, doi_btn, doi_file_btn, metadata_btn, clear_btn)
-
-        self.progress_task_var = tk.StringVar()
         self.progress_bar = ttk.Progressbar(self, mode="indeterminate")
-        ttk.Label(self, textvariable=self.progress_task_var).grid(column=0, row=4, sticky="w", padx=10)
-        self.progress_bar.grid(column=0, row=5, sticky="ew", padx=8)
+        progress_row = ttk.Frame(self)
+        progress_row.grid(column=0, row=1, sticky="ew", padx=8)
+        ttk.Label(progress_row, textvariable=self.progress_task_var).grid(column=0, row=0, sticky="w")
+        self.progress_bar.grid(column=0, row=2, sticky="ew", padx=8)
 
-        # About box
-        about_frame = ttk.LabelFrame(self, text="About")
-        about_frame.grid(column=0, row=6, sticky="ew", **padding)
-        ttk.Label(about_frame, text=f"Author: {__author__}").grid(column=0, row=0, sticky="w", **padding)
-        ttk.Label(about_frame, text=f"Version: {__version__}").grid(column=1, row=0, sticky="w", **padding)
+        # About tab content
+        about_frame = ttk.LabelFrame(about_tab, text="About GetSciPapers")
+        about_frame.grid(column=0, row=0, sticky="nsew", **padding)
+        ttk.Label(
+            about_frame,
+            text=(
+                "Lightweight desktop companion for the getpapers CLI. "
+                "Search, download, and clean PDFs while keeping credentials and proxy options in sync."
+            ),
+            wraplength=520,
+            justify="left",
+        ).grid(column=0, row=0, columnspan=2, sticky="w", **padding)
+        ttk.Label(about_frame, text=f"Author: {__author__}").grid(column=0, row=1, sticky="w", **padding)
+        ttk.Label(about_frame, text=f"Version: {__version__}").grid(column=1, row=1, sticky="w", **padding)
+        ttk.Label(about_frame, text="License: GPL-3.0").grid(column=0, row=2, sticky="w", **padding)
         self._link_label(
             about_frame,
-            text="GitHub: hoanganhduc/getscipapers",
+            text="View license",
+            url="https://www.gnu.org/licenses/gpl-3.0.en.html",
+        ).grid(column=1, row=2, sticky="w", **padding)
+        self._link_label(
+            about_frame,
+            text="GitHub repository",
             url="https://github.com/hoanganhduc/getscipapers",
-        ).grid(column=0, row=1, sticky="w", **padding)
+        ).grid(column=0, row=3, sticky="w", **padding)
         self._link_label(
             about_frame,
-            text="Support: buymeacoffee.com/hoanganhduc",
+            text="Documentation",
+            url="https://github.com/hoanganhduc/getscipapers#usage",
+        ).grid(column=1, row=3, sticky="w", **padding)
+        self._link_label(
+            about_frame,
+            text="Buy me a coffee",
             url="https://www.buymeacoffee.com/hoanganhduc",
-        ).grid(column=1, row=1, sticky="w", **padding)
+        ).grid(column=0, row=4, sticky="w", **padding)
+        self._link_label(
+            about_frame,
+            text="Ko-fi",
+            url="https://ko-fi.com/hoanganhduc",
+        ).grid(column=1, row=4, sticky="w", **padding)
+        self._link_label(
+            about_frame,
+            text="Crypto tip (BMACC)",
+            url="https://bmacc.app/tip/hoanganhduc",
+        ).grid(column=0, row=5, sticky="w", **padding)
+        ttk.Label(
+            about_frame,
+            text="Thank you for supporting continued development!",
+            foreground="#0b6cf4",
+        ).grid(column=0, row=6, columnspan=2, sticky="w", **padding)
 
-        # Output area
-        self.output = scrolledtext.ScrolledText(self, wrap=tk.WORD, height=16, state="disabled")
-        self.output.grid(column=0, row=7, sticky="nsew", **padding)
+        # Output area with detailed log tab
+        self.output_notebook = ttk.Notebook(self)
+        self.output_notebook.grid(column=0, row=3, sticky="nsew", **padding)
+        self.output = scrolledtext.ScrolledText(self.output_notebook, wrap=tk.WORD, height=16, state="disabled")
+        self.detailed_log = scrolledtext.ScrolledText(
+            self.output_notebook, wrap=tk.WORD, height=16, state="disabled"
+        )
+        self.output_notebook.add(self.output, text="Console")
+        self.output_notebook.add(self.detailed_log, text="Detailed log")
 
         status_bar = ttk.Label(self, textvariable=self.status_var, anchor="w")
-        status_bar.grid(column=0, row=8, sticky="ew", padx=8, pady=(0, 8))
+        status_bar.grid(column=0, row=4, sticky="ew", padx=8, pady=(0, 8))
 
         # Make columns stretch
-        for frame in (search_frame, doi_frame, options_frame, actions, about_frame):
+        for frame in (search_frame, doi_frame, cleanup_frame, actions, options_frame, about_frame):
             frame.grid_columnconfigure(1, weight=1)
+        about_tab.grid_columnconfigure(0, weight=1)
+        about_tab.grid_rowconfigure(0, weight=1)
+        for frame in (run_tab, settings_tab):
+            frame.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(7, weight=1)
+        self.grid_rowconfigure(3, weight=1)
         self._error_labels = {
             "search": self.search_error,
             "doi_input": self.doi_input_error,
@@ -297,6 +372,9 @@ class GetSciPapersGUI(ttk.Frame):
         y = self.winfo_rooty() + 40
         toast.geometry(f"+{x}+{y}")
         toast.after(duration, toast.destroy)
+
+    def _log_event(self, message: str) -> None:
+        _append_log(self.detailed_log, message)
 
     def _clear_errors(self) -> None:
         for label in self._error_labels.values():
@@ -340,8 +418,19 @@ class GetSciPapersGUI(ttk.Frame):
         if selected:
             self.metadata_file_var.set(selected)
 
+    def _configure_initial_size(self) -> None:
+        """Resize the window based on its requested dimensions."""
+
+        self.update_idletasks()
+        required_width = self.winfo_reqwidth() + 32
+        required_height = self.winfo_reqheight() + 32
+        self.master.geometry(f"{required_width}x{required_height}")
+        self.master.minsize(required_width, required_height)
+        self.master.resizable(True, True)
+
     def _build_cli_args(self, mode: str) -> list[str] | None:
         self._clear_errors()
+
         args: list[str] = []
         if mode == "search":
             query = self.search_var.get().strip()
@@ -416,11 +505,17 @@ class GetSciPapersGUI(ttk.Frame):
             self._toast("Please fix the highlighted search input.")
             return
         _append_output(self.output, "\n➡️ Running search...\n")
+        self._log_event("Search started")
         task_label = "Running search…"
         if self.auto_proxy_var.get():
             task_label += " (auto proxy)"
         self._set_running_state(True, task_label)
-        _run_getpapers_async(argv, self.output, on_complete=lambda: self._finish_task("Search finished."))
+        _run_getpapers_async(
+            argv,
+            self.output,
+            on_complete=lambda: self._finish_task("Search finished."),
+            log_widget=self.detailed_log,
+        )
 
     def _run_doi_input(self) -> None:
         argv = self._build_cli_args(mode="doi_input")
@@ -428,11 +523,17 @@ class GetSciPapersGUI(ttk.Frame):
             self._toast("Check the DOI field for errors.")
             return
         _append_output(self.output, "\n➡️ Downloading typed DOIs...\n")
+        self._log_event("Typed DOI download started")
         task_label = "Downloading DOIs…"
         if self.auto_proxy_var.get():
             task_label += " (auto proxy)"
         self._set_running_state(True, task_label)
-        _run_getpapers_async(argv, self.output, on_complete=lambda: self._finish_task("DOI download complete."))
+        _run_getpapers_async(
+            argv,
+            self.output,
+            on_complete=lambda: self._finish_task("DOI download complete."),
+            log_widget=self.detailed_log,
+        )
 
     def _run_doi_file(self) -> None:
         argv = self._build_cli_args(mode="doi_file")
@@ -440,14 +541,21 @@ class GetSciPapersGUI(ttk.Frame):
             self._toast("Please provide a valid DOI list file.")
             return
         _append_output(self.output, "\n➡️ Downloading DOI list...\n")
+        self._log_event("DOI list download started")
         task_label = "Downloading DOI list…"
         if self.auto_proxy_var.get():
             task_label += " (auto proxy)"
         self._set_running_state(True, task_label)
-        _run_getpapers_async(argv, self.output, on_complete=lambda: self._finish_task("DOI list download complete."))
+        _run_getpapers_async(
+            argv,
+            self.output,
+            on_complete=lambda: self._finish_task("DOI list download complete."),
+            log_widget=self.detailed_log,
+        )
 
     def _finish_task(self, message: str) -> None:
         self._set_running_state(False, "Ready")
+        self._log_event(message)
         self._toast(message)
 
     def _save_profile(self) -> None:
@@ -519,6 +627,7 @@ class GetSciPapersGUI(ttk.Frame):
 
         def _deliver(text: str) -> None:
             _append_output(self.output, text)
+            _append_log(self.detailed_log, text)
             self._finish_task("Metadata cleanup finished.")
 
         def _task() -> None:
@@ -538,6 +647,7 @@ class GetSciPapersGUI(ttk.Frame):
                 self.output.after(0, lambda: _deliver(buffer.getvalue()))
 
         _append_output(self.output, "\n➡️ Removing PDF metadata...\n")
+        self._log_event("Metadata cleanup started")
         self._set_running_state(True, "Cleaning PDF metadata…")
         thread = threading.Thread(target=_task, daemon=True)
         thread.start()
@@ -546,6 +656,9 @@ class GetSciPapersGUI(ttk.Frame):
         self.output.configure(state="normal")
         self.output.delete("1.0", tk.END)
         self.output.configure(state="disabled")
+        self.detailed_log.configure(state="normal")
+        self.detailed_log.delete("1.0", tk.END)
+        self.detailed_log.configure(state="disabled")
 
     def _open_download_folder(self) -> None:
         folder = Path(self.download_folder_var.get().strip() or DEFAULT_DOWNLOAD_FOLDER).expanduser()
