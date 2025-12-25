@@ -1,11 +1,14 @@
+#!/usr/bin/env python3
+
+"""Module entry point for ``python -m getscipapers_hoanganhduc``.
+
+This thin wrapper simply delegates to :func:`getscipapers_hoanganhduc.main`
+while ensuring the environment is prepared for command-line execution.
+"""
+
 import os
 import sys
 from . import main
-
-#!/usr/bin/env python3
-"""
-Main entry point for the getscipapers_hoanganhduc package.
-"""
 
 if not __package__:
     # Make CLI runnable from source tree with

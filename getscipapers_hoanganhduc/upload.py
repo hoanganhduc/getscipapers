@@ -1,3 +1,11 @@
+"""Helpers for uploading PDFs to third-party services.
+
+The upload routines are intentionally isolated from the rest of the request
+flow so they can be invoked independently via CLI. Network calls and command
+construction live here to keep other modules focused on discovery and download
+responsibilities.
+"""
+
 import sys
 import os
 import argparse

@@ -1,3 +1,10 @@
+"""Selenium-driven automation for the Wosonhj request workflow.
+
+Wosonhj is another community bot that can be used to request papers. The code
+centralizes selectors, waits, and retry logic to make maintenance easier when
+the remote interface changes.
+"""
+
 import os
 import json
 import platform
@@ -3101,11 +3108,11 @@ Examples:
         prog=program_name,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument('--credentials', type=str, help='Path to JSON config file containing credentials')
-    parser.add_argument('--no-headless', action='store_true', help='Disable headless mode for Chrome')
-    parser.add_argument('--verbose', action='store_true', help='Enable verbose debug output')
-    parser.add_argument('--clear-cache', action='store_true', help='Clear cached login and credentials')
-    parser.add_argument('--user-info', action='store_true', help='Print user info after login')
+    parser.add_argument('-c', '--credentials', type=str, help='Path to JSON config file containing credentials')
+    parser.add_argument('-H', '--no-headless', action='store_true', help='Disable headless mode for Chrome')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose debug output')
+    parser.add_argument('-C', '--clear-cache', action='store_true', help='Clear cached login and credentials')
+    parser.add_argument('-u', '--user-info', action='store_true', help='Print user info after login')
     parser.add_argument('--get-active-requests', action='store_true', help='List active requests')
     parser.add_argument('--solve-active-requests', action='store_true', help='Solve active requests (upload files)')
     parser.add_argument('--limit', type=int, default=20, help='Limit number of requests to list')

@@ -26,7 +26,8 @@
 4. [Usage](#usage)
 5. [Running in GitHub Codespace](#running-getscipapers-in-github-codespace)
 6. [Docker Container](#docker-container-for-running-getscipapers)
-7. [Remarks](#remarks)
+7. [Documentation](#documentation)
+8. [Remarks](#remarks)
 
 
 
@@ -34,7 +35,7 @@
 
 ![Info](https://img.shields.io/badge/-Info-informational?logo=info) ![WIP](https://img.shields.io/badge/-WIP-yellow?logo=rocket) ![Experimental](https://img.shields.io/badge/-Experimental-lightgrey?logo=flask)
 
-**getscipapers** is a Python package designed for searching and requesting scientific papers from multiple sources. This project is a **work in progress** and primarily intended for **personal use**. It is not a comprehensive solution for accessing scientific papers. Portions of the code were developed with assistance from [GitHub Copilot](https://github.com/features/copilot).
+**getscipapers** is a Python package designed for searching and requesting scientific papers from multiple sources. This project is a **work in progress** and primarily intended for **personal use**. It is not a comprehensive solution for accessing scientific papers. Portions of the code were developed with assistance from [GitHub Copilot](https://github.com/features/copilot) and [ChatGPT Codex](https://openai.com/).
 
 
 ## Prerequisites
@@ -107,6 +108,43 @@ In another terminal, use the `getscipapers` command to search for and request sc
 ```bash
 getscipapers --help
 ```
+
+### Quick CLI examples
+
+Common end-to-end invocations of the CLI:
+
+```bash
+# Search by keyword, limit to 5 results, and download PDFs to the default folder
+getscipapers getpapers --search "graph neural network" --limit 5
+
+# Download a specific DOI using Unpaywall first (non-interactive to avoid prompts)
+GETSCIPAPERS_EMAIL=you@example.com \
+getscipapers getpapers --doi 10.1038/nature12373 --db unpaywall --non-interactive
+
+# Process a list of DOIs from a text file, saving PDFs to a custom folder
+getscipapers getpapers --doi-file dois.txt --download-folder ./pdfs
+
+# Extract DOIs from a PDF without downloading anything
+getscipapers getpapers --extract-doi-from-pdf paper.pdf --no-download
+
+# Show metadata only (no downloads) for a single DOI across all services
+getscipapers getpapers --doi 10.1016/j.cell.2019.05.031 --no-download --verbose
+
+# Use environment-provided credentials and skip prompts entirely
+export GETSCIPAPERS_EMAIL=you@example.com
+export GETSCIPAPERS_ELSEVIER_API_KEY=your_elsevier_key
+getscipapers getpapers --search "quantum error correction" --non-interactive
+```
+
+### Graphical wrapper
+
+Prefer a point-and-click flow? Launch the Tkinter GUI wrapper (works on both Windows and Linux) and trigger searches or DOI list downloads without remembering every flag:
+
+```bash
+getscipapers gui
+```
+
+The window exposes the same options as the CLI—database selection (toggle one or many services), metadata-only runs, custom download folders, and verbose logging—and reuses the CLI logic under the hood so behavior stays consistent.
 
 
 ## Running getscipapers in GitHub Codespace
@@ -296,6 +334,22 @@ You can run **getscipapers** locally using Docker without installing Python or d
   Replace `/path/to/local/dir` with your preferred local directory.
 
 This setup allows you to use **getscipapers** in an isolated environment, keeping your files accessible on your host machine.
+
+
+## Documentation
+
+The repository ships with a comprehensive overview of the architecture, configuration model, and command-line workflows in [docs/PROJECT_DOCUMENTATION.md](docs/PROJECT_DOCUMENTATION.md). Refer to it for details on how each module collaborates to search, request, and download papers across supported services.
+
+For a browsable HTML site, build the Sphinx documentation:
+
+```bash
+pip install -r docs/requirements.txt
+sphinx-build -b html docs/source docs/_build/html
+```
+
+Open `docs/_build/html/index.html` in your browser to explore the CLI usage
+guides, configuration notes, and API reference pages generated from the source
+modules.
 
 
 ## Remarks

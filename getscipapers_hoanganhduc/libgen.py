@@ -1,3 +1,10 @@
+"""Utility functions for querying the Library Genesis catalog.
+
+These helpers scrape search results and fetch download links so they can be
+orchestrated by the higher-level request flows. Network and HTML parsing logic
+live here to keep the CLI modules focused on argument handling.
+"""
+
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
@@ -18,6 +25,9 @@ import shutil
 import hashlib
 from . import getpapers
 import threading
+
+# Provide generous timeouts so slow mirrors still succeed.
+DOWNLOAD_TIMEOUT = 120
 
 # List of LibGen mirror domains (main alternatives)
 LIBGEN_MIRRORS = [
@@ -561,7 +571,7 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
                 ads_url = f"https://{LIBGEN_DOMAIN}{download_url}"
                 if verbose:
                     print(f"Following ads.php URL: {ads_url}")
-                ads_resp = requests.get(ads_url, timeout=30)
+                ads_resp = requests.get(ads_url, timeout=DOWNLOAD_TIMEOUT)
                 if ads_resp.status_code == 200:
                     soup = BeautifulSoup(ads_resp.text, "html.parser")
                     # Find the first <a> tag whose href contains "get.php?md5="
@@ -590,7 +600,7 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
                     failures.append((label, f"ads.php status {ads_resp.status_code}"))
                     continue
 
-            with requests.get(download_url, stream=True, timeout=30) as r:
+            with requests.get(download_url, stream=True, timeout=DOWNLOAD_TIMEOUT) as r:
                 r.raise_for_status()
                 with open(out_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):
@@ -995,7 +1005,7 @@ def interactive_libgen_download(query, limit=10, preferred_exts=None, dest_folde
         if download_url.startswith("/ads.php?md5="):
             ads_url = f"https://{LIBGEN_DOMAIN}{download_url}"
             try:
-                ads_resp = requests.get(ads_url, timeout=30)
+                ads_resp = requests.get(ads_url, timeout=DOWNLOAD_TIMEOUT)
                 if ads_resp.status_code == 200:
                     soup = BeautifulSoup(ads_resp.text, "html.parser")
                     for a in soup.find_all("a", href=True):
@@ -1059,7 +1069,7 @@ def interactive_libgen_download(query, limit=10, preferred_exts=None, dest_folde
                     print(f"Saving to: {out_path}")
 
                 try:
-                    with requests.get(resolved_url, stream=True, timeout=30) as r:
+                    with requests.get(resolved_url, stream=True, timeout=DOWNLOAD_TIMEOUT) as r:
                         r.raise_for_status()
                         with open(out_path, "wb") as f:
                             for chunk in r.iter_content(chunk_size=8192):
