@@ -1,3 +1,10 @@
+"""Utility functions for querying the Library Genesis catalog.
+
+These helpers scrape search results and fetch download links so they can be
+orchestrated by the higher-level request flows. Network and HTML parsing logic
+live here to keep the CLI modules focused on argument handling.
+"""
+
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus

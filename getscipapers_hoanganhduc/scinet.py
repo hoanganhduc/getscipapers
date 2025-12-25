@@ -1,3 +1,11 @@
+"""Automation helpers for the SciNet bot interface.
+
+SciNet provides another community-driven path to request documents. The
+functions here rely on Selenium to drive the browser experience while keeping
+timeouts and selectors centralized for easier maintenance when the site
+changes.
+"""
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -4858,9 +4866,9 @@ def setup_argument_autocomplete(parser):
             return []
         
         # Set completers for specific arguments
-        parser.add_argument('--pdf', nargs='+', help='Path(s) to PDF file(s) to upload, or directory containing PDFs (can specify multiple paths separated by spaces)').completer = file_completer
-        parser.add_argument('--request-doi', nargs='+', help='DOI(s) to request: single DOI with optional reward tokens (DOI,tokens), multiple DOIs with optional reward tokens separated by spaces, or path to text file containing DOIs and optional reward tokens (one per line, format: DOI or DOI,tokens). Default reward tokens: 1').completer = doi_completer
-        parser.add_argument('--solve-pdf', help='Path to PDF file to upload as solution (must be used with --solve-doi)').completer = file_completer
+        parser.add_argument('-p', '--pdf', nargs='+', help='Path(s) to PDF file(s) to upload, or directory containing PDFs (can specify multiple paths separated by spaces)').completer = file_completer
+        parser.add_argument('-r', '--request-doi', nargs='+', help='DOI(s) to request: single DOI with optional reward tokens (DOI,tokens), multiple DOIs with optional reward tokens separated by spaces, or path to text file containing DOIs and optional reward tokens (one per line, format: DOI or DOI,tokens). Default reward tokens: 1').completer = doi_completer
+        parser.add_argument('-s', '--solve-pdf', help='Path to PDF file to upload as solution (must be used with --solve-doi)').completer = file_completer
         
         # Enable autocomplete
         argcomplete.autocomplete(parser)
@@ -6652,28 +6660,28 @@ def main():
         parser.add_argument('--request-doi', nargs='+', help='DOI(s) to request: single DOI with optional reward tokens (DOI,tokens), multiple DOIs with optional reward tokens separated by spaces, or path to text file containing DOIs and optional reward tokens (one per line, format: DOI or DOI,tokens). Default reward tokens: 1')
         parser.add_argument('--solve-pdf', help='Path to PDF file to upload as solution (must be used with --solve-doi)')
     
-    parser.add_argument('--accept-fulfilled-doi', help='DOI of a specific fulfilled request to accept')
-    parser.add_argument('--reject-fulfilled-doi', help='DOI of a specific fulfilled request to reject')
-    parser.add_argument('--get-active-requests', type=int, nargs='?', const=-1, metavar='LIMIT', help='Get list of active requests which you and others made but have not been fulfilled (optional: limit number of results)')
-    parser.add_argument('--get-fulfilled-requests', action='store_true', help='Get list of fulfilled requests which others solved for you')
-    parser.add_argument('--get-uploaded-files', type=int, nargs='?', const=-1, metavar='LIMIT', help='Get list of uploaded files which you have uploaded (optional: limit number of results)')
-    parser.add_argument('--accept-fulfilled-requests', action='store_true', help='Accept fulfilled requests which others solved for you')
-    parser.add_argument('--reject-fulfilled-requests', action='store_true', help='Reject fulfilled requests which others solved for you')
-    parser.add_argument('--solve-active-requests', type=int, nargs='?', const=-1, metavar='LIMIT', help='Solve active requests from others (optional: limit number of requests to fetch)')
-    parser.add_argument('--cancel-waiting-requests', type=int, nargs='?', const=-1, metavar='LIMIT', help='Cancel waiting requests which you own(optional: limit number of requests to fetch)')
-    parser.add_argument('--get-unsolved-requests', type=int, nargs='?', const=-1, metavar='LIMIT', help='Get list of unsolved requests which you made but have not been solved (optional: limit number of results)')
-    parser.add_argument('--cancel-unsolved-requests', type=int, nargs='?', const=-1, metavar='LIMIT', help='Cancel unsolved requests which you own (optional: limit number of requests to fetch)')
-    parser.add_argument('--cancel-unsolved-doi', help='DOI of a specific unsolved request to cancel')
-    parser.add_argument('--solve-doi', help='DOI of a specific request to solve (must be used with --solve-pdf)')
-    parser.add_argument('--reject-message', help='Custom rejection message (for reject-fulfilled-requests)')
-    parser.add_argument('--wait-seconds', type=int, default=50, help='Seconds to wait for DOI search results (default: 50)')
-    parser.add_argument('--clear-cache', action='store_true', help='Clear login cache before running')
-    parser.add_argument('--verbose', action='store_true', help='Enable verbose debug output')
-    parser.add_argument('--no-headless', action='store_true', help='Disable headless mode and show browser window')
+    parser.add_argument('-a', '--accept-fulfilled-doi', help='DOI of a specific fulfilled request to accept')
+    parser.add_argument('-j', '--reject-fulfilled-doi', help='DOI of a specific fulfilled request to reject')
+    parser.add_argument('-g', '--get-active-requests', type=int, nargs='?', const=-1, metavar='LIMIT', help='Get list of active requests which you and others made but have not been fulfilled (optional: limit number of results)')
+    parser.add_argument('-F', '--get-fulfilled-requests', action='store_true', help='Get list of fulfilled requests which others solved for you')
+    parser.add_argument('-U', '--get-uploaded-files', type=int, nargs='?', const=-1, metavar='LIMIT', help='Get list of uploaded files which you have uploaded (optional: limit number of results)')
+    parser.add_argument('-A', '--accept-fulfilled-requests', action='store_true', help='Accept fulfilled requests which others solved for you')
+    parser.add_argument('-J', '--reject-fulfilled-requests', action='store_true', help='Reject fulfilled requests which others solved for you')
+    parser.add_argument('-R', '--solve-active-requests', type=int, nargs='?', const=-1, metavar='LIMIT', help='Solve active requests from others (optional: limit number of requests to fetch)')
+    parser.add_argument('-w', '--cancel-waiting-requests', type=int, nargs='?', const=-1, metavar='LIMIT', help='Cancel waiting requests which you own(optional: limit number of requests to fetch)')
+    parser.add_argument('-G', '--get-unsolved-requests', type=int, nargs='?', const=-1, metavar='LIMIT', help='Get list of unsolved requests which you made but have not been solved (optional: limit number of results)')
+    parser.add_argument('-W', '--cancel-unsolved-requests', type=int, nargs='?', const=-1, metavar='LIMIT', help='Cancel unsolved requests which you own (optional: limit number of requests to fetch)')
+    parser.add_argument('-x', '--cancel-unsolved-doi', help='DOI of a specific unsolved request to cancel')
+    parser.add_argument('-S', '--solve-doi', help='DOI of a specific request to solve (must be used with --solve-pdf)')
+    parser.add_argument('-m', '--reject-message', help='Custom rejection message (for reject-fulfilled-requests)')
+    parser.add_argument('-t', '--wait-seconds', type=int, default=50, help='Seconds to wait for DOI search results (default: 50)')
+    parser.add_argument('-C', '--clear-cache', action='store_true', help='Clear login cache before running')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose debug output')
+    parser.add_argument('-H', '--no-headless', action='store_true', help='Disable headless mode and show browser window')
     parser.add_argument('--noconfirm', action='store_true', help='Automatically proceed with default options without user confirmation')
-    parser.add_argument('--credentials', help='Path to JSON file containing login credentials (format: {"scinet_username": "user", "scinet_password": "pass"})')
-    parser.add_argument('--user-info', action='store_true', help='Show user info/profile (tokens, stats, etc) after login')
-    parser.add_argument('--print-default', action='store_true', help='Print default configuration paths and values used by scinet.py')
+    parser.add_argument('-c', '--credentials', help='Path to JSON file containing login credentials (format: {"scinet_username": "user", "scinet_password": "pass"})')
+    parser.add_argument('-u', '--user-info', action='store_true', help='Show user info/profile (tokens, stats, etc) after login')
+    parser.add_argument('-P', '--print-default', action='store_true', help='Print default configuration paths and values used by scinet.py')
 
     # Show installation hint if argcomplete is not available
     if not autocomplete_available and VERBOSE:
