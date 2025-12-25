@@ -6,7 +6,6 @@ All notable changes to this project are documented in this file. Dates reflect t
 - No changes yet.
 
 ## [0.1.3] - 2025-12-25
-- Set the Windows event loop policy to `WindowsSelectorEventLoopPolicy` for CLI invocations to avoid Proactor cleanup errors when exiting.
 - Standardize CLI option names and shorthand flags across modules for a consistent experience.
 - Add explicit CLI usage examples to the README and Sphinx docs to guide common workflows.
 - Enforce configured email usage across API calls and validate credentials before running CLI flows to avoid silent fallbacks.
