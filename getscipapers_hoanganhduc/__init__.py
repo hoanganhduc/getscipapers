@@ -16,7 +16,7 @@ import asyncio
 import inspect
 import platform
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 __author__ = "Duc A. Hoang (hoanganhduc)"
 __email__ = "anhduc.hoang1990@gmail.com"
 __description__ = "A Python package to get and request scientific papers from various sources"
