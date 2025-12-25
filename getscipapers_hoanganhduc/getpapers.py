@@ -1,3 +1,12 @@
+"""Core search and retrieval workflow for ``getpapers`` CLI invocations.
+
+This module coordinates searches across Nexus, CrossRef, Unpaywall, and
+publisher APIs, while handling caching, configuration, and output formatting.
+Functions here are designed for reuse by other modules (for example
+``request.py``) and are intentionally asynchronous-aware so they can run in
+concurrent contexts.
+"""
+
 import argparse
 import asyncio
 import json
@@ -25,316 +34,93 @@ import signal
 import threading
 import queue
 import shutil
+from pathlib import Path
+from typing import Dict, Optional
 
 from . import nexus  # Import Nexus bot functions from .nexus module
 from . import libgen  # Import LibGen functions from .libgen module
+from . import configuration
 
-DEFAULT_LIMIT = 5
+DEFAULT_LIMIT = configuration.DEFAULT_LIMIT
 
 VERBOSE = False  # Global verbose flag
 
-# Emails and API keys for various services
-EMAIL = ""
-ELSEVIER_API_KEY = ""
-WILEY_TDM_TOKEN = ""
-IEEE_API_KEY = ""
-    
+
 def vprint(*args, **kwargs):
     if VERBOSE:
         print(*args, **kwargs)
 
 # Global variable for default config file location
-GETPAPERS_CONFIG_FILE = os.path.join(
-    os.path.expanduser("~"),
-    ".config", "getscipapers", "getpapers", "config.json"
-) if platform.system() != "Windows" else os.path.join(
-    os.path.expanduser("~"),
-    "AppData", "Local", "getscipapers", "getpapers", "config.json"
-)
-
-# Ensure the folder to save the config file exists
-config_dir = os.path.dirname(GETPAPERS_CONFIG_FILE)
-if not os.path.exists(config_dir):
-    try:
-        os.makedirs(config_dir, exist_ok=True)
-    except Exception as e:
-        print(f"Error creating config directory {config_dir}: {e}")
+GETPAPERS_CONFIG_FILE = str(configuration.GETPAPERS_CONFIG_FILE)
 
 # Set Unpywall cache directory to the same folder as the config file
-UNPYWALL_CACHE_DIR = os.path.dirname(GETPAPERS_CONFIG_FILE)
-UNPYWALL_CACHE_FILE = os.path.join(UNPYWALL_CACHE_DIR, "unpywall_cache")
+UNPYWALL_CACHE_DIR = str(configuration.UNPYWALL_CACHE_DIR)
+UNPYWALL_CACHE_FILE = str(configuration.UNPYWALL_CACHE_FILE)
 
-def get_default_download_folder():
+DEFAULT_DOWNLOAD_FOLDER = configuration.DEFAULT_DOWNLOAD_FOLDER
+# Increase the tolerance for slow networks when downloading PDFs.
+DOWNLOAD_TIMEOUT = 120
+DB_CHOICES: tuple[str, ...] = ("nexus", "scihub", "anna", "unpaywall", "libgen")
+
+def ensure_directory_exists(path: str) -> None:
+    configuration.ensure_directory_exists(Path(path))
+
+
+def save_credentials(
+    email: str | None = None,
+    elsevier_api_key: str | None = None,
+    wiley_tdm_token: str | None = None,
+    ieee_api_key: str | None = None,
+    config_file: str | None = None,
+):
+    return configuration.save_credentials(
+        email=email,
+        elsevier_api_key=elsevier_api_key,
+        wiley_tdm_token=wiley_tdm_token,
+        ieee_api_key=ieee_api_key,
+        config_file=config_file,
+        verbose=VERBOSE,
+    )
+
+
+def normalize_db_selection(db: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    """Normalize the ``--db`` selection to a concrete list of services.
+
+    The CLI accepts comma-delimited strings or multiple ``--db`` flags. Any
+    request containing ``"all"`` or no explicit services resolves to the full
+    list defined in :data:`DB_CHOICES`.
     """
-    Get the default download folder for the current OS.
-    - Windows: %USERPROFILE%\Downloads\getscipapers\getpapers
-    - macOS: ~/Downloads/getscipapers/getpapers
-    - Linux: ~/Downloads/getscipapers/getpapers
-    """
-    system = platform.system()
-    if system == "Windows":
-        base = os.environ.get('USERPROFILE', os.path.expanduser('~'))
-        folder = os.path.join(base, 'Downloads', 'getscipapers', 'getpapers')
+
+    if db is None:
+        return list(DB_CHOICES)
+
+    if isinstance(db, str):
+        # Support comma-separated values from older invocations or GUI input
+        parts = [part.strip() for part in db.split(",") if part.strip()]
     else:
-        folder = os.path.join(os.path.expanduser('~'), 'Downloads', 'getscipapers', 'getpapers')
-    os.makedirs(folder, exist_ok=True)
-    return folder
+        parts = [str(part).strip() for part in db if str(part).strip()]
 
-DEFAULT_DOWNLOAD_FOLDER = get_default_download_folder()
+    if not parts or any(part == "all" for part in parts):
+        return list(DB_CHOICES)
 
-def save_credentials(email: str = None, elsevier_api_key: str = None, 
-                    wiley_tdm_token: str = None, ieee_api_key: str = None, 
-                    config_file: str = None):
-    """
-    Save credentials and API keys to a JSON configuration file.
-    Only updates provided values, preserving existing ones.
-    If the config file's parent directory does not exist, create it.
-    Prints status messages with icons for better readability.
-    """
-    ICON_SUCCESS = "✅"
-    ICON_ERROR = "❌"
-    ICON_INFO = "ℹ️"
+    filtered = [part for part in parts if part in DB_CHOICES]
+    return filtered or list(DB_CHOICES)
 
-    if config_file is None:
-        config_file = GETPAPERS_CONFIG_FILE
 
-    # Ensure the parent directory exists
-    config_dir = os.path.dirname(config_file)
-    if not os.path.exists(config_dir):
-        try:
-            os.makedirs(config_dir, exist_ok=True)
-            vprint(f"{ICON_SUCCESS} Created config directory: {config_dir}")
-        except Exception as e:
-            vprint(f"{ICON_ERROR} Error creating config directory {config_dir}: {e}")
-            return False
+def load_credentials(
+    config_file: str | None = None,
+    interactive: Optional[bool] = None,
+    env_prefix: str = "GETSCIPAPERS_",
+):
+    return configuration.load_credentials(
+        config_file=config_file,
+        interactive=interactive,
+        env_prefix=env_prefix,
+        verbose=VERBOSE,
+    )
 
-    # Load existing config or create new one
-    existing_config = {}
-    if os.path.exists(config_file):
-        try:
-            with open(config_file, 'r', encoding='utf-8') as f:
-                existing_config = json.load(f)
-        except Exception as e:
-            vprint(f"{ICON_INFO} Warning: Could not read existing config file {config_file}: {e}")
 
-    # Update with new values if provided
-    if email is not None:
-        existing_config["email"] = email
-    if elsevier_api_key is not None:
-        existing_config["elsevier_api_key"] = elsevier_api_key
-    if wiley_tdm_token is not None:
-        existing_config["wiley_tdm_token"] = wiley_tdm_token
-    if ieee_api_key is not None:
-        existing_config["ieee_api_key"] = ieee_api_key
-
-    try:
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(existing_config, f, indent=2)
-        vprint(f"{ICON_SUCCESS} Saved credentials to {config_file}")
-        return True
-    except Exception as e:
-        vprint(f"{ICON_ERROR} Error saving config file {config_file}: {e}")
-        return False
-
-def load_credentials(config_file: str = None):
-    """
-    Load credentials and API keys from a JSON configuration file.
-    If the file doesn't exist or has empty values, prompt user for input and create/update the file.
-    If no response from user after 30 seconds, report loading fails.
-    Returns a dictionary with the loaded configuration.
-    Prints status messages with icons for better readability.
-    """
-    ICON_SUCCESS = "✅"
-    ICON_ERROR = "❌"
-    ICON_INFO = "ℹ️"
-    ICON_INPUT = "📝"
-    ICON_TIMEOUT = "⏰"
-    ICON_WARNING = "⚠️"
-
-    global EMAIL, ELSEVIER_API_KEY, WILEY_TDM_TOKEN, IEEE_API_KEY
-
-    if config_file is None:
-        config_file = GETPAPERS_CONFIG_FILE
-
-    default_config = {
-        "email": "",
-        "elsevier_api_key": "",
-        "wiley_tdm_token": "",
-        "ieee_api_key": ""
-    }
-
-    existing_config = default_config.copy()
-    file_exists = os.path.exists(config_file)
-
-    if file_exists:
-        try:
-            with open(config_file, 'r', encoding='utf-8') as f:
-                existing_config = json.load(f)
-            vprint(f"{ICON_SUCCESS} Loaded existing config from {config_file}")
-        except (json.JSONDecodeError, Exception) as e:
-            vprint(f"{ICON_ERROR} Error loading config file {config_file}: {e}")
-            print(f"{ICON_ERROR} Configuration file {config_file} is corrupted. Will recreate.")
-            file_exists = False
-
-    if file_exists and config_file != GETPAPERS_CONFIG_FILE and not os.path.exists(GETPAPERS_CONFIG_FILE):
-        save_credentials(
-            email=existing_config.get("email"),
-            elsevier_api_key=existing_config.get("elsevier_api_key"),
-            wiley_tdm_token=existing_config.get("wiley_tdm_token"),
-            ieee_api_key=existing_config.get("ieee_api_key"),
-            config_file=GETPAPERS_CONFIG_FILE
-        )
-
-    needs_input = (not file_exists or
-                   not existing_config.get("email", "").strip() or
-                   not existing_config.get("elsevier_api_key", "").strip() or
-                   not existing_config.get("wiley_tdm_token", "").strip() or
-                   not existing_config.get("ieee_api_key", "").strip())
-
-    if needs_input:
-        if file_exists:
-            vprint(f"{ICON_WARNING} Configuration file found but some values are empty: {config_file}")
-        else:
-            vprint(f"{ICON_INFO} Configuration file not found: {config_file}")
-        print(f"{ICON_INPUT} Please enter credentials:")
-        print("You will be asked for the following information:")
-        print("  - Email address (required, for Unpaywall and polite API usage)")
-        print("  - Elsevier API Key (optional, for Elsevier Full-Text API)")
-        print("  - Wiley TDM Token (optional, for Wiley TDM API)")
-        print("  - IEEE API Key (optional, for IEEE Xplore API)")
-
-        try:
-            if platform.system() != "Windows":
-                def timeout_handler(signum, frame):
-                    raise TimeoutError("Input timeout")
-
-                signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(60)
-
-                try:
-                    current_email = existing_config.get("email", "")
-                    email_prompt = f"Email (current: '{current_email}', press Enter to keep): " if current_email else "Email (required): "
-                    email = input(email_prompt).strip()
-                    if not email and current_email:
-                        email = current_email
-
-                    current_elsevier = existing_config.get("elsevier_api_key", "")
-                    elsevier_prompt = f"Elsevier API Key (current: '{current_elsevier[:10]}...', press Enter to keep): " if current_elsevier else "Elsevier API Key (press Enter to skip): "
-                    elsevier_key = input(elsevier_prompt).strip()
-                    if not elsevier_key and current_elsevier:
-                        elsevier_key = current_elsevier
-
-                    current_wiley = existing_config.get("wiley_tdm_token", "")
-                    wiley_prompt = f"Wiley TDM Token (current: '{current_wiley[:10]}...', press Enter to keep): " if current_wiley else "Wiley TDM Token (press Enter to skip): "
-                    wiley_token = input(wiley_prompt).strip()
-                    if not wiley_token and current_wiley:
-                        wiley_token = current_wiley
-
-                    current_ieee = existing_config.get("ieee_api_key", "")
-                    ieee_prompt = f"IEEE API Key (current: '{current_ieee[:10]}...', press Enter to keep): " if current_ieee else "IEEE API Key (press Enter to skip): "
-                    ieee_key = input(ieee_prompt).strip()
-                    if not ieee_key and current_ieee:
-                        ieee_key = current_ieee
-
-                    signal.alarm(0)
-                except TimeoutError:
-                    signal.alarm(0)
-                    print(f"\n{ICON_TIMEOUT} Timeout: No input received within 30 seconds.")
-                    return default_config
-            else:
-                def get_input(prompt, result_queue):
-                    try:
-                        result = input(prompt).strip()
-                        result_queue.put(result)
-                    except (KeyboardInterrupt, EOFError):
-                        result_queue.put(None)
-
-                def get_input_with_timeout(prompt, timeout_seconds=30):
-                    result_queue = queue.Queue()
-                    thread = threading.Thread(target=get_input, args=(prompt, result_queue))
-                    thread.daemon = True
-                    thread.start()
-                    thread.join(timeout_seconds)
-
-                    if thread.is_alive():
-                        print(f"\n{ICON_TIMEOUT} Timeout: No input received within {timeout_seconds} seconds.")
-                        return None
-
-                    try:
-                        return result_queue.get_nowait()
-                    except queue.Empty:
-                        return None
-
-                current_email = existing_config.get("email", "")
-                email_prompt = f"Email (current: '{current_email}', press Enter to keep): " if current_email else "Email (required): "
-                email = get_input_with_timeout(email_prompt)
-                if email is None:
-                    return default_config
-                if not email and current_email:
-                    email = current_email
-
-                current_elsevier = existing_config.get("elsevier_api_key", "")
-                elsevier_prompt = f"Elsevier API Key (current: '{current_elsevier[:10]}...', press Enter to keep): " if current_elsevier else "Elsevier API Key (press Enter to skip): "
-                elsevier_key = get_input_with_timeout(elsevier_prompt)
-                if elsevier_key is None:
-                    return default_config
-                if not elsevier_key and current_elsevier:
-                    elsevier_key = current_elsevier
-
-                current_wiley = existing_config.get("wiley_tdm_token", "")
-                wiley_prompt = f"Wiley TDM Token (current: '{current_wiley[:10]}...', press Enter to keep): " if current_wiley else "Wiley TDM Token (press Enter to skip): "
-                wiley_token = get_input_with_timeout(wiley_prompt)
-                if wiley_token is None:
-                    return default_config
-                if not wiley_token and current_wiley:
-                    wiley_token = current_wiley
-
-                current_ieee = existing_config.get("ieee_api_key", "")
-                ieee_prompt = f"IEEE API Key (current: '{current_ieee[:10]}...', press Enter to keep): " if current_ieee else "IEEE API Key (press Enter to skip): "
-                ieee_key = get_input_with_timeout(ieee_prompt)
-                if ieee_key is None:
-                    return default_config
-                if not ieee_key and current_ieee:
-                    ieee_key = current_ieee
-
-            new_config = {
-                "email": email or "",
-                "elsevier_api_key": elsevier_key or "",
-                "wiley_tdm_token": wiley_token or "",
-                "ieee_api_key": ieee_key or ""
-            }
-
-            if save_credentials(email=new_config["email"],
-                               elsevier_api_key=new_config["elsevier_api_key"],
-                               wiley_tdm_token=new_config["wiley_tdm_token"],
-                               ieee_api_key=new_config["ieee_api_key"],
-                               config_file=config_file):
-                vprint(f"{ICON_SUCCESS} Configuration file {'updated' if file_exists else 'created'}: {config_file}")
-            else:
-                vprint(f"{ICON_ERROR} Failed to save configuration file.")
-
-            EMAIL = new_config["email"]
-            ELSEVIER_API_KEY = new_config["elsevier_api_key"]
-            WILEY_TDM_TOKEN = new_config["wiley_tdm_token"]
-            IEEE_API_KEY = new_config["ieee_api_key"]
-
-            return new_config
-
-        except (KeyboardInterrupt, EOFError):
-            print(f"\n{ICON_ERROR} Configuration input cancelled.")
-            return default_config
-        except Exception as e:
-            vprint(f"{ICON_ERROR} Error during input: {e}")
-            return default_config
-
-    EMAIL = existing_config.get("email", EMAIL)
-    ELSEVIER_API_KEY = existing_config.get("elsevier_api_key", ELSEVIER_API_KEY)
-    WILEY_TDM_TOKEN = existing_config.get("wiley_tdm_token", WILEY_TDM_TOKEN)
-    IEEE_API_KEY = existing_config.get("ieee_api_key", IEEE_API_KEY)
-
-    vprint(f"{ICON_SUCCESS} Using existing credentials from {config_file}")
-    return existing_config
-
+require_email = configuration.require_email
 # def is_paper_doi(doi: str) -> bool:
 #     """
 #     Check if a DOI corresponds to a scholarly paper (article, preprint, or book) using the Crossref API.
@@ -371,8 +157,10 @@ def fetch_crossref_data(doi):
     Returns the message part of the response if successful, None otherwise.
     """
     url = f"https://api.crossref.org/works/{requests.utils.quote(doi)}"
+    active_email = require_email()
+
     headers = {
-        "User-Agent": f"PythonScript/1.0 (mailto:{EMAIL})",
+        "User-Agent": f"PythonScript/1.0 (mailto:{active_email})",
         "Accept": "application/json, text/plain, */*",
         "Connection": "keep-alive",
         "DNT": "1",
@@ -412,12 +200,13 @@ def fetch_crossref_data(doi):
         vprint(f"Unexpected error fetching Crossref data for DOI {doi}: {e}")
         return None
 
-async def is_open_access_unpaywall(doi: str, email: str = "anhduc.hoang1990@googlemail.com") -> bool:
+async def is_open_access_unpaywall(doi: str, email: Optional[str] = None) -> bool:
     """
     Check if a DOI is open access using the Unpaywall API.
     Returns True if open access, False otherwise.
     """
-    api_url = f"https://api.unpaywall.org/v2/{quote_plus(doi)}?email={quote_plus(email)}"
+    active_email = email or require_email()
+    api_url = f"https://api.unpaywall.org/v2/{quote_plus(doi)}?email={quote_plus(active_email)}"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(api_url, timeout=15) as resp:
@@ -455,7 +244,7 @@ def resolve_pii_to_doi(pii: str) -> str:
         'Pragma': 'no-cache',
         'Cache-Control': 'no-cache',
         'DNT': '1',
-        'X-ELS-APIKey': ELSEVIER_API_KEY,
+        'X-ELS-APIKey': configuration.ELSEVIER_API_KEY,
     }
     try:
         resp = requests.get(api_url, headers=headers, timeout=10)
@@ -1399,7 +1188,11 @@ def extract_doi_from_pdf(pdf_file: str) -> str:
 
     for doi in dois:
         vprint(f"extract_doi_from_pdf: Fetching Crossref data for DOI: {doi}")
-        crossref_data = fetch_crossref_data(doi)
+        try:
+            crossref_data = fetch_crossref_data(doi)
+        except ValueError as exc:
+            vprint(f"extract_doi_from_pdf: Skipping Crossref lookup for {doi} due to missing email: {exc}")
+            crossref_data = None
         title = None
         if crossref_data:
             title_list = crossref_data.get("title")
@@ -2185,7 +1978,7 @@ def is_elsevier_doi(doi: str) -> bool:
 async def download_elsevier_pdf_by_doi(
     doi: str,
     download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
-    api_key: str = ELSEVIER_API_KEY # Use the global API key by default
+    api_key: str | None = None,
 ):
     """
     Try to download a PDF from Elsevier Full-Text API using DOI.
@@ -2198,10 +1991,12 @@ async def download_elsevier_pdf_by_doi(
     
     # First get metadata to check page count
     metadata_url = f"https://api.elsevier.com/content/article/doi/{quote_plus(doi)}"
+    active_api_key = api_key or configuration.ELSEVIER_API_KEY
+
     metadata_headers = {
         "Accept": "application/json",
         "User-Agent": "Mozilla/5.0",
-        "X-ELS-APIKey": api_key,
+        "X-ELS-APIKey": active_api_key,
     }
     
     expected_pages = None
@@ -2247,7 +2042,7 @@ async def download_elsevier_pdf_by_doi(
     headers = {
         "Accept": "application/pdf",
         "User-Agent": "Mozilla/5.0",
-        "X-ELS-APIKey": api_key,
+        "X-ELS-APIKey": active_api_key,
     }
     try:
         resp = requests.get(api_url, headers=headers, timeout=20, allow_redirects=True)
@@ -2360,13 +2155,15 @@ def is_wiley_doi(doi: str) -> bool:
 async def download_wiley_pdf_by_doi(
     doi: str,
     download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
-    tdm_token: str = WILEY_TDM_TOKEN  # Use the global token by default
+    tdm_token: str | None = None,
 ) -> bool:
     """
     Attempt to download a PDF from Wiley using the DOI and Wiley-TDM-Client-Token.
     Returns True if successful, else False.
     """
-    if not tdm_token:
+    active_token = tdm_token or configuration.WILEY_TDM_TOKEN
+
+    if not active_token:
         print("Error: Wiley-TDM-Client-Token is required to download from Wiley TDM API.")
         return False
 
@@ -2381,13 +2178,18 @@ async def download_wiley_pdf_by_doi(
         "User-Agent": "Mozilla/5.0",
         "Accept": "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
         "Referer": f"https://doi.org/{doi}",
-        "Wiley-TDM-Client-Token": tdm_token,
+        "Wiley-TDM-Client-Token": active_token,
     }
 
     try:
         async with aiohttp.TCPConnector() as conn:
             async with aiohttp.ClientSession(connector=conn) as session:
-                async with session.get(pdf_url, headers=headers, timeout=30, allow_redirects=True) as resp:
+                async with session.get(
+                    pdf_url,
+                    headers=headers,
+                    timeout=DOWNLOAD_TIMEOUT,
+                    allow_redirects=True,
+                ) as resp:
                     # Save headers for debugging
                     with open(headers_path, "w", encoding="utf-8") as hfile:
                         for k, v in resp.headers.items():
@@ -2519,7 +2321,7 @@ async def download_from_pmc(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FO
 async def download_from_unpaywall(
     doi: str,
     download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
-    email: str = "anhduc.hoang1990@googlemail.com"
+    email: Optional[str] = None,
 ):
     """
     Download all possible open access PDFs for a DOI via Unpaywall.
@@ -2537,18 +2339,19 @@ async def download_from_unpaywall(
     # Try Elsevier API first if DOI is Elsevier
     if is_elsevier_doi(doi):
         print(f"DOI {doi} appears to be an Elsevier article. Attempting Elsevier Full-Text API download before Unpaywall...")
-        if await download_elsevier_pdf_by_doi(doi=doi, download_folder=download_folder, api_key=ELSEVIER_API_KEY):
+        if await download_elsevier_pdf_by_doi(doi=doi, download_folder=download_folder, api_key=configuration.ELSEVIER_API_KEY):
             return True
 
     # Try Wiley API first if DOI is Wiley
     if is_wiley_doi(doi):
         print(f"DOI {doi} appears to be a Wiley article. Attempting Wiley TDM API download before Unpaywall...")
-        if await download_wiley_pdf_by_doi(doi, download_folder, tdm_token=WILEY_TDM_TOKEN):
+        if await download_wiley_pdf_by_doi(doi, download_folder, tdm_token=configuration.WILEY_TDM_TOKEN):
             return True
 
     try:
         safe_doi = doi.replace('/', '_')
-        UnpywallCredentials(email)
+        active_email = email or require_email()
+        UnpywallCredentials(active_email)
 
         # Get all OA links (should include all PDF URLs)
         all_links = Unpywall.get_all_links(doi=doi)
@@ -2578,7 +2381,7 @@ async def download_from_unpaywall(
             try:
                 async with aiohttp.TCPConnector() as conn:
                     async with aiohttp.ClientSession(connector=conn) as session:
-                        async with session.get(pdf_url, headers=headers, timeout=60) as resp:
+                        async with session.get(pdf_url, headers=headers, timeout=DOWNLOAD_TIMEOUT) as resp:
                             vprint(f"Unpaywall PDF HTTP status: {resp.status}")
                             if resp.status == 200 and resp.content_type == "application/pdf":
                                 with open(filepath, "wb") as f:
@@ -2620,7 +2423,7 @@ async def download_from_unpaywall(
                             "DNT": "1",
                             "Connection": "keep-alive",
                         }
-                        async with session.get(url, headers=browser_headers, timeout=60) as resp:
+                        async with session.get(url, headers=browser_headers, timeout=DOWNLOAD_TIMEOUT) as resp:
                             if resp.status == 200 and resp.content_type == "application/pdf":
                                 filename = f"{safe_doi}_unpaywall_browser_{idx}.pdf"
                                 filepath = os.path.join(download_folder, filename)
@@ -2676,7 +2479,7 @@ async def download_from_unpaywall(
                             "DNT": "1",
                             "Referer": f"https://doi.org/{doi}",
                         }
-                        async with session.get(url, headers=oa_headers, timeout=60) as resp:
+                        async with session.get(url, headers=oa_headers, timeout=DOWNLOAD_TIMEOUT) as resp:
                             if resp.status != 200:
                                 vprint(f"Failed to fetch OA link {url} (HTTP {resp.status})")
                                 continue
@@ -2696,7 +2499,11 @@ async def download_from_unpaywall(
                                     pdf_candidate_url = url.rstrip("/") + "/" + pdf_candidate
                                 vprint(f"Found candidate PDF link: {pdf_candidate_url}")
                                 try:
-                                    async with session.get(pdf_candidate_url, headers=oa_headers, timeout=60) as pdf_resp:
+                                    async with session.get(
+                                        pdf_candidate_url,
+                                        headers=oa_headers,
+                                        timeout=DOWNLOAD_TIMEOUT,
+                                    ) as pdf_resp:
                                         if pdf_resp.status == 200 and pdf_resp.content_type == "application/pdf":
                                             filename = f"{safe_doi}_unpaywall_follow_{idx}.pdf"
                                             filepath = os.path.join(download_folder, filename)
@@ -2911,7 +2718,12 @@ async def download_from_anna_archive(doi: str, download_folder: str = DEFAULT_DO
             print(f"Error accessing Anna's Archive for DOI {doi} at {domain}: {e}")
     return False
 
-async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER, db: str = "all", no_download: bool = False):
+async def download_by_doi(
+    doi: str,
+    download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
+    db: str | list[str] | tuple[str, ...] = "all",
+    no_download: bool = False,
+):
     # Extract DOI from input if possible (handles cases where input is a URL or contains a DOI)
     dois = extract_dois_from_text(doi)
     if dois:
@@ -2920,6 +2732,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
         print(f"❌ Input does not appear to be a valid DOI or DOI-containing string: {doi}")
         return False
     vprint(f"Starting download_by_doi for DOI: {doi}, folder: {download_folder}, db: {db}, no_download: {no_download}")
+    selected_dbs = normalize_db_selection(db)
     results = await search_documents(doi, 1)
     
     if results:
@@ -2942,7 +2755,11 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
 
     print(f"📥 Attempting to download PDF for DOI: {doi}")
     # Check if the DOI is open access via Unpaywall
-    is_oa = await is_open_access_unpaywall(doi)
+    try:
+        is_oa = await is_open_access_unpaywall(doi)
+    except ValueError as exc:
+        print(f"❌ {exc}")
+        return False
     oa_status_text = "Open Access" if is_oa else "Closed Access"
     oa_icon = "🟢" if is_oa else "🔒"
     
@@ -2955,12 +2772,12 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
             return True
         print(f"⚠️ Failed to download from Unpaywall for DOI: {doi}. Trying other sources...")
 
-    if not id and db in ["all", "nexus"]:
+    if not id and "nexus" in selected_dbs:
         print(f"❌ No ID available for Nexus download for DOI: {doi}.")
 
     tried = False
 
-    if db in ["all", "nexus"] and id:
+    if "nexus" in selected_dbs and id:
         tried = True
         vprint(f"Trying Nexus download for id: {id}, doi: {doi}")
         print(f"🪐 Trying Nexus for DOI: {doi}...")
@@ -2979,7 +2796,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
             return True
         print(f"❌ PDF file is not available from Nexus bot for DOI: {doi}.")
 
-    if db in ["all", "scihub"]:
+    if "scihub" in selected_dbs:
         tried = True
         print(f"🧪 Trying Sci-Hub for DOI: {doi}...")
         if await download_from_scihub(doi, download_folder):
@@ -2989,7 +2806,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
             return True
         print(f"❌ PDF file is not available on Sci-Hub for DOI: {doi}.")
 
-    if db in ["all", "anna"]:
+    if "anna" in selected_dbs:
         tried = True
         print(f"📚 Trying Anna's Archive for DOI: {doi}...")
         if await download_from_anna_archive(doi, download_folder):
@@ -2999,7 +2816,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
             return True
         print(f"❌ PDF file is not available on Anna's Archive for DOI: {doi}.")
 
-    if db in ["all", "libgen"]:
+    if "libgen" in selected_dbs:
         tried = True
         print(f"📖 Trying LibGen for DOI: {doi}...")
         try:
@@ -3015,7 +2832,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
         except Exception as e:
             print(f"❌ Error downloading from LibGen for DOI {doi}: {e}")
 
-    if db in ["all", "unpaywall"]:
+    if "unpaywall" in selected_dbs:
         tried = True
         print(f"🌐 Trying Unpaywall for DOI: {doi}...")
         if await download_from_unpaywall(doi, download_folder):
@@ -3028,7 +2845,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
     # Special handling for Elsevier and Wiley DOIs
     if is_elsevier_doi(doi):
         print(f"🧬 DOI {doi} appears to be an Elsevier article. Attempting Elsevier Full-Text API download...")
-        if await download_elsevier_pdf_by_doi(doi=doi, download_folder=download_folder, api_key=ELSEVIER_API_KEY):
+        if await download_elsevier_pdf_by_doi(doi=doi, download_folder=download_folder, api_key=configuration.ELSEVIER_API_KEY):
             print(f"\n📥 Download Summary:")
             print(f"✅ Successfully downloaded: 1 PDF")
             print(f"  ✓ {doi} [{oa_status_text}] {oa_icon}")
@@ -3037,7 +2854,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
 
     if is_wiley_doi(doi):
         print(f"🧑‍🔬 DOI {doi} appears to be a Wiley article. Attempting Wiley TDM API download...")
-        if await download_wiley_pdf_by_doi(doi, download_folder, tdm_token=WILEY_TDM_TOKEN):
+        if await download_wiley_pdf_by_doi(doi, download_folder, tdm_token=configuration.WILEY_TDM_TOKEN):
             print(f"\n📥 Download Summary:")
             print(f"✅ Successfully downloaded: 1 PDF")
             print(f"  ✓ {doi} [{oa_status_text}] {oa_icon}")
@@ -3052,7 +2869,12 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
     # print(f"  ✗ {doi} [{oa_status_text}]")
     return False
 
-async def download_by_doi_list(doi_file: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER, db: str = "all", no_download: bool = False):
+async def download_by_doi_list(
+    doi_file: str,
+    download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
+    db: str | list[str] | tuple[str, ...] = "all",
+    no_download: bool = False,
+):
     ICON_START = "🚀"
     ICON_DOI = "🔎"
     ICON_SUCCESS = "✅"
@@ -3065,7 +2887,9 @@ async def download_by_doi_list(doi_file: str, download_folder: str = DEFAULT_DOW
     ICON_STEP = "➡️"
     ICON_WARN = "⚠️"
 
-    vprint(f"{ICON_START} Starting download_by_doi_list for file: {doi_file}, folder: {download_folder}, db: {db}, no_download: {no_download}")
+    vprint(
+        f"{ICON_START} Starting download_by_doi_list for file: {doi_file}, folder: {download_folder}, db: {normalize_db_selection(db)}, no_download: {no_download}"
+    )
     
     # Always extract DOIs from the file using extract_dois_from_file
     try:
@@ -3171,7 +2995,11 @@ def print_default_paths():
     print(f"  Unpywall cache file: {UNPYWALL_CACHE_FILE}")
     print(f"  Platform: {platform.system()}")
 
-async def main():
+async def main(argv: list[str] | None = None):
+    if platform.system() == "Windows":
+        # Prefer the selector policy to avoid Proactor cleanup warnings on exit
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
     # Get the parent package name from the module's __name__
     parent_package = __name__.split('.')[0] if '.' in __name__ else None
 
@@ -3211,10 +3039,12 @@ async def main():
     argparser.add_argument("--download-folder", type=str, default=DEFAULT_DOWNLOAD_FOLDER, help="Folder to save downloaded PDFs")
     argparser.add_argument(
         "--db",
-        type=str,
-        choices=["all", "nexus", "scihub", "anna", "unpaywall", "libgen"],
-        default="all",
-        help="Specify which database to use for downloading PDFs: all, nexus, scihub, anna, unpaywall, libgen (default: all)"
+        action="append",
+        choices=["all", *DB_CHOICES],
+        help=(
+            "Specify which database(s) to use for downloading PDFs: all, nexus, scihub, anna, unpaywall, libgen. "
+            "Repeat the flag to target multiple services; defaults to all."
+        ),
     )
     argparser.add_argument(
         "--no-download",
@@ -3230,6 +3060,11 @@ async def main():
         "--credentials",
         type=str,
         help="Path to custom JSON credentials file (format: {\"email\": \"your@email.com\", \"elsevier_api_key\": \"key\", \"wiley_tdm_token\": \"token\", \"ieee_api_key\": \"key\"})"
+    )
+    argparser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Do not prompt for missing credentials; rely on config file or environment variables."
     )
     argparser.add_argument(
         "--clear-credentials",
@@ -3252,9 +3087,11 @@ async def main():
         help="Extract all valid DOIs from a text file and write them to <file>.dois.txt"
     )
         
-    args = argparser.parse_args()
+    args = argparser.parse_args(argv)
+    args.db = args.db or ["all"]
 
     # Initialize Unpywall cache
+    ensure_directory_exists(UNPYWALL_CACHE_DIR)
     cache = UnpywallCache(UNPYWALL_CACHE_FILE)
     Unpywall.init_cache(cache)
 
@@ -3286,11 +3123,19 @@ async def main():
     global VERBOSE
     VERBOSE = args.verbose
 
+    # Ensure download folder exists before any file IO
+    args.download_folder = args.download_folder or DEFAULT_DOWNLOAD_FOLDER
+    ensure_directory_exists(args.download_folder)
+
     # Credentials file
     credentials_file = args.credentials if args.credentials else GETPAPERS_CONFIG_FILE
 
-    # Load credentials from credentials file
-    load_credentials(credentials_file)
+    # Load credentials from credentials file or environment
+    try:
+        load_credentials(credentials_file, interactive=not args.non_interactive and sys.stdin.isatty())
+    except ValueError as exc:
+        print(f"❌ {exc}")
+        sys.exit(1)
 
     # If only --credentials is specified, exit after loading credentials
     if args.credentials and not (args.doi or args.doi_file or args.search or args.extract_doi_from_pdf or args.extract_doi_from_txt):

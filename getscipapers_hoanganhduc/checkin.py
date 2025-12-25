@@ -1,5 +1,14 @@
+"""Thin wrappers around daily check-in utilities.
+
+This module exposes small helpers that delegate to Selenium-backed routines in
+the AbleSci and Wosonhj integrations. Keeping these functions in one place
+allows the package entry point to expose them as lightweight CLI subcommands
+without importing heavy dependencies during package load.
+"""
+
 import argparse
 from . import ablesci, wosonhj
+
 
 def checkin_ablesci():
     ablesci.check_in()
