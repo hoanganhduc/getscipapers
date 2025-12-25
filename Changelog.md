@@ -5,6 +5,7 @@ All notable changes to this project are documented in this file. Dates reflect t
 ## [Unreleased]
 - Increase download timeouts across LibGen, Wiley, and Unpaywall fetchers to better tolerate slow mirrors and networks.
 - Allow running `getscipapers gui` to launch the Tkinter wrapper via the package entrypoint.
+- Add a `main` entrypoint to the GUI module so subcommand dispatch works without warnings.
 - Add a cross-platform Tkinter GUI wrapper that reuses the CLI logic for searches and DOI list downloads.
 - Allow programmatic invocations of ``getpapers`` with explicit argument lists for easier embedding in tools like the new GUI.
 - Expand GUI service selection to let users target one or many sources (defaulting to all) and accept multiple `--db` flags in the CLI for parity.
