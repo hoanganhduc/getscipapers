@@ -14,6 +14,7 @@ import sys
 import argparse
 import asyncio
 import inspect
+import platform
 
 __version__ = "0.1.3"
 __author__ = "Duc A. Hoang (hoanganhduc)"
@@ -36,6 +37,10 @@ for _file in _current_dir.glob("*.py"):
 
 def main():
     """Main entry point for the getscipapers package."""
+
+    if platform.system() == "Windows":
+        # Prefer the selector policy to avoid Proactor cleanup warnings on exit
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     
     # Check if we're being called with a module name as first argument
     if len(sys.argv) > 1 and not sys.argv[1].startswith('-'):
