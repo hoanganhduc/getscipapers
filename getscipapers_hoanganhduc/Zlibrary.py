@@ -3,8 +3,12 @@ Copyright (c) 2023-2024 Bipinkrish
 This file is part of the Zlibrary-API by Bipinkrish
 Zlibrary-API / Zlibrary.py
 
-For more information, see: 
+For more information, see:
 https://github.com/bipinkrish/Zlibrary-API/
+
+This vendor module is bundled so higher-level helpers can depend on it without
+requiring an external installation. Only a subset of its surface area is used
+by :mod:`getscipapers_hoanganhduc.zlib` for search and download flows.
 """
 
 import requests

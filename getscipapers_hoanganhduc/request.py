@@ -1,3 +1,11 @@
+"""Dispatcher for higher-level paper request workflows.
+
+This module ties together Nexus lookups, AbleSci and Wosonhj helpers, and
+fallback flows to request papers from community sources. It keeps the command
+parsing and orchestration code separate from the individual service
+implementations.
+"""
+
 import argparse
 import os
 from . import getpapers, nexus, ablesci, wosonhj, facebook, scinet
@@ -11,109 +19,93 @@ def extract_dois_from_text_input(text):
     """
     return getpapers.extract_dois_from_text(text)
 
-def request_dois(dois, verbose=False, service=None):
-    """
-    Post DOI numbers to one or more services and ask for help obtaining the papers.
-    If service is a list, aggregate results from all specified services.
-    If service is "all", use all available services.
-    """
+async def _request_single_service(dois, svc, verbose):
+    if svc == "nexus":
+        try:
+            response = await nexus.request_papers_by_doi_list(dois)
+            if verbose:
+                print("📨 Posted DOIs to Nexus bot for help.")
+            return {doi: response.get(doi, {"error": "No response or not found"}) for doi in dois}
+        except Exception as e:
+            if verbose:
+                print(f"❌ Failed to post DOIs to Nexus: {e}")
+            return {doi: {"error": str(e)} for doi in dois}
+    if svc == "ablesci":
+        try:
+            response_list = await asyncio.to_thread(ablesci.request_multiple_dois, dois)
+            if verbose:
+                print("📨 Posted DOIs to AbleSci for help.")
+            svc_results = {}
+            for item in response_list:
+                doi = item.get('doi')
+                if item.get('success'):
+                    svc_results[doi] = {"success": True}
+                else:
+                    svc_results[doi] = {"error": item.get('error', 'Unknown error')}
+            for doi in dois:
+                if doi not in svc_results:
+                    svc_results[doi] = {"error": "No response or not found"}
+            return svc_results
+        except Exception as e:
+            if verbose:
+                print(f"❌ Failed to post DOIs to AbleSci: {e}")
+            return {doi: {"error": str(e)} for doi in dois}
+    if svc == "wosonhj":
+        try:
+            response = await asyncio.to_thread(wosonhj.request_multiple_dois, dois)
+            if verbose:
+                print("📨 Posted DOIs to Wosonhj for help.")
+            return {doi: response.get(doi, {"error": "No response or not found"}) for doi in dois}
+        except Exception as e:
+            if verbose:
+                print(f"❌ Failed to post DOIs to Wosonhj: {e}")
+            return {doi: {"error": str(e)} for doi in dois}
+    if svc == "facebook":
+        try:
+            response_list = await asyncio.to_thread(facebook.request_multiple_dois, dois)
+            if verbose:
+                print("📨 Posted DOIs to Facebook for help.")
+            response_dict = {}
+            for item in response_list:
+                doi = item.get('doi')
+                if item.get('success'):
+                    response_dict[doi] = {"success": True}
+                else:
+                    response_dict[doi] = {"error": item.get('error', 'Unknown error')}
+            return {doi: response_dict.get(doi, {"error": "No response or not found"}) for doi in dois}
+        except Exception as e:
+            if verbose:
+                print(f"❌ Failed to post DOIs to Facebook: {e}")
+            return {doi: {"error": str(e)} for doi in dois}
+    if svc == "scinet":
+        try:
+            response = await asyncio.to_thread(scinet.login_and_request_multiple_dois_simple, dois)
+            if verbose:
+                print("📨 Posted DOIs to SciNet for help.")
+            return {doi: response.get(doi, {"error": "No response or not found"}) for doi in dois}
+        except Exception as e:
+            if verbose:
+                print(f"❌ Failed to post DOIs to SciNet: {e}")
+            return {doi: {"error": str(e)} for doi in dois}
+    raise ValueError(f"Service '{svc}' is not supported.")
+
+
+async def async_request_dois(dois, verbose=False, service=None):
     if isinstance(dois, str):
         dois = [dois]
-    results = {}
 
-    # Allow service to be a string or a list of strings
     if service is None:
         service_list = ["nexus"]
     elif isinstance(service, str):
-        if service.lower() == "all":
-            service_list = SERVICE_LIST
-        else:
-            service_list = [service]
+        service_list = SERVICE_LIST if service.lower() == "all" else [service]
     else:
-        # If "all" is in the list, use all services
-        if any(s.lower() == "all" for s in service):
-            service_list = SERVICE_LIST
-        else:
-            service_list = list(service)
+        service_list = SERVICE_LIST if any(s.lower() == "all" for s in service) else list(service)
 
-    for svc in service_list:
-        svc_results = {}
-        if svc == "nexus":
-            async def fetch_nexus(dois):
-                try:
-                    response = await nexus.request_papers_by_doi_list(dois)
-                    if verbose:
-                        print("📨 Posted DOIs to Nexus bot for help.")
-                    return {doi: response.get(doi, {"error": "No response or not found"}) for doi in dois}
-                except Exception as e:
-                    if verbose:
-                        print(f"❌ Failed to post DOIs to Nexus: {e}")
-                    return {doi: {"error": str(e)} for doi in dois}
-            svc_results = asyncio.run(fetch_nexus(dois))
-        elif svc == "ablesci":
-            try:
-                response_list = ablesci.request_multiple_dois(dois)
-                if verbose:
-                    print("📨 Posted DOIs to AbleSci for help.")
-                # Map results by DOI for consistency with other services
-                svc_results = {}
-                for item in response_list:
-                    doi = item.get('doi')
-                    if item.get('success'):
-                        svc_results[doi] = {"success": True}
-                    else:
-                        svc_results[doi] = {"error": item.get('error', 'Unknown error')}
-                # Ensure all DOIs are present in the result
-                for doi in dois:
-                    if doi not in svc_results:
-                        svc_results[doi] = {"error": "No response or not found"}
-            except Exception as e:
-                if verbose:
-                    print(f"❌ Failed to post DOIs to AbleSci: {e}")
-                svc_results = {doi: {"error": str(e)} for doi in dois}
-        elif svc == "wosonhj":
-            try:
-                response = wosonhj.request_multiple_dois(dois)
-                if verbose:
-                    print("📨 Posted DOIs to Wosonhj for help.")
-                svc_results = {doi: response.get(doi, {"error": "No response or not found"}) for doi in dois}
-            except Exception as e:
-                if verbose:
-                    print(f"❌ Failed to post DOIs to Wosonhj: {e}")
-                svc_results = {doi: {"error": str(e)} for doi in dois}
-        elif svc == "facebook":
-            try:
-                response_list = facebook.request_multiple_dois(dois)
-                if verbose:
-                    print("📨 Posted DOIs to Facebook for help.")
-                # Convert list of results to a dict mapping DOI to result
-                response_dict = {}
-                for item in response_list:
-                    doi = item.get('doi')
-                    if item.get('success'):
-                        response_dict[doi] = {"success": True}
-                    else:
-                        response_dict[doi] = {"error": item.get('error', 'Unknown error')}
-                # Ensure all DOIs are present in the result
-                svc_results = {doi: response_dict.get(doi, {"error": "No response or not found"}) for doi in dois}
-            except Exception as e:
-                if verbose:
-                    print(f"❌ Failed to post DOIs to Facebook: {e}")
-                svc_results = {doi: {"error": str(e)} for doi in dois}
-        elif svc == "scinet":
-            try:
-                response = scinet.login_and_request_multiple_dois_simple(dois)
-                if verbose:
-                    print("📨 Posted DOIs to SciNet for help.")
-                svc_results = {doi: response.get(doi, {"error": "No response or not found"}) for doi in dois}
-            except Exception as e:
-                if verbose:
-                    print(f"❌ Failed to post DOIs to SciNet: {e}")
-                svc_results = {doi: {"error": str(e)} for doi in dois}
-        else:
-            raise ValueError(f"Service '{svc}' is not supported.")
+    tasks = [asyncio.create_task(_request_single_service(dois, svc, verbose)) for svc in service_list]
+    service_results = await asyncio.gather(*tasks)
 
-        # Merge results: nest by service if multiple, else flat dict
+    results = {}
+    for svc, svc_results in zip(service_list, service_results):
         for doi in dois:
             if len(service_list) == 1:
                 results[doi] = svc_results.get(doi, {"error": "No response or not found"})
@@ -121,8 +113,21 @@ def request_dois(dois, verbose=False, service=None):
                 if doi not in results:
                     results[doi] = {}
                 results[doi][svc] = svc_results.get(doi, {"error": "No response or not found"})
-
     return results
+
+
+def request_dois(dois, verbose=False, service=None):
+    """
+    Synchronous wrapper for :func:`async_request_dois`.
+    Raises an informative error if called from an active event loop to avoid
+    nested loop failures.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(async_request_dois(dois, verbose=verbose, service=service))
+
+    raise RuntimeError("request_dois cannot run inside an existing event loop; use async_request_dois instead.")
 
 def parse_doi_argument(doi_arg):
     """
@@ -214,17 +219,17 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
-        "--doi",
+        "-d", "--doi",
         required=True,
         help="A DOI, a list of DOIs, a text string, or a text file containing DOIs."
     )
     parser.add_argument(
-        "--service",
+        "-s", "--service",
         default="nexus",
         help=f"Service(s) to use for requesting DOIs (comma, semicolon, space separated, or 'all'). Available: {service_list_str}"
     )
     parser.add_argument(
-        "--verbose",
+        "-v", "--verbose",
         action="store_true",
         help="Enable verbose output."
     )

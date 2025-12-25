@@ -1,3 +1,11 @@
+"""Selenium routines for interacting with Facebook groups used by the project.
+
+The helpers in this module provide just enough automation to fetch paper links
+from community groups. The implementation is intentionally minimal and is only
+loaded when explicitly requested to avoid adding Selenium overhead to other
+command paths.
+"""
+
 # Facebook Scraper with Selenium and BeautifulSoup
 # Originally from https://github.com/abdosabry21/Facebook-scraping
 
@@ -2515,7 +2523,7 @@ Examples:
                        help='Enable verbose debugging output')
     parser.add_argument('--log', '-l', type=str,
                        help='Path to log file to write output messages (in addition to screen output)')
-    parser.add_argument('--no-headless', action='store_true',
+    parser.add_argument('--no-headless', '-H', action='store_true',
                        help='Run in graphic mode (default is headless)')
     parser.add_argument('--credentials', '-c', type=str,
                        help='Path to JSON credentials file containing username and password')
@@ -2527,7 +2535,7 @@ Examples:
                        help=f'Download PDFs for DOI numbers found in posts to specified directory (requires --having-doi). Default: {DOWNLOAD_FOLDER}')
     parser.add_argument('--search', '-s', type=str,
                        help='Search for posts containing specific content')
-    parser.add_argument('--search-limit', type=int, default=10,
+    parser.add_argument('--search-limit', '-L', type=int, default=10,
                        help='Number of search results to return (default: 10)')
     parser.add_argument('--search-comment', '-sc', nargs='?', const='', type=str,
                        help='Comment text to post on searched results (if no text provided, will prompt for input)')
@@ -2561,9 +2569,9 @@ Examples:
                        help='Request help for DOI(s): provide a DOI, comma-separated DOIs, or a file containing DOIs (one per line)')
     parser.add_argument('--request-in-group', '-rg', nargs='?', const='188053074599163', type=str, 
                        help='Group ID to post DOI help requests in (default: 188053074599163)')
-    parser.add_argument('--clear-cache', action='store_true',
+    parser.add_argument('--clear-cache', '-C', action='store_true',
                        help='Delete the default cache directory and exit')
-    parser.add_argument('--print-default', action='store_true',
+    parser.add_argument('--print-default', '-P', action='store_true',
                        help='Print default cache and download directory paths and exit')
     args = parser.parse_args()
     

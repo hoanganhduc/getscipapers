@@ -1,3 +1,10 @@
+"""Integration helpers for Z-Library via the third-party Zlibrary API.
+
+These utilities provide a thin wrapper around the upstream client to keep the
+rest of the codebase consistent with other source modules. Configuration helpers
+mirror the patterns used elsewhere in the package for clarity.
+"""
+
 # This script provides a function to search for books in Z-library using the Zlibrary-API by Bipinkrish (https://github.com/bipinkrish/Zlibrary-API/).
 
 from .Zlibrary import Zlibrary
@@ -510,15 +517,15 @@ def main():
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument('--search', type=str, help='Search query (book title, author, etc.)')
-    parser.add_argument('--search-limit', type=int, help='Number of results to return (only with --search)')
-    parser.add_argument('--credentials', type=str, metavar='CREDENTIALS', help='Path to Z-library credentials JSON file')
-    parser.add_argument('--clear-credentials', action='store_true', help='Clear saved Z-library credentials')
-    parser.add_argument('--download', nargs='?', const=DEFAULT_DOWNLOAD_DIR, default=None, metavar='DOWNLOAD_DIR', help='Download directory for selected books (optional, uses default if not specified)')
-    parser.add_argument('--user-info', action='store_true', help='Show Z-library user profile information')
-    parser.add_argument('--recent', action='store_true', help='List recently added books')
-    parser.add_argument('--popular', action='store_true', help='List most popular books')
-    parser.add_argument('--popular-language', type=str, metavar='LANG', help='Language code for most popular books (optional)')
+    parser.add_argument('-s', '--search', type=str, help='Search query (book title, author, etc.)')
+    parser.add_argument('-L', '--search-limit', type=int, help='Number of results to return (only with --search)')
+    parser.add_argument('-c', '--credentials', type=str, metavar='CREDENTIALS', help='Path to Z-library credentials JSON file')
+    parser.add_argument('-C', '--clear-credentials', action='store_true', help='Clear saved Z-library credentials')
+    parser.add_argument('-d', '--download', nargs='?', const=DEFAULT_DOWNLOAD_DIR, default=None, metavar='DOWNLOAD_DIR', help='Download directory for selected books (optional, uses default if not specified)')
+    parser.add_argument('-u', '--user-info', action='store_true', help='Show Z-library user profile information')
+    parser.add_argument('-r', '--recent', action='store_true', help='List recently added books')
+    parser.add_argument('-p', '--popular', action='store_true', help='List most popular books')
+    parser.add_argument('-P', '--popular-language', type=str, metavar='LANG', help='Language code for most popular books (optional)')
     args = parser.parse_args()
 
     # Prevent using --credentials and --clear-credentials at the same time

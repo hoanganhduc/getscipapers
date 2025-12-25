@@ -1,3 +1,11 @@
+"""Automations for AbleSci daily check-ins and download requests.
+
+The functions in this module rely on Selenium to drive the AbleSci website for
+routine actions such as claiming daily credits or retrieving paper links. They
+are primarily used by the CLI helpers in :mod:`getscipapers_hoanganhduc.checkin`
+and :mod:`getscipapers_hoanganhduc.request`.
+"""
+
 import argparse
 from selenium import webdriver
 from selenium.webdriver.common.by import By

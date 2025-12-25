@@ -1,3 +1,10 @@
+"""Async interactions with the Nexus Telegram bot.
+
+The routines here handle authentication, command dispatch, and output parsing
+for the Nexus search bot. They are structured around ``Telethon`` event loops
+so they can be driven from the CLI without blocking other concurrent work.
+"""
+
 # Python script to interact with Nexus bot on Telegram
 
 from telethon import TelegramClient, events
@@ -5659,53 +5666,53 @@ Examples:
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument('--create-session', action='store_true',
+    parser.add_argument('-S', '--create-session', action='store_true',
                        help='Create a new session file interactively')
-    parser.add_argument('--credentials', type=str,
+    parser.add_argument('-c', '--credentials', type=str,
                        help='Path to credentials JSON file containing API credentials. '
                             'Example file content: {"tg_api_id": "12345678", "tg_api_hash": "abcd1234efgh5678", '
                             '"phone": "+1234567890", "bot_username": "SciNexBot"}')
-    parser.add_argument('--search', type=str,
+    parser.add_argument('-s', '--search', type=str,
                        default="",
                        help='Search query to send to the bot')
-    parser.add_argument('--search-limit', type=int, default=None,
+    parser.add_argument('-L', '--search-limit', type=int, default=None,
                        help='Limit the number of search results returned when using --search')
     parser.add_argument('--bot', type=str,
                        help='Bot username to interact with (overrides default)')
-    parser.add_argument('--verbose', action='store_true',
+    parser.add_argument('-v', '--verbose', action='store_true',
                        help='Enable verbose output for debugging')
-    parser.add_argument('--log', type=str, nargs='?', const=DEFAULT_LOG_FILE,
+    parser.add_argument('-l', '--log', type=str, nargs='?', const=DEFAULT_LOG_FILE,
                        help=f'Save output to log file (default: {DEFAULT_LOG_FILE})')
-    parser.add_argument('--proxy', type=str, nargs='?', const=DEFAULT_PROXY_FILE,
+    parser.add_argument('-p', '--proxy', type=str, nargs='?', const=DEFAULT_PROXY_FILE,
                        help=f'Path to proxy configuration JSON file (default: {DEFAULT_PROXY_FILE}). '
                             'Example file content: {"type": "http", "addr": "127.0.0.1", "port": 8080} '
                             'or {"type": "socks5", "addr": "127.0.0.1", "port": 1080, "username": "user", "password": "pass"}')
-    parser.add_argument('--no-proxy', action='store_true',
+    parser.add_argument('-P', '--no-proxy', action='store_true',
                        help='Disable proxy usage and connect directly')
-    parser.add_argument('--user-info', action='store_true',
+    parser.add_argument('-u', '--user-info', action='store_true',
                        help='Get and display user profile information from Nexus bot')
-    parser.add_argument('--clear-proxy', action='store_true',
+    parser.add_argument('-X', '--clear-proxy', action='store_true',
                        help='Clear proxy configuration files (delete default proxy files)')
-    parser.add_argument('--clear-credentials', action='store_true',
+    parser.add_argument('-C', '--clear-credentials', action='store_true',
                        help='Clear credentials configuration file (delete default credentials file)')
-    parser.add_argument('--fetch-nexus-aaron', type=int, nargs='?', const=10, metavar='LIMIT',
+    parser.add_argument('-f', '--fetch-nexus-aaron', type=int, nargs='?', const=10, metavar='LIMIT',
                        help='Fetch recent messages from @nexus_aaron bot (default: 10, max: 100)')
-    parser.add_argument('--test-connection', action='store_true',
+    parser.add_argument('-t', '--test-connection', action='store_true',
                        help='Test connection to Telegram servers and proxy (if configured)')
-    parser.add_argument('--upload-to-nexus-aaron', type=str, metavar='FILE_PATH',
+    parser.add_argument('-U', '--upload-to-nexus-aaron', type=str, metavar='FILE_PATH',
                        help='Upload a file to @nexus_aaron bot')
-    parser.add_argument('--upload-message', type=str, default="",
+    parser.add_argument('-m', '--upload-message', type=str, default="",
                        help='Optional message to send with the uploaded file (use with --upload-to-nexus-aaron)')
-    parser.add_argument('--solve-requests', type=int, nargs='?', const=10, metavar='LIMIT',
+    parser.add_argument('-R', '--solve-requests', type=int, nargs='?', const=10, metavar='LIMIT',
                        help='Reply to research requests from @nexus_aaron bot (default: 10, max: 50)')
-    parser.add_argument('--check-doi', type=str, metavar='DOI_OR_LIST_OR_FILE',
+    parser.add_argument('-k', '--check-doi', type=str, metavar='DOI_OR_LIST_OR_FILE',
                        help='Check if a paper with the specified DOI(s) is available on Nexus. '
                             'Accepts a single DOI, a comma/space separated list, or a file path (one DOI per line).')
-    parser.add_argument('--batch-delay', type=float, default=2.0, metavar='SECONDS',
+    parser.add_argument('-b', '--batch-delay', type=float, default=2.0, metavar='SECONDS',
                        help='Delay between batch DOI checks to avoid rate limiting (default: 2.0 seconds)')
-    parser.add_argument('--download', action='store_true',
+    parser.add_argument('-d', '--download', action='store_true',
                        help='Automatically download papers if available (use with --check-doi)')
-    parser.add_argument('--request-doi', type=str, metavar='DOI_OR_LIST_OR_FILE',
+    parser.add_argument('-r', '--request-doi', type=str, metavar='DOI_OR_LIST_OR_FILE',
                        help='Request a paper by DOI, a comma/space separated list of DOIs, or a file containing DOIs (one per line)')
     parser.add_argument(
         "--print-default",
