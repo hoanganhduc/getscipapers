@@ -3,6 +3,8 @@
 All notable changes to this project are documented in this file. Dates reflect the commit timestamps for each recorded version in `pyproject.toml`.
 
 ## [Unreleased]
+
+## [0.1.4] - 2025-12-25
 - Increase download timeouts across LibGen, Wiley, and Unpaywall fetchers to better tolerate slow mirrors and networks.
 - Allow running `getscipapers gui` to launch the Tkinter wrapper via the package entrypoint.
 - Add a `main` entrypoint to the GUI module so subcommand dispatch works without warnings.

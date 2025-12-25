@@ -13,7 +13,7 @@ project = "getscipapers"
 author = "Duc A. Hoang (hoanganhduc)"
 current_year = datetime.now().year
 copyright = f"2023-{current_year}, {author}"
-release = "0.1.3"
+release = "0.1.4"
 version = release
 
 extensions = [

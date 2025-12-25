@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="getscipapers_hoanganhduc",
-    version="0.1.3",
+    version="0.1.4",
     author="Duc A. Hoang (hoanganhduc)",
     author_email="anhduc.hoang1990@gmail.com",
     description="A Python package to get and request scientific papers from various sources",
