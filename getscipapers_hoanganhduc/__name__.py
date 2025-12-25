@@ -1,8 +1,7 @@
-"""
-Package name module for getscipapers_hoanganhduc.
-"""
+"""Package metadata shim for :mod:`getscipapers_hoanganhduc`."""
 
 __name__ = "getscipapers_hoanganhduc"
-__version__ = "0.1.0"
+__version__ = "0.1.3"
 __author__ = "Duc A. Hoang (hoanganhduc)"
-__description__ = "A package for getting scientific papers"
+__email__ = "anhduc.hoang1990@gmail.com"
+__description__ = "A Python package to get and request scientific papers from various sources"

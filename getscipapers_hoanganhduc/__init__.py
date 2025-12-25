@@ -1,3 +1,12 @@
+"""Top-level package wiring for :mod:`getscipapers_hoanganhduc`.
+
+This module exposes metadata, a convenience ``main`` entry point, and a small
+dynamic loader so that subcommands like ``getpapers`` and ``request`` can be
+invoked via ``python -m getscipapers_hoanganhduc <module>``. The import logic is
+kept lightweight to avoid side effects at startup; individual modules own their
+configuration and heavy dependencies.
+"""
+
 import os
 import importlib
 from pathlib import Path
@@ -5,12 +14,9 @@ import sys
 import argparse
 import asyncio
 import inspect
+import platform
 
-"""
-getscipapers - A Python package to get and request scientific papers from various sources
-"""
-
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 __author__ = "Duc A. Hoang (hoanganhduc)"
 __email__ = "anhduc.hoang1990@gmail.com"
 __description__ = "A Python package to get and request scientific papers from various sources"
@@ -31,6 +37,10 @@ for _file in _current_dir.glob("*.py"):
 
 def main():
     """Main entry point for the getscipapers package."""
+
+    if platform.system() == "Windows":
+        # Prefer the selector policy to avoid Proactor cleanup warnings on exit
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     
     # Check if we're being called with a module name as first argument
     if len(sys.argv) > 1 and not sys.argv[1].startswith('-'):
