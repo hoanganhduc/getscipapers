@@ -82,7 +82,6 @@ def save_credentials(
         verbose=VERBOSE,
     )
 
-
 def normalize_db_selection(db: str | list[str] | tuple[str, ...] | None) -> list[str]:
     """Normalize the ``--db`` selection to a concrete list of services.
 

@@ -192,11 +192,5 @@ def launch_gui() -> None:
     root.mainloop()
 
 
-def main() -> None:
-    """CLI entrypoint that launches the Tkinter GUI."""
-
-    launch_gui()
-
-
 if __name__ == "__main__":  # pragma: no cover - manual invocation helper
     launch_gui()
