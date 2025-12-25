@@ -119,7 +119,7 @@ getscipapers getpapers --search "graph neural network" --limit 5
 
 # Download a specific DOI using Unpaywall first (non-interactive to avoid prompts)
 GETSCIPAPERS_EMAIL=you@example.com \
-getscipapers getpapers --doi 10.1038/nature12373 --db unpaywall --non-interactive
+getscipapers getpapers --doi 10.1371/journal.pone.0245581 --db unpaywall --non-interactive
 
 # Process a list of DOIs from a text file, saving PDFs to a custom folder
 getscipapers getpapers --doi-file dois.txt --download-folder ./pdfs
@@ -128,12 +128,17 @@ getscipapers getpapers --doi-file dois.txt --download-folder ./pdfs
 getscipapers getpapers --extract-doi-from-pdf paper.pdf --no-download
 
 # Show metadata only (no downloads) for a single DOI across all services
-getscipapers getpapers --doi 10.1016/j.cell.2019.05.031 --no-download --verbose
+getscipapers getpapers --doi 10.48550/arXiv.1706.03762 --no-download --verbose
 
 # Use environment-provided credentials and skip prompts entirely
 export GETSCIPAPERS_EMAIL=you@example.com
 export GETSCIPAPERS_ELSEVIER_API_KEY=your_elsevier_key
 getscipapers getpapers --search "quantum error correction" --non-interactive
+
+# Route every service through a JSON-defined proxy or force direct connections
+getscipapers getpapers --doi 10.1371/journal.pcbi.1007128 --proxy ./sample_proxy_config.json
+getscipapers getpapers --search "graph neural networks" --no-proxy
+getscipapers getpapers --search "graph neural networks" --auto-proxy  # fetch a working proxy if one is missing
 ```
 
 ### Graphical wrapper
@@ -145,6 +150,8 @@ getscipapers gui
 ```
 
 The window exposes the same options as the CLI—database selection (toggle one or many services), metadata-only runs, custom download folders, and verbose logging—and reuses the CLI logic under the hood so behavior stays consistent.
+
+The GUI also shows the running version with author and support links, accepts comma-separated DOIs directly or from a text file, disables actions while background work is in progress, offers **Clear output** and **Open folder** buttons to reset logs or jump to your downloads, and lets you type or browse for a credentials JSON file when you want to point at a custom location. You can likewise toggle proxy usage, browse for a proxy JSON configuration, or let the app automatically fetch a working proxy so every service call follows the same connectivity rule. Settings live in their own tab so search actions stay uncluttered, an **About** tab lists the author, description, source code, donation links, and license, and the output pane now has a **Detailed log** tab with timestamped entries alongside the main console. A dedicated **Remove metadata** control can scrub PDF metadata after downloads, either overwriting the original or writing a cleaned copy alongside it. Inline validation hints appear beside inputs when something is missing, a shared progress bar and toast notifications make long downloads and proxy discovery visible, and **Save/Reload profile** buttons persist your preferred folders, credentials, and proxy settings between sessions.
 
 
 ## Running getscipapers in GitHub Codespace
