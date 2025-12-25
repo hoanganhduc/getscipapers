@@ -46,6 +46,15 @@ Use these ready-to-run commands as starting points:
    # Show metadata only across all services for a DOI
    getscipapers getpapers --doi 10.1016/j.cell.2019.05.031 --no-download --verbose
 
+Graphical wrapper
+-----------------
+
+If you prefer not to remember command-line flags, start the Tkinter-based GUI wrapper (works on Windows and Linux) and trigger the same searches and DOI list downloads::
+
+   getscipapers gui
+
+The window exposes database selection (toggle one or many services), metadata-only runs, verbose logging, and custom download folders while reusing the existing CLI logic under the hood.
+
 Search Strategies
 -----------------
 

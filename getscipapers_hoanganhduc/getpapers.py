@@ -58,6 +58,9 @@ UNPYWALL_CACHE_DIR = str(configuration.UNPYWALL_CACHE_DIR)
 UNPYWALL_CACHE_FILE = str(configuration.UNPYWALL_CACHE_FILE)
 
 DEFAULT_DOWNLOAD_FOLDER = configuration.DEFAULT_DOWNLOAD_FOLDER
+# Increase the tolerance for slow networks when downloading PDFs.
+DOWNLOAD_TIMEOUT = 120
+DB_CHOICES: tuple[str, ...] = ("nexus", "scihub", "anna", "unpaywall", "libgen")
 
 def ensure_directory_exists(path: str) -> None:
     configuration.ensure_directory_exists(Path(path))
@@ -78,6 +81,29 @@ def save_credentials(
         config_file=config_file,
         verbose=VERBOSE,
     )
+
+def normalize_db_selection(db: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    """Normalize the ``--db`` selection to a concrete list of services.
+
+    The CLI accepts comma-delimited strings or multiple ``--db`` flags. Any
+    request containing ``"all"`` or no explicit services resolves to the full
+    list defined in :data:`DB_CHOICES`.
+    """
+
+    if db is None:
+        return list(DB_CHOICES)
+
+    if isinstance(db, str):
+        # Support comma-separated values from older invocations or GUI input
+        parts = [part.strip() for part in db.split(",") if part.strip()]
+    else:
+        parts = [str(part).strip() for part in db if str(part).strip()]
+
+    if not parts or any(part == "all" for part in parts):
+        return list(DB_CHOICES)
+
+    filtered = [part for part in parts if part in DB_CHOICES]
+    return filtered or list(DB_CHOICES)
 
 
 def load_credentials(
@@ -2157,7 +2183,12 @@ async def download_wiley_pdf_by_doi(
     try:
         async with aiohttp.TCPConnector() as conn:
             async with aiohttp.ClientSession(connector=conn) as session:
-                async with session.get(pdf_url, headers=headers, timeout=30, allow_redirects=True) as resp:
+                async with session.get(
+                    pdf_url,
+                    headers=headers,
+                    timeout=DOWNLOAD_TIMEOUT,
+                    allow_redirects=True,
+                ) as resp:
                     # Save headers for debugging
                     with open(headers_path, "w", encoding="utf-8") as hfile:
                         for k, v in resp.headers.items():
@@ -2349,7 +2380,7 @@ async def download_from_unpaywall(
             try:
                 async with aiohttp.TCPConnector() as conn:
                     async with aiohttp.ClientSession(connector=conn) as session:
-                        async with session.get(pdf_url, headers=headers, timeout=60) as resp:
+                        async with session.get(pdf_url, headers=headers, timeout=DOWNLOAD_TIMEOUT) as resp:
                             vprint(f"Unpaywall PDF HTTP status: {resp.status}")
                             if resp.status == 200 and resp.content_type == "application/pdf":
                                 with open(filepath, "wb") as f:
@@ -2391,7 +2422,7 @@ async def download_from_unpaywall(
                             "DNT": "1",
                             "Connection": "keep-alive",
                         }
-                        async with session.get(url, headers=browser_headers, timeout=60) as resp:
+                        async with session.get(url, headers=browser_headers, timeout=DOWNLOAD_TIMEOUT) as resp:
                             if resp.status == 200 and resp.content_type == "application/pdf":
                                 filename = f"{safe_doi}_unpaywall_browser_{idx}.pdf"
                                 filepath = os.path.join(download_folder, filename)
@@ -2447,7 +2478,7 @@ async def download_from_unpaywall(
                             "DNT": "1",
                             "Referer": f"https://doi.org/{doi}",
                         }
-                        async with session.get(url, headers=oa_headers, timeout=60) as resp:
+                        async with session.get(url, headers=oa_headers, timeout=DOWNLOAD_TIMEOUT) as resp:
                             if resp.status != 200:
                                 vprint(f"Failed to fetch OA link {url} (HTTP {resp.status})")
                                 continue
@@ -2467,7 +2498,11 @@ async def download_from_unpaywall(
                                     pdf_candidate_url = url.rstrip("/") + "/" + pdf_candidate
                                 vprint(f"Found candidate PDF link: {pdf_candidate_url}")
                                 try:
-                                    async with session.get(pdf_candidate_url, headers=oa_headers, timeout=60) as pdf_resp:
+                                    async with session.get(
+                                        pdf_candidate_url,
+                                        headers=oa_headers,
+                                        timeout=DOWNLOAD_TIMEOUT,
+                                    ) as pdf_resp:
                                         if pdf_resp.status == 200 and pdf_resp.content_type == "application/pdf":
                                             filename = f"{safe_doi}_unpaywall_follow_{idx}.pdf"
                                             filepath = os.path.join(download_folder, filename)
@@ -2682,7 +2717,12 @@ async def download_from_anna_archive(doi: str, download_folder: str = DEFAULT_DO
             print(f"Error accessing Anna's Archive for DOI {doi} at {domain}: {e}")
     return False
 
-async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER, db: str = "all", no_download: bool = False):
+async def download_by_doi(
+    doi: str,
+    download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
+    db: str | list[str] | tuple[str, ...] = "all",
+    no_download: bool = False,
+):
     # Extract DOI from input if possible (handles cases where input is a URL or contains a DOI)
     dois = extract_dois_from_text(doi)
     if dois:
@@ -2691,6 +2731,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
         print(f"❌ Input does not appear to be a valid DOI or DOI-containing string: {doi}")
         return False
     vprint(f"Starting download_by_doi for DOI: {doi}, folder: {download_folder}, db: {db}, no_download: {no_download}")
+    selected_dbs = normalize_db_selection(db)
     results = await search_documents(doi, 1)
     
     if results:
@@ -2730,12 +2771,12 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
             return True
         print(f"⚠️ Failed to download from Unpaywall for DOI: {doi}. Trying other sources...")
 
-    if not id and db in ["all", "nexus"]:
+    if not id and "nexus" in selected_dbs:
         print(f"❌ No ID available for Nexus download for DOI: {doi}.")
 
     tried = False
 
-    if db in ["all", "nexus"] and id:
+    if "nexus" in selected_dbs and id:
         tried = True
         vprint(f"Trying Nexus download for id: {id}, doi: {doi}")
         print(f"🪐 Trying Nexus for DOI: {doi}...")
@@ -2754,7 +2795,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
             return True
         print(f"❌ PDF file is not available from Nexus bot for DOI: {doi}.")
 
-    if db in ["all", "scihub"]:
+    if "scihub" in selected_dbs:
         tried = True
         print(f"🧪 Trying Sci-Hub for DOI: {doi}...")
         if await download_from_scihub(doi, download_folder):
@@ -2764,7 +2805,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
             return True
         print(f"❌ PDF file is not available on Sci-Hub for DOI: {doi}.")
 
-    if db in ["all", "anna"]:
+    if "anna" in selected_dbs:
         tried = True
         print(f"📚 Trying Anna's Archive for DOI: {doi}...")
         if await download_from_anna_archive(doi, download_folder):
@@ -2774,7 +2815,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
             return True
         print(f"❌ PDF file is not available on Anna's Archive for DOI: {doi}.")
 
-    if db in ["all", "libgen"]:
+    if "libgen" in selected_dbs:
         tried = True
         print(f"📖 Trying LibGen for DOI: {doi}...")
         try:
@@ -2790,7 +2831,7 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
         except Exception as e:
             print(f"❌ Error downloading from LibGen for DOI {doi}: {e}")
 
-    if db in ["all", "unpaywall"]:
+    if "unpaywall" in selected_dbs:
         tried = True
         print(f"🌐 Trying Unpaywall for DOI: {doi}...")
         if await download_from_unpaywall(doi, download_folder):
@@ -2827,7 +2868,12 @@ async def download_by_doi(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLD
     # print(f"  ✗ {doi} [{oa_status_text}]")
     return False
 
-async def download_by_doi_list(doi_file: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER, db: str = "all", no_download: bool = False):
+async def download_by_doi_list(
+    doi_file: str,
+    download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
+    db: str | list[str] | tuple[str, ...] = "all",
+    no_download: bool = False,
+):
     ICON_START = "🚀"
     ICON_DOI = "🔎"
     ICON_SUCCESS = "✅"
@@ -2840,7 +2886,9 @@ async def download_by_doi_list(doi_file: str, download_folder: str = DEFAULT_DOW
     ICON_STEP = "➡️"
     ICON_WARN = "⚠️"
 
-    vprint(f"{ICON_START} Starting download_by_doi_list for file: {doi_file}, folder: {download_folder}, db: {db}, no_download: {no_download}")
+    vprint(
+        f"{ICON_START} Starting download_by_doi_list for file: {doi_file}, folder: {download_folder}, db: {normalize_db_selection(db)}, no_download: {no_download}"
+    )
     
     # Always extract DOIs from the file using extract_dois_from_file
     try:
@@ -2946,7 +2994,11 @@ def print_default_paths():
     print(f"  Unpywall cache file: {UNPYWALL_CACHE_FILE}")
     print(f"  Platform: {platform.system()}")
 
-async def main():
+async def main(argv: list[str] | None = None):
+    if platform.system() == "Windows":
+        # Prefer the selector policy to avoid Proactor cleanup warnings on exit
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
     # Get the parent package name from the module's __name__
     parent_package = __name__.split('.')[0] if '.' in __name__ else None
 
@@ -2986,10 +3038,12 @@ async def main():
     argparser.add_argument("--download-folder", type=str, default=DEFAULT_DOWNLOAD_FOLDER, help="Folder to save downloaded PDFs")
     argparser.add_argument(
         "--db",
-        type=str,
-        choices=["all", "nexus", "scihub", "anna", "unpaywall", "libgen"],
-        default="all",
-        help="Specify which database to use for downloading PDFs: all, nexus, scihub, anna, unpaywall, libgen (default: all)"
+        action="append",
+        choices=["all", *DB_CHOICES],
+        help=(
+            "Specify which database(s) to use for downloading PDFs: all, nexus, scihub, anna, unpaywall, libgen. "
+            "Repeat the flag to target multiple services; defaults to all."
+        ),
     )
     argparser.add_argument(
         "--no-download",
@@ -3032,7 +3086,8 @@ async def main():
         help="Extract all valid DOIs from a text file and write them to <file>.dois.txt"
     )
         
-    args = argparser.parse_args()
+    args = argparser.parse_args(argv)
+    args.db = args.db or ["all"]
 
     # Initialize Unpywall cache
     ensure_directory_exists(UNPYWALL_CACHE_DIR)

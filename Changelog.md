@@ -3,9 +3,14 @@
 All notable changes to this project are documented in this file. Dates reflect the commit timestamps for each recorded version in `pyproject.toml`.
 
 ## [Unreleased]
-- No changes yet.
+- Increase download timeouts across LibGen, Wiley, and Unpaywall fetchers to better tolerate slow mirrors and networks.
+- Allow running `getscipapers gui` to launch the Tkinter wrapper via the package entrypoint.
+- Add a cross-platform Tkinter GUI wrapper that reuses the CLI logic for searches and DOI list downloads.
+- Allow programmatic invocations of ``getpapers`` with explicit argument lists for easier embedding in tools like the new GUI.
+- Expand GUI service selection to let users target one or many sources (defaulting to all) and accept multiple `--db` flags in the CLI for parity.
 
 ## [0.1.3] - 2025-12-25
+- Set the Windows event loop policy to `WindowsSelectorEventLoopPolicy` for CLI invocations to avoid Proactor cleanup errors when exiting.
 - Standardize CLI option names and shorthand flags across modules for a consistent experience.
 - Add explicit CLI usage examples to the README and Sphinx docs to guide common workflows.
 - Enforce configured email usage across API calls and validate credentials before running CLI flows to avoid silent fallbacks.

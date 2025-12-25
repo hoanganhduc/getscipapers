@@ -136,6 +136,16 @@ export GETSCIPAPERS_ELSEVIER_API_KEY=your_elsevier_key
 getscipapers getpapers --search "quantum error correction" --non-interactive
 ```
 
+### Graphical wrapper
+
+Prefer a point-and-click flow? Launch the Tkinter GUI wrapper (works on both Windows and Linux) and trigger searches or DOI list downloads without remembering every flag:
+
+```bash
+getscipapers gui
+```
+
+The window exposes the same options as the CLI—database selection (toggle one or many services), metadata-only runs, custom download folders, and verbose logging—and reuses the CLI logic under the hood so behavior stays consistent.
+
 
 ## Running getscipapers in GitHub Codespace
 

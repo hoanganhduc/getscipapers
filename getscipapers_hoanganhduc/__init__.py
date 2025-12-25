@@ -21,13 +21,15 @@ __author__ = "Duc A. Hoang (hoanganhduc)"
 __email__ = "anhduc.hoang1990@gmail.com"
 __description__ = "A Python package to get and request scientific papers from various sources"
 
-# Automatically import all Python modules in this directory except Zlibrary
+_AUTOLOAD_SKIP = {"zlibrary", "gui"}
+
+# Automatically import all Python modules in this directory except heavy/interactive ones
 _current_dir = Path(__file__).parent
 for _file in _current_dir.glob("*.py"):
     if (
         _file.name != "__init__.py"
         and not _file.name.startswith("_")
-        and _file.stem.lower() != "zlibrary"
+        and _file.stem.lower() not in _AUTOLOAD_SKIP
     ):
         _module_name = _file.stem
         try:
@@ -45,15 +47,15 @@ def main():
     # Check if we're being called with a module name as first argument
     if len(sys.argv) > 1 and not sys.argv[1].startswith('-'):
         module_name = sys.argv[1]
-        
-        # Get available modules, excluding Zlibrary
+
+        # Get available modules, excluding interactive or optional imports handled elsewhere
         available_modules = []
         _current_dir = Path(__file__).parent
         for _file in _current_dir.glob("*.py"):
             if (
                 _file.name != "__init__.py"
                 and not _file.name.startswith("_")
-                and _file.stem.lower() != "zlibrary"
+                and _file.stem.lower() not in {"zlibrary"}
             ):
                 available_modules.append(_file.stem)
         

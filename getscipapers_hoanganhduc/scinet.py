@@ -31,6 +31,9 @@ import sys
 import random
 import tempfile
 
+# Allow slow responses when downloading requested files.
+DOWNLOAD_TIMEOUT = 120
+
 # Global variables for credentials
 USERNAME = ""  # Replace with your actual username/email
 PASSWORD = ""  # Replace with your actual password
@@ -2230,7 +2233,13 @@ def login_and_check_fulfilled_requests(username, password, headless=False):
                                     }
                                     
                                     # Make the request to download PDF
-                                    response = requests.get(pdf_url, headers=headers, cookies=cookies, stream=True, timeout=30)
+                                    response = requests.get(
+                                        pdf_url,
+                                        headers=headers,
+                                        cookies=cookies,
+                                        stream=True,
+                                        timeout=DOWNLOAD_TIMEOUT,
+                                    )
                                     response.raise_for_status()
                                     
                                     # Save the PDF content to file
