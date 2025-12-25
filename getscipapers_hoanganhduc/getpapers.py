@@ -40,15 +40,25 @@ from typing import Dict, Optional
 from . import nexus  # Import Nexus bot functions from .nexus module
 from . import libgen  # Import LibGen functions from .libgen module
 from . import configuration
+from . import proxy_config
 
 DEFAULT_LIMIT = configuration.DEFAULT_LIMIT
 
 VERBOSE = False  # Global verbose flag
+ACTIVE_PROXY = proxy_config.ProxySettings()
 
 
 def vprint(*args, **kwargs):
     if VERBOSE:
         print(*args, **kwargs)
+
+
+def _requests_kwargs(kwargs: Optional[dict] = None) -> dict:
+    kwargs = kwargs.copy() if kwargs else {}
+    proxies = ACTIVE_PROXY.requests_proxies()
+    if proxies:
+        kwargs.setdefault("proxies", proxies)
+    return kwargs
 
 # Global variable for default config file location
 GETPAPERS_CONFIG_FILE = str(configuration.GETPAPERS_CONFIG_FILE)
@@ -58,6 +68,8 @@ UNPYWALL_CACHE_DIR = str(configuration.UNPYWALL_CACHE_DIR)
 UNPYWALL_CACHE_FILE = str(configuration.UNPYWALL_CACHE_FILE)
 
 DEFAULT_DOWNLOAD_FOLDER = configuration.DEFAULT_DOWNLOAD_FOLDER
+# Shared proxy configuration location for CLI/GUI callers.
+DEFAULT_PROXY_FILE = str(proxy_config.DEFAULT_PROXY_FILE)
 # Increase the tolerance for slow networks when downloading PDFs.
 DOWNLOAD_TIMEOUT = 120
 DB_CHOICES: tuple[str, ...] = ("nexus", "scihub", "anna", "unpaywall", "libgen")
@@ -207,7 +219,7 @@ async def is_open_access_unpaywall(doi: str, email: Optional[str] = None) -> boo
     active_email = email or require_email()
     api_url = f"https://api.unpaywall.org/v2/{quote_plus(doi)}?email={quote_plus(active_email)}"
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(trust_env=ACTIVE_PROXY.enabled) as session:
             async with session.get(api_url, timeout=15) as resp:
                 if resp.status == 200:
                     data = await resp.json()
@@ -246,7 +258,7 @@ def resolve_pii_to_doi(pii: str) -> str:
         'X-ELS-APIKey': configuration.ELSEVIER_API_KEY,
     }
     try:
-        resp = requests.get(api_url, headers=headers, timeout=10)
+        resp = requests.get(api_url, **_requests_kwargs({"headers": headers, "timeout": 10}))
         if resp.status_code == 200:
             content_type = resp.headers.get('content-type', '').lower()
             if 'application/json' in content_type:
@@ -440,7 +452,7 @@ def is_valid_doi(doi: str) -> bool:
     }
     
     try:
-        response = requests.get(api_url, headers=headers, timeout=15)
+        response = requests.get(api_url, **_requests_kwargs({"headers": headers, "timeout": 15}))
         if response.status_code == 200:
             data = response.json()
             response_code = data.get("responseCode")
@@ -1768,7 +1780,7 @@ def fetch_doi_rest_api(doi: str, params: dict = None) -> dict:
         "DNT": "1",
     }
     try:
-        resp = requests.get(url, headers=headers, timeout=10)
+        resp = requests.get(url, **_requests_kwargs({"headers": headers, "timeout": 10}))
         resp.raise_for_status()
         return resp.json()
     except Exception as e:
@@ -2000,7 +2012,7 @@ async def download_elsevier_pdf_by_doi(
     
     expected_pages = None
     try:
-        metadata_resp = requests.get(metadata_url, headers=metadata_headers, timeout=15)
+        metadata_resp = requests.get(metadata_url, **_requests_kwargs({"headers": metadata_headers, "timeout": 15}))
         if metadata_resp.status_code == 200:
             metadata = metadata_resp.json()
             # Extract page count from various possible fields
@@ -2044,7 +2056,7 @@ async def download_elsevier_pdf_by_doi(
         "X-ELS-APIKey": active_api_key,
     }
     try:
-        resp = requests.get(api_url, headers=headers, timeout=20, allow_redirects=True)
+        resp = requests.get(api_url, **_requests_kwargs({"headers": headers, "timeout": 20, "allow_redirects": True}))
         if resp.status_code == 200 and resp.headers.get("Content-Type", "").startswith("application/pdf"):
             # Name file based on OA status
             if is_oa:
@@ -2182,7 +2194,7 @@ async def download_wiley_pdf_by_doi(
 
     try:
         async with aiohttp.TCPConnector() as conn:
-            async with aiohttp.ClientSession(connector=conn) as session:
+            async with aiohttp.ClientSession(connector=conn, trust_env=ACTIVE_PROXY.enabled) as session:
                 async with session.get(
                     pdf_url,
                     headers=headers,
@@ -2222,7 +2234,7 @@ def is_pmc_doi(doi: str) -> bool:
             "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
             f"?db=pmc&term={quote_plus(doi)}[DOI]&retmode=json"
         )
-        resp = requests.get(esearch_url, timeout=10)
+        resp = requests.get(esearch_url, **_requests_kwargs({"timeout": 10}))
         resp.raise_for_status()
         data = resp.json()
         idlist = data.get("esearchresult", {}).get("idlist", [])
@@ -2246,7 +2258,7 @@ async def download_from_pmc(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FO
             "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
             f"?db=pmc&term={quote_plus(doi)}[DOI]&retmode=json"
         )
-        resp = requests.get(esearch_url, timeout=10)
+        resp = requests.get(esearch_url, **_requests_kwargs({"timeout": 10}))
         resp.raise_for_status()
         data = resp.json()
         idlist = data.get("esearchresult", {}).get("idlist", [])
@@ -2276,7 +2288,7 @@ async def download_from_pmc(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FO
         # Access the PMC article page
         pmc_url = f"https://pmc.ncbi.nlm.nih.gov/articles/PMC{pmcid}/"
         vprint(f"Accessing PMC article page: {pmc_url}")
-        resp = requests.get(pmc_url, headers=browser_headers, timeout=15)
+        resp = requests.get(pmc_url, **_requests_kwargs({"headers": browser_headers, "timeout": 15}))
         resp.raise_for_status()
         
         # Look for PDF links using various patterns
@@ -2379,7 +2391,7 @@ async def download_from_unpaywall(
             vprint(f"Attempting to download Unpaywall PDF #{idx}: {pdf_url} -> {filepath}")
             try:
                 async with aiohttp.TCPConnector() as conn:
-                    async with aiohttp.ClientSession(connector=conn) as session:
+                    async with aiohttp.ClientSession(connector=conn, trust_env=ACTIVE_PROXY.enabled) as session:
                         async with session.get(pdf_url, headers=headers, timeout=DOWNLOAD_TIMEOUT) as resp:
                             vprint(f"Unpaywall PDF HTTP status: {resp.status}")
                             if resp.status == 200 and resp.content_type == "application/pdf":
@@ -2410,7 +2422,7 @@ async def download_from_unpaywall(
             vprint(f"Trying to download OA link directly as PDF: {url}")
             try:
                 async with aiohttp.TCPConnector() as conn:
-                    async with aiohttp.ClientSession(connector=conn) as session:
+                    async with aiohttp.ClientSession(connector=conn, trust_env=ACTIVE_PROXY.enabled) as session:
                         browser_headers = {
                             "User-Agent": (
                                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -2452,7 +2464,7 @@ async def download_from_unpaywall(
             vprint(f"Trying to follow OA link to find PDF: {url}")
             try:
                 async with aiohttp.TCPConnector() as conn:
-                    async with aiohttp.ClientSession(connector=conn) as session:
+                    async with aiohttp.ClientSession(connector=conn, trust_env=ACTIVE_PROXY.enabled) as session:
                         # Use a more realistic browser header to avoid 403 errors
                         oa_headers = {
                             "User-Agent": (
@@ -2551,7 +2563,7 @@ async def download_from_nexus(id: str, doi: str, download_folder: str = DEFAULT_
         vprint(f"Attempting to download from Nexus: {file_url} -> {filepath}")
         try:
             async with aiohttp.TCPConnector() as conn:
-                async with aiohttp.ClientSession(connector=conn) as session:
+                async with aiohttp.ClientSession(connector=conn, trust_env=ACTIVE_PROXY.enabled) as session:
                     async with session.get(file_url) as resp:
                         vprint(f"Nexus HTTP status: {resp.status}")
                         if resp.status == 200:
@@ -2635,7 +2647,7 @@ async def download_from_scihub(doi: str, download_folder: str = DEFAULT_DOWNLOAD
         vprint(f"Trying Sci-Hub domain: {sci_hub_url}")
         try:
             async with aiohttp.TCPConnector() as conn:
-                async with aiohttp.ClientSession(connector=conn) as session:
+                async with aiohttp.ClientSession(connector=conn, trust_env=ACTIVE_PROXY.enabled) as session:
                     async with session.get(sci_hub_url) as resp:
                         vprint(f"Sci-Hub HTTP status: {resp.status}")
                         html = await resp.text()
@@ -2672,7 +2684,7 @@ async def download_from_anna_archive(doi: str, download_folder: str = DEFAULT_DO
         vprint(f"Trying Anna's Archive domain: {anna_url}")
         try:
             async with aiohttp.TCPConnector() as conn:
-                async with aiohttp.ClientSession(connector=conn) as session:
+                async with aiohttp.ClientSession(connector=conn, trust_env=ACTIVE_PROXY.enabled) as session:
                     async with session.get(anna_url) as resp:
                         vprint(f"Anna's Archive HTTP status: {resp.status}")
                         if resp.status != 200:
@@ -2990,6 +3002,7 @@ def print_default_paths():
     """
     print("Default configuration and data paths:")
     print(f"  GETPAPERS_CONFIG_FILE: {GETPAPERS_CONFIG_FILE}")
+    print(f"  Default proxy config file: {DEFAULT_PROXY_FILE}")
     print(f"  Default download folder: {DEFAULT_DOWNLOAD_FOLDER}")
     print(f"  Unpywall cache file: {UNPYWALL_CACHE_FILE}")
     print(f"  Platform: {platform.system()}")
@@ -3036,6 +3049,21 @@ async def main(argv: list[str] | None = None):
     argparser.add_argument("--doi", type=str, help="Specify a DOI to download the paper")
     argparser.add_argument("--doi-file", type=str, help="Path to a text file containing DOIs (one per line)")
     argparser.add_argument("--download-folder", type=str, default=DEFAULT_DOWNLOAD_FOLDER, help="Folder to save downloaded PDFs")
+    argparser.add_argument(
+        "--proxy",
+        type=str,
+        help=f"Path to proxy configuration JSON file (default: {DEFAULT_PROXY_FILE}).",
+    )
+    argparser.add_argument(
+        "--no-proxy",
+        action="store_true",
+        help="Disable proxy usage even if a proxy configuration is present.",
+    )
+    argparser.add_argument(
+        "--auto-proxy",
+        action="store_true",
+        help="Automatically fetch a working proxy configuration when missing or invalid.",
+    )
     argparser.add_argument(
         "--db",
         action="append",
@@ -3121,6 +3149,19 @@ async def main(argv: list[str] | None = None):
     # Set global verbose flag
     global VERBOSE
     VERBOSE = args.verbose
+
+    # Configure proxy usage for all network clients
+    global ACTIVE_PROXY
+    try:
+        ACTIVE_PROXY = proxy_config.load_proxy_settings(
+            args.proxy, enabled=not args.no_proxy, auto_fetch=args.auto_proxy, verbose=VERBOSE
+        )
+    except proxy_config.ProxyConfigError as exc:
+        print(f"❌ {exc}")
+        sys.exit(1)
+    if args.proxy and not ACTIVE_PROXY.enabled:
+        print(f"❌ Proxy configuration file not found or unusable: {args.proxy}")
+        sys.exit(1)
 
     # Ensure download folder exists before any file IO
     args.download_folder = args.download_folder or DEFAULT_DOWNLOAD_FOLDER

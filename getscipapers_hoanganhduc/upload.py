@@ -13,7 +13,7 @@ import subprocess
 import requests
 import asyncio
 
-from . import getpapers, libgen, nexus, scinet
+from . import getpapers, libgen, nexus, scinet, proxy_config
 
 ICONS = {
     'info': 'ℹ️',
@@ -25,6 +25,8 @@ ICONS = {
     'check': '🔍',
     'sync': '🔄',
 }
+
+ACTIVE_PROXY = proxy_config.ProxySettings()
 
 def get_files_from_args(paths, verbose=False, file_types=None):
     """
@@ -284,7 +286,29 @@ Examples:
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Print detailed progress information"
     )
+    parser.add_argument(
+        "--proxy",
+        type=str,
+        nargs="?",
+        const=str(proxy_config.DEFAULT_PROXY_FILE),
+        help=f"Path to proxy configuration JSON file (default: {proxy_config.DEFAULT_PROXY_FILE})."
+    )
+    parser.add_argument(
+        "--no-proxy",
+        action="store_true",
+        help="Disable proxy usage for upload requests."
+    )
+    parser.add_argument(
+        "--auto-proxy",
+        action="store_true",
+        help="Automatically fetch a working proxy configuration when missing or invalid."
+    )
     args = parser.parse_args()
+
+    global ACTIVE_PROXY
+    ACTIVE_PROXY = proxy_config.configure_from_cli(
+        args.proxy, args.no_proxy, auto_fetch=args.auto_proxy, verbose=args.verbose
+    )
 
     # Flatten and normalize service list (support comma or space separated)
     raw_services = []

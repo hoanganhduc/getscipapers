@@ -8,10 +8,11 @@ implementations.
 
 import argparse
 import os
-from . import getpapers, nexus, ablesci, wosonhj, facebook, scinet
+from . import getpapers, nexus, ablesci, wosonhj, facebook, scinet, proxy_config
 import asyncio
 
 SERVICE_LIST = ["nexus", "ablesci", "wosonhj", "facebook", "scinet"]
+ACTIVE_PROXY = proxy_config.ProxySettings()
 
 def extract_dois_from_text_input(text):
     """
@@ -233,7 +234,29 @@ def main():
         action="store_true",
         help="Enable verbose output."
     )
+    parser.add_argument(
+        "--proxy",
+        type=str,
+        nargs="?",
+        const=str(proxy_config.DEFAULT_PROXY_FILE),
+        help=f"Path to proxy configuration JSON file (default: {proxy_config.DEFAULT_PROXY_FILE})."
+    )
+    parser.add_argument(
+        "--no-proxy",
+        action="store_true",
+        help="Disable proxy usage for DOI requests."
+    )
+    parser.add_argument(
+        "--auto-proxy",
+        action="store_true",
+        help="Automatically fetch a working proxy configuration when missing or invalid."
+    )
     args = parser.parse_args()
+
+    global ACTIVE_PROXY
+    ACTIVE_PROXY = proxy_config.configure_from_cli(
+        args.proxy, args.no_proxy, auto_fetch=args.auto_proxy, verbose=args.verbose
+    )
 
     dois = parse_doi_argument(args.doi)
     if not dois:

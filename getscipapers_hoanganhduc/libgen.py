@@ -23,7 +23,7 @@ from selenium.webdriver.support import expected_conditions as EC
 import time
 import shutil
 import hashlib
-from . import getpapers
+from . import getpapers, proxy_config
 import threading
 
 # Provide generous timeouts so slow mirrors still succeed.
@@ -38,6 +38,8 @@ LIBGEN_MIRRORS = [
     "libgen.bz",
     "libgen.gl",
 ]
+
+ACTIVE_PROXY = proxy_config.ProxySettings()
 
 def select_active_libgen_domain(mirrors=LIBGEN_MIRRORS, timeout=3):
     """
@@ -1917,10 +1919,33 @@ Examples:
         action="store_true",
         help="Run browser in non-headless mode for Selenium operations"
     )
+    parser.add_argument(
+        "--proxy",
+        type=str,
+        nargs="?",
+        const=str(proxy_config.DEFAULT_PROXY_FILE),
+        help=f"Path to proxy configuration JSON file (default: {proxy_config.DEFAULT_PROXY_FILE}).",
+    )
+    parser.add_argument(
+        "--no-proxy",
+        action="store_true",
+        help="Disable proxy usage for LibGen requests.",
+    )
+    parser.add_argument(
+        "--auto-proxy",
+        action="store_true",
+        help="Automatically fetch a proxy configuration when missing or invalid.",
+    )
     args = parser.parse_args()
-    
+
     # Handle --no-headless option
     headless = not getattr(args, "no_headless", False)
+
+    # Apply proxy configuration early so all requests honor it
+    global ACTIVE_PROXY
+    ACTIVE_PROXY = proxy_config.configure_from_cli(
+        args.proxy, args.no_proxy, auto_fetch=args.auto_proxy, verbose=args.verbose
+    )
 
     # Handle clear-cache option
     if getattr(args, "clear_cache", False):

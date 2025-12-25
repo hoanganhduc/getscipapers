@@ -8,6 +8,7 @@ mirror the patterns used elsewhere in the package for clarity.
 # This script provides a function to search for books in Z-library using the Zlibrary-API by Bipinkrish (https://github.com/bipinkrish/Zlibrary-API/).
 
 from .Zlibrary import Zlibrary
+from . import proxy_config
 import argparse
 import os
 import json
@@ -40,6 +41,7 @@ PASSWORD = ""
 CONFIG_DIR = get_default_config_dir()
 CONFIG_FILE = os.path.join(CONFIG_DIR, "zlib_config.json")
 DEFAULT_DOWNLOAD_DIR = get_default_download_dir()
+ACTIVE_PROXY = proxy_config.ProxySettings()
 
 def save_credentials(email=None, password=None):
     os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -526,7 +528,29 @@ def main():
     parser.add_argument('-r', '--recent', action='store_true', help='List recently added books')
     parser.add_argument('-p', '--popular', action='store_true', help='List most popular books')
     parser.add_argument('-P', '--popular-language', type=str, metavar='LANG', help='Language code for most popular books (optional)')
+    parser.add_argument(
+        '--proxy',
+        type=str,
+        nargs='?',
+        const=str(proxy_config.DEFAULT_PROXY_FILE),
+        help=f'Path to proxy configuration JSON file (default: {proxy_config.DEFAULT_PROXY_FILE}).'
+    )
+    parser.add_argument(
+        '--no-proxy',
+        action='store_true',
+        help='Disable proxy usage for Z-library requests.'
+    )
+    parser.add_argument(
+        '--auto-proxy',
+        action='store_true',
+        help='Automatically fetch a working proxy configuration when missing or invalid.',
+    )
     args = parser.parse_args()
+
+    global ACTIVE_PROXY
+    ACTIVE_PROXY = proxy_config.configure_from_cli(
+        args.proxy, args.no_proxy, auto_fetch=args.auto_proxy
+    )
 
     # Prevent using --credentials and --clear-credentials at the same time
     if args.credentials and args.clear_credentials:

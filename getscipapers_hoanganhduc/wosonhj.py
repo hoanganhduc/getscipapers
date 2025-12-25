@@ -24,7 +24,7 @@ import readline
 import glob
 import requests as pyrequests
 import requests
-from . import getpapers
+from . import getpapers, proxy_config
 import ast
 import datetime
 from selenium.webdriver.common.by import By as _By
@@ -34,6 +34,7 @@ WOSONHJ_HOME_URL = "https://www.pidantuan.com"
 WOSONHJ_LOGIN_URL = f"{WOSONHJ_HOME_URL}/member.php?mod=logging&action=login&referer="
 USERNAME = ""
 PASSWORD = ""
+ACTIVE_PROXY = proxy_config.ProxySettings()
 
 # --- Directory and Credentials Management ---
 
@@ -3127,10 +3128,32 @@ Examples:
     parser.add_argument('--accept-fulfilled-requests', action='store_true', help='Accept replies for fulfilled requests')
     parser.add_argument('--reject-fulfilled-requests', action='store_true', help='Reject replies for fulfilled requests')
     parser.add_argument('--cancel-waiting-requests', action='store_true', help='Cancel (close) your waiting requests')
+    parser.add_argument(
+        '--proxy',
+        type=str,
+        nargs='?',
+        const=str(proxy_config.DEFAULT_PROXY_FILE),
+        help=f'Path to proxy configuration JSON file (default: {proxy_config.DEFAULT_PROXY_FILE}).'
+    )
+    parser.add_argument(
+        '--no-proxy',
+        action='store_true',
+        help='Disable proxy usage for Wosonhj requests.'
+    )
+    parser.add_argument(
+        '--auto-proxy',
+        action='store_true',
+        help='Automatically fetch a working proxy configuration when missing or invalid.',
+    )
     args = parser.parse_args()
 
     verbose = args.verbose
     debug_print(f"Verbose mode enabled: {verbose}")
+
+    global ACTIVE_PROXY
+    ACTIVE_PROXY = proxy_config.configure_from_cli(
+        args.proxy, args.no_proxy, auto_fetch=args.auto_proxy, verbose=verbose
+    )
 
     if args.clear_cache:
         debug_print("Clear cache option selected")

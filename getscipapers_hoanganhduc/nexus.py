@@ -16,6 +16,7 @@ from datetime import datetime
 import platform
 import argparse
 import logging
+from pathlib import Path
 from telethon import connection
 import requests
 from bs4 import BeautifulSoup
@@ -37,7 +38,7 @@ from datetime import timedelta
 import datetime as dt  # Add this import at the top if not already present
 import itertools
 import getpass
-from . import getpapers
+from . import getpapers, proxy_config
 
 
 if platform.system() == 'Windows':
@@ -155,313 +156,15 @@ DEFAULT_LOG_FILE = file_paths["log"]
 DEFAULT_DOWNLOAD_DIR = file_paths["download"]
 
 def get_free_proxies():
-    """Retrieve free proxy list from free-proxy-list.net, test them for speed in parallel, and save to proxy list file for further checking later"""
+    """Retrieve and store free proxies using the shared proxy helper."""
+
     info_print("Retrieving free proxies from free-proxy-list.net...")
-    
-    # Countries that block or restrict Telegram access
-    BLOCKED_COUNTRIES = {
-        'VN': 'Vietnam',
-        'CN': 'China', 
-        'IR': 'Iran',
-        'RU': 'Russia',
-        'BY': 'Belarus',
-        'TH': 'Thailand',
-        'ID': 'Indonesia',
-        'BD': 'Bangladesh',
-        'PK': 'Pakistan',
-        'IN': 'India',  # Some regions have restrictions
-        'KZ': 'Kazakhstan',
-        'UZ': 'Uzbekistan',
-        'TJ': 'Tajikistan',
-        'TM': 'Turkmenistan',
-        'KG': 'Kyrgyzstan',
-        'MY': 'Malaysia',  # Some restrictions
-        'SG': 'Singapore',  # Some corporate restrictions
-        'AE': 'UAE',  # Some restrictions
-        'SA': 'Saudi Arabia',  # Some restrictions
-        'EG': 'Egypt',  # Periodic blocks
-        'TR': 'Turkey',  # Periodic blocks
-        'UA': 'Ukraine'  # Due to ongoing conflict, some restrictions
-    }
-    
-    try:
-        # Send request to free-proxy-list.net
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        
-        debug_print("Sending request to free-proxy-list.net...")
-        response = requests.get('https://free-proxy-list.net/', headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        # Parse HTML content
-        debug_print("Parsing HTML content...")
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        proxies = []
-        
-        # First try to find the proxy table
-        table = soup.find('table', {'class': 'table table-striped table-bordered'})
-        if not table:
-            # Fallback to original method
-            table = soup.find('table', {'id': 'proxylisttable'})
-        
-        if table:
-            debug_print("Found proxy table, parsing structured data...")
-            tbody = table.find('tbody')
-            if tbody:
-                rows = tbody.find_all('tr')
-                debug_print(f"Found {len(rows)} proxy rows")
-                
-                for row in rows:
-                    cols = row.find_all('td')
-                    if len(cols) >= 8:  # Updated to check for 8 columns based on the structure
-                        ip = cols[0].text.strip()
-                        port = cols[1].text.strip()
-                        country_code = cols[2].text.strip()
-                        country = cols[3].text.strip()
-                        anonymity = cols[4].text.strip()
-                        google = cols[5].text.strip()
-                        https_support = cols[6].text.strip().lower() == 'yes'
-                        last_checked = cols[7].text.strip()
-                        
-                        # Skip proxies from countries that block Telegram
-                        if country_code.upper() in BLOCKED_COUNTRIES:
-                            blocked_country_name = BLOCKED_COUNTRIES[country_code.upper()]
-                            debug_print(f"Skipping proxy from {blocked_country_name} (blocks Telegram): {ip}:{port}")
-                            continue
-                        
-                        # Additional check by country name for cases where country code might be missing/wrong
-                        country_upper = country.upper()
-                        skip_proxy = False
-                        for code, name in BLOCKED_COUNTRIES.items():
-                            if name.upper() in country_upper or country_upper in name.upper():
-                                debug_print(f"Skipping proxy from {name} (blocks Telegram): {ip}:{port}")
-                                skip_proxy = True
-                                break
-                        
-                        if skip_proxy:
-                            continue
-                        
-                        # Only include HTTPS-supporting proxies
-                        if https_support and ip and port:
-                            try:
-                                proxy_info = {
-                                    'ip': ip,
-                                    'port': int(port),
-                                    'country_code': country_code,
-                                    'country': country,
-                                    'anonymity': anonymity,
-                                    'google': google,
-                                    'https': https_support,
-                                    'last_checked': last_checked
-                                }
-                                proxies.append(proxy_info)
-                                debug_print(f"Added proxy: {ip}:{port} ({country})")
-                            except ValueError:
-                                debug_print(f"Skipping proxy with invalid port: {ip}:{port}")
-                                continue
-        
-        # If table parsing failed or found no proxies, try raw proxy list
-        if not proxies:
-            debug_print("Table parsing failed or no HTTPS proxies found, looking for raw proxy list...")
-            
-            # Look for the modal with raw proxy list
-            modal_title = soup.find('h4', {'class': 'modal-title', 'id': 'myModalLabel'})
-            if modal_title and 'Raw Proxy List' in modal_title.text:
-                debug_print("Found raw proxy list modal...")
-                
-                # Find the textarea with the proxy list
-                modal_body = modal_title.find_parent().find_next_sibling('div', {'class': 'modal-body'})
-                if modal_body:
-                    textarea = modal_body.find('textarea', {'class': 'form-control'})
-                    if textarea:
-                        debug_print("Found textarea with proxy list...")
-                        proxy_text = textarea.text.strip()
-                        
-                        # Parse the raw proxy list
-                        lines = proxy_text.split('\n')
-                        for line in lines:
-                            line = line.strip()
-                            if ':' in line and not line.startswith('Free proxies') and not line.startswith('Updated at'):
-                                try:
-                                    ip, port = line.split(':', 1)
-                                    ip = ip.strip()
-                                    port = int(port.strip())
-                                    
-                                    if ip and port:
-                                        # For raw list, we can't filter by country since no country info is available
-                                        # But we'll still add them as they might be from allowed countries
-                                        proxy_info = {
-                                            'ip': ip,
-                                            'port': port,
-                                            'country_code': 'Unknown',
-                                            'country': 'Unknown',
-                                            'anonymity': 'Unknown',
-                                            'google': 'Unknown',
-                                            'https': True,  # Assume HTTPS support for raw list
-                                            'last_checked': 'Unknown'
-                                        }
-                                        proxies.append(proxy_info)
-                                        debug_print(f"Added proxy from raw list: {ip}:{port}")
-                                except (ValueError, IndexError):
-                                    debug_print(f"Skipping invalid proxy line: {line}")
-                                    continue
-            
-            # If still no proxies found, try alternative parsing methods
-            if not proxies:
-                debug_print("Modal method failed, trying alternative parsing...")
-                
-                # Look for any textarea that might contain proxy data
-                textareas = soup.find_all('textarea')
-                for textarea in textareas:
-                    if textarea.text and ':' in textarea.text:
-                        debug_print("Found textarea with potential proxy data...")
-                        proxy_text = textarea.text.strip()
-                        
-                        lines = proxy_text.split('\n')
-                        for line in lines:
-                            line = line.strip()
-                            if ':' in line and not line.startswith('Free proxies') and not line.startswith('Updated at'):
-                                try:
-                                    ip, port = line.split(':', 1)
-                                    ip = ip.strip()
-                                    port = int(port.strip())
-                                    
-                                    # Basic IP validation
-                                    if ip and port and len(ip.split('.')) == 4:
-                                        proxy_info = {
-                                            'ip': ip,
-                                            'port': port,
-                                            'country_code': 'Unknown',
-                                            'country': 'Unknown',
-                                            'anonymity': 'Unknown',
-                                            'google': 'Unknown',
-                                            'https': True,
-                                            'last_checked': 'Unknown'
-                                        }
-                                        proxies.append(proxy_info)
-                                        debug_print(f"Added proxy from textarea: {ip}:{port}")
-                                except (ValueError, IndexError):
-                                    debug_print(f"Skipping invalid proxy line: {line}")
-                                    continue
-                        
-                        # If we found proxies in this textarea, break
-                        if proxies:
-                            break
-        
-        if not proxies:
-            error_print("No suitable proxies found")
-            return False
-        
-        blocked_countries_list = ", ".join(BLOCKED_COUNTRIES.values())
-        info_print(f"Found {len(proxies)} proxies (excluding countries that block Telegram: {blocked_countries_list})")
-        
-        # Test proxy speeds in parallel
-        info_print("Testing proxy speeds for internet connectivity in parallel...")
-        
-        # Test up to 50 random proxies to find working ones
-        test_proxies = random.sample(proxies, min(50, len(proxies)))
-        info_print(f"Testing {len(test_proxies)} proxies in parallel...")
-        
-        # Use ThreadPoolExecutor for parallel testing
-        
-        tested_proxies = []
-        max_workers = min(20, len(test_proxies))  # Limit concurrent threads
-        
-        def test_single_proxy(proxy_info, index):
-            """Test a single proxy and return result"""
-            try:
-                debug_print(f"Testing proxy {index}: {proxy_info['ip']}:{proxy_info['port']} ({proxy_info['country']})")
-                speed = test_proxy_speed(proxy_info['ip'], proxy_info['port'])
-                
-                if speed > 0:
-                    proxy_info['speed_ms'] = speed
-                    info_print(f"✓ Proxy {index} works: {speed:.0f}ms ({proxy_info['country']})")
-                    return proxy_info
-                else:
-                    debug_print(f"✗ Proxy {index} failed connectivity test")
-                    return None
-            except Exception as e:
-                debug_print(f"✗ Proxy {index} error: {str(e)}")
-                return None
-        
-        # Execute parallel testing
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all tasks
-            future_to_proxy = {
-                executor.submit(test_single_proxy, proxy_info, i + 1): proxy_info 
-                for i, proxy_info in enumerate(test_proxies)
-            }
-            
-            # Collect results as they complete
-            completed_count = 0
-            for future in as_completed(future_to_proxy):
-                completed_count += 1
-                result = future.result()
-                
-                if result:
-                    tested_proxies.append(result)
-                    debug_print(f"Added working proxy: {result['ip']}:{result['port']}")
-                
-                # Show progress
-                if completed_count % 5 == 0 or completed_count == len(test_proxies):
-                    info_print(f"Progress: {completed_count}/{len(test_proxies)} tested, {len(tested_proxies)} working")
-                
-                # Stop if we have found enough working proxies
-                if len(tested_proxies) >= 15:  # Get a few extra in case some fail later
-                    info_print("Found enough working proxies, cancelling remaining tests...")
-                    # Cancel remaining futures
-                    for remaining_future in future_to_proxy:
-                        if not remaining_future.done():
-                            remaining_future.cancel()
-                    break
-        
-        if not tested_proxies:
-            error_print("No working proxies found")
-            return False
-        
-        # Sort by speed (fastest first) and take top 10
-        tested_proxies.sort(key=lambda x: x['speed_ms'])
-        top_10_proxies = tested_proxies[:10]
-        
-        info_print(f"Selected top {len(top_10_proxies)} fastest working proxies:")
-        for i, proxy in enumerate(top_10_proxies, 1):
-            info_print(f"  {i}. {proxy['ip']}:{proxy['port']} - {proxy['speed_ms']:.0f}ms ({proxy['country']})")
-        
-        # Save only the proxy list for later checking - DO NOT save to default proxy file
-        proxy_list_file = DEFAULT_PROXY_FILE.replace('.json', '_list.json')
-        debug_print(f"Saving proxy list to: {proxy_list_file}")
-        
-        try:
-            with open(proxy_list_file, 'w') as f:
-                json.dump({
-                    'top_10_fastest': top_10_proxies,
-                    'all_tested_proxies': tested_proxies,
-                    'all_proxies': proxies,
-                    'blocked_countries': BLOCKED_COUNTRIES,
-                    'timestamp': datetime.now().isoformat(),
-                    'note': 'Proxy list for further checking - excludes countries that block Telegram - no default proxy auto-selected',
-                    'parallel_testing': True
-                }, f, indent=2)
-            
-            info_print(f"Proxy list saved to: {proxy_list_file}")
-            info_print(f"Found {len(top_10_proxies)} working proxies available for later use")
-            debug_print("No default proxy configuration created - proxies saved for manual selection")
-            return True
-            
-        except Exception as e:
-            error_print(f"Error saving proxy list: {e}")
-            return False
-            
-    except requests.RequestException as e:
-        error_print(f"Error retrieving proxy list: {e}")
-        debug_print(f"Request error details: {type(e).__name__}: {str(e)}")
-        return False
-    except Exception as e:
-        error_print(f"Unexpected error while getting proxies: {e}")
-        debug_print(f"Unexpected error details: {type(e).__name__}: {str(e)}")
-        return False
+    settings = proxy_config.auto_discover_proxy(
+        config_path=DEFAULT_PROXY_FILE,
+        save_list=True,
+        verbose=verbose_mode,
+    )
+    return settings.enabled
 
 def test_proxy_speed(ip, port, timeout=10):
     """
@@ -753,20 +456,20 @@ async def test_and_select_working_proxy():
         return None
     
     # Load the proxy list
-    proxy_list_file = DEFAULT_PROXY_FILE.replace('.json', '_list.json')
+    proxy_list_file = Path(DEFAULT_PROXY_FILE).with_name(
+        f"{Path(DEFAULT_PROXY_FILE).stem}{proxy_config.PROXY_LIST_SUFFIX}"
+    )
     
     try:
         with open(proxy_list_file, 'r') as f:
             proxy_data = json.load(f)
-        
-        all_proxies = proxy_data.get('all_proxies', [])
-        if not all_proxies:
+
+        working_proxies = proxy_data.get('working') or proxy_data.get('all_proxies', [])
+        if not working_proxies:
             error_print("No proxies available for testing")
             return None
-        
-        # Use only the top 10 fastest proxies from the full list
-        top_10_fastest = proxy_data.get('top_10_fastest', [])
-        test_proxy_list = top_10_fastest if top_10_fastest else all_proxies[:10]
+
+        test_proxy_list = working_proxies[:10]
         
         info_print(f"Testing top {len(test_proxy_list)} fastest proxies for Telegram connectivity in parallel...")
         info_print("Will use the first working proxy found...")
@@ -775,25 +478,31 @@ async def test_and_select_working_proxy():
         async def test_single_proxy(proxy_info, index):
             """Test a single proxy and return result with index"""
             try:
-                debug_print(f"Testing proxy {index}: {proxy_info['ip']}:{proxy_info['port']} ({proxy_info['country']}) - {proxy_info.get('speed_ms', 'N/A')}ms")
-                
-                proxy_config = {
-                    'type': 'http',
-                    'addr': proxy_info['ip'],
-                    'port': proxy_info['port'],
-                    'username': None,
-                    'password': None
-                }
-                
-                test_result = await test_proxy_telegram_connection(proxy_config, timeout=15)
-                
-                if test_result['success']:
-                    info_print(f"✓ Proxy {index} WORKS: {proxy_info['ip']}:{proxy_info['port']}")
-                    return proxy_config, index, proxy_info
-                else:
-                    debug_print(f"✗ Proxy {index} failed: {test_result.get('error', 'Unknown error')}")
+                addr = proxy_info.get('addr') or proxy_info.get('ip')
+                port = proxy_info.get('port')
+                if not addr or not port:
                     return None, index, proxy_info
-                    
+
+                debug_print(
+                    f"Testing proxy {index}: {addr}:{port} ({proxy_info.get('country', 'Unknown')}) - {proxy_info.get('speed_ms', 'N/A')}ms"
+                )
+
+                candidate = {
+                    'type': proxy_info.get('type', 'http'),
+                    'addr': addr,
+                    'port': port,
+                    'username': proxy_info.get('username'),
+                    'password': proxy_info.get('password'),
+                }
+
+                test_result = await test_proxy_telegram_connection(candidate, timeout=15)
+
+                if test_result['success']:
+                    info_print(f"✓ Proxy {index} WORKS: {addr}:{port}")
+                    return candidate, index, proxy_info
+                debug_print(f"✗ Proxy {index} failed: {test_result.get('error', 'Unknown error')}")
+                return None, index, proxy_info
+
             except Exception as e:
                 debug_print(f"✗ Proxy {index} error: {str(e)}")
                 return None, index, proxy_info
@@ -813,7 +522,9 @@ async def test_and_select_working_proxy():
                 proxy_config, _, proxy_info = await task
                 
                 if proxy_config:  # Found a working proxy
-                    info_print(f"Selected working proxy: {proxy_info['ip']}:{proxy_info['port']} ({proxy_info['country']})")
+                    addr = proxy_info.get('addr') or proxy_info.get('ip')
+                    port = proxy_info.get('port')
+                    info_print(f"Selected working proxy: {addr}:{port} ({proxy_info.get('country', 'Unknown')})")
                     
                     # Cancel remaining tasks
                     for remaining_task in actual_tasks:
@@ -823,7 +534,7 @@ async def test_and_select_working_proxy():
                     # Save the working proxy configuration
                     with open(DEFAULT_PROXY_FILE, 'w') as f:
                         json.dump(proxy_config, f, indent=2)
-                    
+
                     info_print(f"Working proxy configuration saved to: {DEFAULT_PROXY_FILE}")
                     return proxy_config
             

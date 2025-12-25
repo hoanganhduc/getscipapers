@@ -19,6 +19,7 @@ import json
 from datetime import datetime, timedelta
 import re
 import requests
+from . import proxy_config
 from selenium.webdriver.common.keys import Keys
 import readline
 import glob
@@ -37,6 +38,7 @@ DOWNLOAD_TIMEOUT = 120
 # Global variables for credentials
 USERNAME = ""  # Replace with your actual username/email
 PASSWORD = ""  # Replace with your actual password
+ACTIVE_PROXY = proxy_config.ProxySettings()
 
 # Cache and download configuration
 def get_cache_directory():
@@ -6691,6 +6693,23 @@ def main():
     parser.add_argument('-c', '--credentials', help='Path to JSON file containing login credentials (format: {"scinet_username": "user", "scinet_password": "pass"})')
     parser.add_argument('-u', '--user-info', action='store_true', help='Show user info/profile (tokens, stats, etc) after login')
     parser.add_argument('-P', '--print-default', action='store_true', help='Print default configuration paths and values used by scinet.py')
+    parser.add_argument(
+        '--proxy',
+        type=str,
+        nargs='?',
+        const=str(proxy_config.DEFAULT_PROXY_FILE),
+        help=f'Path to proxy configuration JSON file (default: {proxy_config.DEFAULT_PROXY_FILE}).'
+    )
+    parser.add_argument(
+        '--no-proxy',
+        action='store_true',
+        help='Disable proxy usage for SciNet requests.'
+    )
+    parser.add_argument(
+        '--auto-proxy',
+        action='store_true',
+        help='Automatically fetch a working proxy configuration when missing or invalid.',
+    )
 
     # Show installation hint if argcomplete is not available
     if not autocomplete_available and VERBOSE:
@@ -6699,7 +6718,11 @@ def main():
     
     args = parser.parse_args()
     
-    # Set global verbose flag
+    # Apply proxy configuration early and set global verbose flag
+    global ACTIVE_PROXY
+    ACTIVE_PROXY = proxy_config.configure_from_cli(
+        args.proxy, args.no_proxy, auto_fetch=args.auto_proxy, verbose=args.verbose
+    )
     VERBOSE = args.verbose
     
     # Determine headless mode (default is True, unless --no-headless is specified)
