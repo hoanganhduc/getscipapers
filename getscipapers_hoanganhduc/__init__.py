@@ -1,3 +1,12 @@
+"""Top-level package wiring for :mod:`getscipapers_hoanganhduc`.
+
+This module exposes metadata, a convenience ``main`` entry point, and a small
+dynamic loader so that subcommands like ``getpapers`` and ``request`` can be
+invoked via ``python -m getscipapers_hoanganhduc <module>``. The import logic is
+kept lightweight to avoid side effects at startup; individual modules own their
+configuration and heavy dependencies.
+"""
+
 import os
 import importlib
 from pathlib import Path
@@ -6,11 +15,7 @@ import argparse
 import asyncio
 import inspect
 
-"""
-getscipapers - A Python package to get and request scientific papers from various sources
-"""
-
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 __author__ = "Duc A. Hoang (hoanganhduc)"
 __email__ = "anhduc.hoang1990@gmail.com"
 __description__ = "A Python package to get and request scientific papers from various sources"

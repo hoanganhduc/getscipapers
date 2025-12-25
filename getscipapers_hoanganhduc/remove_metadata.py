@@ -1,3 +1,11 @@
+"""Utilities for stripping pages and metadata from PDF files.
+
+These functions back the CLI commands that sanitize PDFs before distribution.
+They centralize parsing of page ranges and the details of working with
+PyMuPDF so other modules can call into them without worrying about low-level
+file handling.
+"""
+
 import argparse
 import os
 import re
