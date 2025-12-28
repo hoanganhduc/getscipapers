@@ -1,0 +1,43 @@
+name: Build and Publish Docs
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+      - "pyproject.toml"
+      - "setup.py"
+      - "requirements.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install documentation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r docs/requirements.txt
+          pip install -e .
+
+      - name: Build documentation
+        run: |
+          sphinx-build -b html docs/source docs/_build/html
+
+      - name: Publish to web branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: web
+          publish_dir: docs/_build/html
+          force_orphan: true
