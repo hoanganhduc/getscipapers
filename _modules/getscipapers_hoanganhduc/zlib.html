@@ -1,0 +1,814 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>getscipapers_hoanganhduc.zlib &mdash; getscipapers 0.1.4 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=fd825880"></script>
+      <script src="../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            getscipapers
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../cli_reference.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../project_documentation.html">Project Architecture and Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../project_documentation.html#getscipapers-project-documentation">getscipapers Project Documentation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">getscipapers</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">getscipapers_hoanganhduc.zlib</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for getscipapers_hoanganhduc.zlib</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Integration helpers for Z-Library via the third-party Zlibrary API.</span>
+
+<span class="sd">These utilities provide a thin wrapper around the upstream client to keep the</span>
+<span class="sd">rest of the codebase consistent with other source modules. Configuration helpers</span>
+<span class="sd">mirror the patterns used elsewhere in the package for clarity.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="c1"># This script provides a function to search for books in Z-library using the Zlibrary-API by Bipinkrish (https://github.com/bipinkrish/Zlibrary-API/).</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.Zlibrary</span><span class="w"> </span><span class="kn">import</span> <span class="n">Zlibrary</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">proxy_config</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">platform</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">getpass</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+
+<div class="viewcode-block" id="get_default_config_dir">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.get_default_config_dir">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_default_config_dir</span><span class="p">():</span>
+    <span class="n">system</span> <span class="o">=</span> <span class="n">platform</span><span class="o">.</span><span class="n">system</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">system</span> <span class="o">==</span> <span class="s2">&quot;Windows&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;APPDATA&quot;</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s2">&quot;~&quot;</span><span class="p">)),</span> <span class="s2">&quot;getscipapers&quot;</span><span class="p">,</span> <span class="s2">&quot;zlib&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">system</span> <span class="o">==</span> <span class="s2">&quot;Darwin&quot;</span><span class="p">:</span>  <span class="c1"># macOS</span>
+        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s2">&quot;~/Library/Application Support&quot;</span><span class="p">),</span> <span class="s2">&quot;getscipapers&quot;</span><span class="p">,</span> <span class="s2">&quot;zlib&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>  <span class="c1"># Linux and other Unix</span>
+        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s2">&quot;~/.config&quot;</span><span class="p">),</span> <span class="s2">&quot;getscipapers&quot;</span><span class="p">,</span> <span class="s2">&quot;zlib&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_default_download_dir">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.get_default_download_dir">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_default_download_dir</span><span class="p">():</span>
+    <span class="n">system</span> <span class="o">=</span> <span class="n">platform</span><span class="o">.</span><span class="n">system</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">system</span> <span class="o">==</span> <span class="s2">&quot;Windows&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s2">&quot;~&quot;</span><span class="p">),</span> <span class="s2">&quot;Downloads&quot;</span><span class="p">,</span> <span class="s2">&quot;getscipapers&quot;</span><span class="p">,</span> <span class="s2">&quot;zlib&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">system</span> <span class="o">==</span> <span class="s2">&quot;Darwin&quot;</span><span class="p">:</span>  <span class="c1"># macOS</span>
+        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s2">&quot;~/Downloads&quot;</span><span class="p">),</span> <span class="s2">&quot;getscipapers&quot;</span><span class="p">,</span> <span class="s2">&quot;zlib&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>  <span class="c1"># Linux and other Unix</span>
+        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s2">&quot;~/Downloads&quot;</span><span class="p">),</span> <span class="s2">&quot;getscipapers&quot;</span><span class="p">,</span> <span class="s2">&quot;zlib&quot;</span><span class="p">)</span></div>
+
+
+<span class="n">EMAIL</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+<span class="n">PASSWORD</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+<span class="n">CONFIG_DIR</span> <span class="o">=</span> <span class="n">get_default_config_dir</span><span class="p">()</span>
+<span class="n">CONFIG_FILE</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">CONFIG_DIR</span><span class="p">,</span> <span class="s2">&quot;zlib_config.json&quot;</span><span class="p">)</span>
+<span class="n">DEFAULT_DOWNLOAD_DIR</span> <span class="o">=</span> <span class="n">get_default_download_dir</span><span class="p">()</span>
+<span class="n">ACTIVE_PROXY</span> <span class="o">=</span> <span class="n">proxy_config</span><span class="o">.</span><span class="n">ProxySettings</span><span class="p">()</span>
+
+<div class="viewcode-block" id="save_credentials">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.save_credentials">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_credentials</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">CONFIG_DIR</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">creds</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;zlib_email&quot;</span><span class="p">:</span> <span class="n">email</span><span class="p">,</span>
+        <span class="s2">&quot;zlib_password&quot;</span><span class="p">:</span> <span class="n">password</span>
+    <span class="p">}</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">CONFIG_FILE</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">creds</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="load_credentials">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.load_credentials">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_credentials</span><span class="p">(</span><span class="n">credentials_path</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load credentials from the given path or the default config file.</span>
+<span class="sd">    Returns a list: [email, password].</span>
+<span class="sd">    If credentials_path is specified, load from it and save to default location if different.</span>
+<span class="sd">    If not specified but default config exists, load default config.</span>
+<span class="sd">    If neither exists, prompt user to input and save.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Determine which path to use</span>
+    <span class="k">if</span> <span class="n">credentials_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">credentials_path</span>
+    <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">CONFIG_FILE</span><span class="p">):</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">CONFIG_FILE</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">path</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">creds</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="c1"># If loaded from a custom path, save to default location if different</span>
+        <span class="k">if</span> <span class="n">credentials_path</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">credentials_path</span><span class="p">)</span> <span class="o">!=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">CONFIG_FILE</span><span class="p">):</span>
+            <span class="n">save_credentials</span><span class="p">(</span><span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_email&quot;</span><span class="p">),</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_password&quot;</span><span class="p">))</span>
+        <span class="n">email</span> <span class="o">=</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_email&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="n">password</span> <span class="o">=</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_password&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">email</span><span class="p">,</span> <span class="n">password</span><span class="p">]</span>
+
+    <span class="c1"># If no credentials found, prompt user to input and save</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No credentials found. Please enter your Z-library credentials.&quot;</span><span class="p">)</span>
+    <span class="n">prompt_and_save_credentials</span><span class="p">()</span>
+    <span class="c1"># After prompting, load from default config file</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">CONFIG_FILE</span><span class="p">):</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">CONFIG_FILE</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">creds</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_email&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_password&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)]</span>
+    <span class="k">return</span> <span class="p">[</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">]</span>  <span class="c1"># If still no credentials, return empty</span></div>
+
+
+<div class="viewcode-block" id="prompt_and_save_credentials">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.prompt_and_save_credentials">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">prompt_and_save_credentials</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Prompt the user to input Z-library email and password.</span>
+<span class="sd">    If the input is different from the saved credentials, save to default config location.</span>
+<span class="sd">    If no response after 30 seconds, quit.</span>
+<span class="sd">    Also sets global EMAIL and PASSWORD after user input.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">global</span> <span class="n">EMAIL</span><span class="p">,</span> <span class="n">PASSWORD</span>
+    <span class="n">current_creds</span> <span class="o">=</span> <span class="n">load_credentials</span><span class="p">()</span>
+    <span class="n">current_email</span> <span class="o">=</span> <span class="n">current_creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_email&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="n">current_password</span> <span class="o">=</span> <span class="n">current_creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_password&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Enter your Z-library credentials.&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">input_with_timeout</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">default</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span> <span class="n">is_password</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="p">[</span><span class="n">default</span><span class="p">]</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">inner</span><span class="p">():</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">is_password</span><span class="p">:</span>
+                    <span class="n">val</span> <span class="o">=</span> <span class="n">getpass</span><span class="o">.</span><span class="n">getpass</span><span class="p">(</span><span class="n">prompt</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">val</span> <span class="o">=</span> <span class="nb">input</span><span class="p">(</span><span class="n">prompt</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">val</span><span class="p">:</span>
+                    <span class="n">result</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
+            <span class="k">except</span> <span class="ne">EOFError</span><span class="p">:</span>
+                <span class="k">pass</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">inner</span><span class="p">)</span>
+        <span class="n">t</span><span class="o">.</span><span class="n">daemon</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">t</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+        <span class="n">t</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">timeout</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">is_alive</span><span class="p">():</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">No response after 30 seconds. Quitting.&quot;</span><span class="p">)</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">email</span> <span class="o">=</span> <span class="n">input_with_timeout</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Email [</span><span class="si">{</span><span class="n">current_email</span><span class="si">}</span><span class="s2">]: &quot;</span><span class="p">,</span> <span class="n">current_email</span><span class="p">)</span>
+    <span class="n">password</span> <span class="o">=</span> <span class="n">input_with_timeout</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;Password [</span><span class="si">{</span><span class="s1">&#39;*&#39;</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="n">current_password</span><span class="p">)</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">current_password</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">]: &quot;</span><span class="p">,</span>
+        <span class="n">current_password</span><span class="p">,</span>
+        <span class="n">is_password</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+
+    <span class="n">EMAIL</span> <span class="o">=</span> <span class="n">email</span>
+    <span class="n">PASSWORD</span> <span class="o">=</span> <span class="n">password</span>
+
+    <span class="k">if</span> <span class="n">email</span> <span class="o">!=</span> <span class="n">current_email</span> <span class="ow">or</span> <span class="n">password</span> <span class="o">!=</span> <span class="n">current_password</span><span class="p">:</span>
+        <span class="n">save_credentials</span><span class="p">(</span><span class="n">email</span><span class="p">,</span> <span class="n">password</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Credentials saved.&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Credentials unchanged.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="search_zlibrary_books">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.search_zlibrary_books">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">search_zlibrary_books</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">email</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sort_by_year</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Search for books in Z-library using the Zlibrary-API wrapper.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        query (str): The search query (book title, author, etc.).</span>
+<span class="sd">        limit (int): Number of results to return.</span>
+<span class="sd">        email (str, optional): Z-library email for login.</span>
+<span class="sd">        password (str, optional): Z-library password for login.</span>
+<span class="sd">        sort_by_year (bool): If True, sort results by year (descending).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        list: List of book results (dicts), or empty list if none found.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Use global EMAIL/PASSWORD if not provided</span>
+    <span class="n">zlib_email</span> <span class="o">=</span> <span class="n">email</span> <span class="k">if</span> <span class="n">email</span> <span class="k">else</span> <span class="n">EMAIL</span>
+    <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">password</span> <span class="k">if</span> <span class="n">password</span> <span class="k">else</span> <span class="n">PASSWORD</span>
+
+    <span class="c1"># If still not set, try loading from config</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">zlib_email</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">zlib_password</span><span class="p">:</span>
+        <span class="n">creds</span> <span class="o">=</span> <span class="n">load_credentials</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">creds</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">zlib_email</span><span class="p">,</span> <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">creds</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">creds</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="k">else</span> <span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">zlib_email</span> <span class="o">=</span> <span class="n">zlib_email</span> <span class="ow">or</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_email&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+            <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">zlib_password</span> <span class="ow">or</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_password&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Login using credentials if available</span>
+    <span class="k">if</span> <span class="n">zlib_email</span> <span class="ow">and</span> <span class="n">zlib_password</span><span class="p">:</span>
+        <span class="n">Z</span> <span class="o">=</span> <span class="n">Zlibrary</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="n">zlib_email</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="n">zlib_password</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">Z</span> <span class="o">=</span> <span class="n">Zlibrary</span><span class="p">()</span>  <span class="c1"># Not logged in, limited access</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">Z</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">message</span><span class="o">=</span><span class="n">query</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">)</span>
+        <span class="n">books</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;books&quot;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="k">if</span> <span class="n">sort_by_year</span><span class="p">:</span>
+            <span class="k">def</span><span class="w"> </span><span class="nf">parse_year</span><span class="p">(</span><span class="n">book</span><span class="p">):</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">book</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;year&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="mi">0</span>
+            <span class="n">books</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">books</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">parse_year</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">books</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error searching Z-library: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="print_book_details">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.print_book_details">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">print_book_details</span><span class="p">(</span><span class="n">book</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Print detailed information about a book result in a human-readable format.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">format_filesize</span><span class="p">(</span><span class="n">size</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">size</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">size</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">unit</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;B&#39;</span><span class="p">,</span> <span class="s1">&#39;KB&#39;</span><span class="p">,</span> <span class="s1">&#39;MB&#39;</span><span class="p">,</span> <span class="s1">&#39;GB&#39;</span><span class="p">,</span> <span class="s1">&#39;TB&#39;</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">size</span> <span class="o">&lt;</span> <span class="mi">1024</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">size</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">unit</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="n">size</span> <span class="o">/=</span> <span class="mi">1024</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">size</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> PB&quot;</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">size</span><span class="p">)</span>
+
+    <span class="n">title</span> <span class="o">=</span> <span class="n">book</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="s1">&#39;N/A&#39;</span><span class="p">)</span>
+    <span class="n">authors</span> <span class="o">=</span> <span class="n">book</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;author&#39;</span><span class="p">,</span> <span class="s1">&#39;N/A&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">authors</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="n">authors</span> <span class="o">=</span> <span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">authors</span><span class="p">)</span>
+    <span class="n">publisher</span> <span class="o">=</span> <span class="n">book</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;publisher&#39;</span><span class="p">,</span> <span class="s1">&#39;N/A&#39;</span><span class="p">)</span>
+    <span class="n">year</span> <span class="o">=</span> <span class="n">book</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;year&#39;</span><span class="p">,</span> <span class="s1">&#39;N/A&#39;</span><span class="p">)</span>
+    <span class="n">language</span> <span class="o">=</span> <span class="n">book</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;language&#39;</span><span class="p">,</span> <span class="s1">&#39;N/A&#39;</span><span class="p">)</span>
+    <span class="n">pages</span> <span class="o">=</span> <span class="n">book</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;pages&#39;</span><span class="p">,</span> <span class="s1">&#39;N/A&#39;</span><span class="p">)</span>
+    <span class="n">extension</span> <span class="o">=</span> <span class="n">book</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;extension&#39;</span><span class="p">,</span> <span class="s1">&#39;N/A&#39;</span><span class="p">)</span>
+    <span class="n">filesize</span> <span class="o">=</span> <span class="n">book</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;filesize&#39;</span><span class="p">,</span> <span class="s1">&#39;N/A&#39;</span><span class="p">)</span>
+    <span class="n">filesize_str</span> <span class="o">=</span> <span class="n">format_filesize</span><span class="p">(</span><span class="n">filesize</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;📚 Title      : </span><span class="si">{</span><span class="n">title</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;👤 Author(s)  : </span><span class="si">{</span><span class="n">authors</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;🏢 Publisher  : </span><span class="si">{</span><span class="n">publisher</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;📅 Year       : </span><span class="si">{</span><span class="n">year</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;🌐 Language   : </span><span class="si">{</span><span class="n">language</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;📄 Pages      : </span><span class="si">{</span><span class="n">pages</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;💾 Extension  : </span><span class="si">{</span><span class="n">extension</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;🗂️ Filesize   : </span><span class="si">{</span><span class="n">filesize_str</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;-&quot;</span> <span class="o">*</span> <span class="mi">60</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_profile">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.get_profile">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_profile</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the user&#39;s Z-library profile information.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">zlib_email</span> <span class="o">=</span> <span class="n">email</span> <span class="k">if</span> <span class="n">email</span> <span class="k">else</span> <span class="n">EMAIL</span>
+    <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">password</span> <span class="k">if</span> <span class="n">password</span> <span class="k">else</span> <span class="n">PASSWORD</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">zlib_email</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">zlib_password</span><span class="p">:</span>
+        <span class="n">creds</span> <span class="o">=</span> <span class="n">load_credentials</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">creds</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">zlib_email</span><span class="p">,</span> <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">creds</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">creds</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="k">else</span> <span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">zlib_email</span> <span class="o">=</span> <span class="n">zlib_email</span> <span class="ow">or</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_email&quot;</span><span class="p">)</span>
+            <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">zlib_password</span> <span class="ow">or</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_password&quot;</span><span class="p">)</span>
+    <span class="n">Z</span> <span class="o">=</span> <span class="n">Zlibrary</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="n">zlib_email</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="n">zlib_password</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">Z</span><span class="o">.</span><span class="n">getProfile</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error getting profile: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+
+<div class="viewcode-block" id="get_most_popular">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.get_most_popular">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_most_popular</span><span class="p">(</span><span class="n">language</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get most popular books (optionally for a specific language).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">Z</span> <span class="o">=</span> <span class="n">Zlibrary</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">Z</span><span class="o">.</span><span class="n">getMostPopular</span><span class="p">(</span><span class="n">switch_language</span><span class="o">=</span><span class="n">language</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error getting most popular books: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+
+<div class="viewcode-block" id="get_recently">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.get_recently">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_recently</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get recently added books.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">Z</span> <span class="o">=</span> <span class="n">Zlibrary</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">Z</span><span class="o">.</span><span class="n">getRecently</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error getting recently added books: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+
+<div class="viewcode-block" id="get_user_recommended">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.get_user_recommended">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_user_recommended</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get user recommended books.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">zlib_email</span> <span class="o">=</span> <span class="n">email</span> <span class="k">if</span> <span class="n">email</span> <span class="k">else</span> <span class="n">EMAIL</span>
+    <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">password</span> <span class="k">if</span> <span class="n">password</span> <span class="k">else</span> <span class="n">PASSWORD</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">zlib_email</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">zlib_password</span><span class="p">:</span>
+        <span class="n">creds</span> <span class="o">=</span> <span class="n">load_credentials</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">creds</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">zlib_email</span><span class="p">,</span> <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">creds</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">creds</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="k">else</span> <span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">zlib_email</span> <span class="o">=</span> <span class="n">zlib_email</span> <span class="ow">or</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_email&quot;</span><span class="p">)</span>
+            <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">zlib_password</span> <span class="ow">or</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_password&quot;</span><span class="p">)</span>
+    <span class="n">Z</span> <span class="o">=</span> <span class="n">Zlibrary</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="n">zlib_email</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="n">zlib_password</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">Z</span><span class="o">.</span><span class="n">getUserRecommended</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error getting user recommended books: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+
+<div class="viewcode-block" id="get_user_saved">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.get_user_saved">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_user_saved</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">page</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get books saved by the user.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">zlib_email</span> <span class="o">=</span> <span class="n">email</span> <span class="k">if</span> <span class="n">email</span> <span class="k">else</span> <span class="n">EMAIL</span>
+    <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">password</span> <span class="k">if</span> <span class="n">password</span> <span class="k">else</span> <span class="n">PASSWORD</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">zlib_email</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">zlib_password</span><span class="p">:</span>
+        <span class="n">creds</span> <span class="o">=</span> <span class="n">load_credentials</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">creds</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">zlib_email</span><span class="p">,</span> <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">creds</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">creds</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="k">else</span> <span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">zlib_email</span> <span class="o">=</span> <span class="n">zlib_email</span> <span class="ow">or</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_email&quot;</span><span class="p">)</span>
+            <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">zlib_password</span> <span class="ow">or</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_password&quot;</span><span class="p">)</span>
+    <span class="n">Z</span> <span class="o">=</span> <span class="n">Zlibrary</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="n">zlib_email</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="n">zlib_password</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">Z</span><span class="o">.</span><span class="n">getUserSaved</span><span class="p">(</span><span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">page</span><span class="o">=</span><span class="n">page</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error getting user saved books: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+
+<div class="viewcode-block" id="get_user_downloaded">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.get_user_downloaded">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_user_downloaded</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">page</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get books downloaded by the user.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">zlib_email</span> <span class="o">=</span> <span class="n">email</span> <span class="k">if</span> <span class="n">email</span> <span class="k">else</span> <span class="n">EMAIL</span>
+    <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">password</span> <span class="k">if</span> <span class="n">password</span> <span class="k">else</span> <span class="n">PASSWORD</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">zlib_email</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">zlib_password</span><span class="p">:</span>
+        <span class="n">creds</span> <span class="o">=</span> <span class="n">load_credentials</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">creds</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">zlib_email</span><span class="p">,</span> <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">creds</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">creds</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="k">else</span> <span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">zlib_email</span> <span class="o">=</span> <span class="n">zlib_email</span> <span class="ow">or</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_email&quot;</span><span class="p">)</span>
+            <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">zlib_password</span> <span class="ow">or</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_password&quot;</span><span class="p">)</span>
+    <span class="n">Z</span> <span class="o">=</span> <span class="n">Zlibrary</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="n">zlib_email</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="n">zlib_password</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">Z</span><span class="o">.</span><span class="n">getUserDownloaded</span><span class="p">(</span><span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">page</span><span class="o">=</span><span class="n">page</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error getting user downloaded books: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+
+<div class="viewcode-block" id="get_book_info">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.get_book_info">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_book_info</span><span class="p">(</span><span class="n">bookid</span><span class="p">,</span> <span class="n">hashid</span><span class="p">,</span> <span class="n">language</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get detailed info for a book.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">Z</span> <span class="o">=</span> <span class="n">Zlibrary</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">Z</span><span class="o">.</span><span class="n">getBookInfo</span><span class="p">(</span><span class="n">bookid</span><span class="p">,</span> <span class="n">hashid</span><span class="p">,</span> <span class="n">switch_language</span><span class="o">=</span><span class="n">language</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error getting book info: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+
+<div class="viewcode-block" id="download_book">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.download_book">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">download_book</span><span class="p">(</span><span class="n">book</span><span class="p">,</span> <span class="n">email</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">download_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Download a book using the Zlibrary API.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">zlib_email</span> <span class="o">=</span> <span class="n">email</span> <span class="k">if</span> <span class="n">email</span> <span class="k">else</span> <span class="n">EMAIL</span>
+    <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">password</span> <span class="k">if</span> <span class="n">password</span> <span class="k">else</span> <span class="n">PASSWORD</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">zlib_email</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">zlib_password</span><span class="p">:</span>
+        <span class="n">creds</span> <span class="o">=</span> <span class="n">load_credentials</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">creds</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">zlib_email</span><span class="p">,</span> <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">creds</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">creds</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="k">else</span> <span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">zlib_email</span> <span class="o">=</span> <span class="n">zlib_email</span> <span class="ow">or</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_email&quot;</span><span class="p">)</span>
+            <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">zlib_password</span> <span class="ow">or</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_password&quot;</span><span class="p">)</span>
+    <span class="n">Z</span> <span class="o">=</span> <span class="n">Zlibrary</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="n">zlib_email</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="n">zlib_password</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">download_dir</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">download_dir</span> <span class="o">=</span> <span class="n">DEFAULT_DOWNLOAD_DIR</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">download_dir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">filename</span><span class="p">,</span> <span class="n">content</span> <span class="o">=</span> <span class="n">Z</span><span class="o">.</span><span class="n">downloadBook</span><span class="p">(</span><span class="n">book</span><span class="p">)</span>
+        <span class="n">filepath</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">download_dir</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">content</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Downloaded: </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">filepath</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error downloading book: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="is_logged_in">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.is_logged_in">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_logged_in</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check if the user is logged in.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">zlib_email</span> <span class="o">=</span> <span class="n">email</span> <span class="k">if</span> <span class="n">email</span> <span class="k">else</span> <span class="n">EMAIL</span>
+    <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">password</span> <span class="k">if</span> <span class="n">password</span> <span class="k">else</span> <span class="n">PASSWORD</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">zlib_email</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">zlib_password</span><span class="p">:</span>
+        <span class="n">creds</span> <span class="o">=</span> <span class="n">load_credentials</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">creds</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">zlib_email</span><span class="p">,</span> <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">creds</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">creds</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="k">else</span> <span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">zlib_email</span> <span class="o">=</span> <span class="n">zlib_email</span> <span class="ow">or</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_email&quot;</span><span class="p">)</span>
+            <span class="n">zlib_password</span> <span class="o">=</span> <span class="n">zlib_password</span> <span class="ow">or</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_password&quot;</span><span class="p">)</span>
+    <span class="n">Z</span> <span class="o">=</span> <span class="n">Zlibrary</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="n">zlib_email</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="n">zlib_password</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">Z</span><span class="o">.</span><span class="n">isLoggedIn</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error checking login status: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+    
+<div class="viewcode-block" id="interactive_login_search_download">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.interactive_login_search_download">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">interactive_login_search_download</span><span class="p">(</span><span class="n">query</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">download_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">sort_by_year</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Login, search, print results, and allow user to select (single or range) books to download.</span>
+<span class="sd">    Optionally takes a search query, a download directory, a limit on number of results, and sort_by_year.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Ensure credentials are loaded or prompt user</span>
+    <span class="n">creds</span> <span class="o">=</span> <span class="n">load_credentials</span><span class="p">()</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">creds</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="n">email</span><span class="p">,</span> <span class="n">password</span> <span class="o">=</span> <span class="n">creds</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">creds</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="k">else</span> <span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">email</span> <span class="o">=</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_email&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="n">password</span> <span class="o">=</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_password&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">email</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">password</span><span class="p">:</span>
+        <span class="n">prompt_and_save_credentials</span><span class="p">()</span>
+        <span class="n">creds</span> <span class="o">=</span> <span class="n">load_credentials</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">creds</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">email</span><span class="p">,</span> <span class="n">password</span> <span class="o">=</span> <span class="n">creds</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">creds</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="k">else</span> <span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">email</span> <span class="o">=</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_email&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+            <span class="n">password</span> <span class="o">=</span> <span class="n">creds</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;zlib_password&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Login and show profile info</span>
+    <span class="n">Z</span> <span class="o">=</span> <span class="n">Zlibrary</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="n">email</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="n">password</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">Z</span><span class="o">.</span><span class="n">isLoggedIn</span><span class="p">():</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Login failed. Please check your credentials.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="n">profile</span> <span class="o">=</span> <span class="n">Z</span><span class="o">.</span><span class="n">getProfile</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Logged in as:&quot;</span><span class="p">,</span> <span class="n">profile</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;email&quot;</span><span class="p">,</span> <span class="n">email</span><span class="p">))</span>
+
+    <span class="c1"># Prompt for search query if not provided</span>
+    <span class="k">if</span> <span class="n">query</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="nb">input</span><span class="p">(</span><span class="s2">&quot;Enter search query: &quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">query</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No query entered.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="c1"># Search books</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">Z</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">message</span><span class="o">=</span><span class="n">query</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">)</span>
+        <span class="n">books</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;books&quot;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="k">if</span> <span class="n">sort_by_year</span><span class="p">:</span>
+            <span class="k">def</span><span class="w"> </span><span class="nf">parse_year</span><span class="p">(</span><span class="n">book</span><span class="p">):</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">book</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;year&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="mi">0</span>
+            <span class="n">books</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">books</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">parse_year</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error searching: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">books</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No books found.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="c1"># Print search results with index and details</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Search Results:&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">book</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">books</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;🔢 </span><span class="si">{</span><span class="n">idx</span><span class="si">:</span><span class="s2">2d</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+        <span class="n">print_book_details</span><span class="p">(</span><span class="n">book</span><span class="p">)</span>
+
+    <span class="c1"># Prompt user for selection (single or range)</span>
+    <span class="n">selection</span> <span class="o">=</span> <span class="nb">input</span><span class="p">(</span>
+        <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Enter the number(s) of the book(s) to download (e.g. 1,3-5): &quot;</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">selection</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No selection made.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="c1"># Parse selection (supports comma-separated and ranges)</span>
+    <span class="n">indices</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">part</span> <span class="ow">in</span> <span class="n">selection</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="s2">&quot;-&quot;</span> <span class="ow">in</span> <span class="n">part</span><span class="p">:</span>
+            <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="n">part</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">)</span>
+            <span class="n">indices</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">start</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">end</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">part</span><span class="o">.</span><span class="n">isdigit</span><span class="p">():</span>
+            <span class="n">indices</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">part</span><span class="p">))</span>
+    <span class="n">indices</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">indices</span> <span class="k">if</span> <span class="mi">1</span> <span class="o">&lt;=</span> <span class="n">i</span> <span class="o">&lt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">books</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">indices</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No valid selection.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="c1"># Check downloads left</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">downloads_left</span> <span class="o">=</span> <span class="n">Z</span><span class="o">.</span><span class="n">getDownloadsLeft</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="n">downloads_left</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">downloads_left</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">indices</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">downloads_left</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Warning: You selected </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">indices</span><span class="p">)</span><span class="si">}</span><span class="s2"> books, but only have </span><span class="si">{</span><span class="n">downloads_left</span><span class="si">}</span><span class="s2"> downloads left.&quot;</span>
+            <span class="s2">&quot; Some books may not be downloaded.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Download selected books</span>
+    <span class="k">for</span> <span class="n">count</span><span class="p">,</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">indices</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">downloads_left</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">count</span> <span class="o">&gt;</span> <span class="n">downloads_left</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Reached download limit. Skipping remaining books.&quot;</span><span class="p">)</span>
+            <span class="k">break</span>
+        <span class="n">book</span> <span class="o">=</span> <span class="n">books</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Downloading: </span><span class="si">{</span><span class="n">book</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;title&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;N/A&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">filepath</span> <span class="o">=</span> <span class="n">download_book</span><span class="p">(</span><span class="n">book</span><span class="p">,</span> <span class="n">email</span><span class="o">=</span><span class="n">email</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="n">password</span><span class="p">,</span> <span class="n">download_dir</span><span class="o">=</span><span class="n">download_dir</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">filepath</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saved to: </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Download failed.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="main">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.zlib.main">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">EMAIL</span><span class="p">,</span> <span class="n">PASSWORD</span><span class="p">,</span> <span class="n">CONFIG_DIR</span><span class="p">,</span> <span class="n">CONFIG_FILE</span><span class="p">,</span> <span class="n">DEFAULT_DOWNLOAD_DIR</span>
+    
+    <span class="c1"># Get the parent package name from the module&#39;s __name__</span>
+    <span class="n">parent_package</span> <span class="o">=</span> <span class="vm">__name__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;.&#39;</span> <span class="ow">in</span> <span class="vm">__name__</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">parent_package</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">program_name</span> <span class="o">=</span> <span class="s1">&#39;zlib&#39;</span>
+    <span class="k">elif</span> <span class="s1">&#39;_&#39;</span> <span class="ow">in</span> <span class="n">parent_package</span><span class="p">:</span>
+        <span class="c1"># If the parent package has an underscore, strip it</span>
+        <span class="n">parent_package</span> <span class="o">=</span> <span class="n">parent_package</span><span class="p">[:</span><span class="n">parent_package</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s1">&#39;_&#39;</span><span class="p">)]</span>
+        <span class="n">program_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">parent_package</span><span class="si">}</span><span class="s2"> zlib&quot;</span>
+        
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
+        <span class="n">prog</span><span class="o">=</span><span class="n">program_name</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Search and download books from Z-library.&quot;</span><span class="p">,</span>
+        <span class="n">epilog</span><span class="o">=</span><span class="s2">&quot;&quot;&quot;Examples:</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> --search &quot;deep learning&quot;</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> --search &quot;tolkien&quot; --search-limit 5</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> --search &quot;python&quot; --download</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> --search &quot;data science&quot; --download &quot;C:\Books&quot;</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> --user-info</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> --recent</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> --popular --popular-language en</span>
+<span class="s2">&quot;&quot;&quot;</span><span class="p">,</span>
+        <span class="n">formatter_class</span><span class="o">=</span><span class="n">argparse</span><span class="o">.</span><span class="n">RawDescriptionHelpFormatter</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;-s&#39;</span><span class="p">,</span> <span class="s1">&#39;--search&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">&#39;Search query (book title, author, etc.)&#39;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;-L&#39;</span><span class="p">,</span> <span class="s1">&#39;--search-limit&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">&#39;Number of results to return (only with --search)&#39;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;-c&#39;</span><span class="p">,</span> <span class="s1">&#39;--credentials&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s1">&#39;CREDENTIALS&#39;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">&#39;Path to Z-library credentials JSON file&#39;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;-C&#39;</span><span class="p">,</span> <span class="s1">&#39;--clear-credentials&#39;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s1">&#39;store_true&#39;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">&#39;Clear saved Z-library credentials&#39;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;-d&#39;</span><span class="p">,</span> <span class="s1">&#39;--download&#39;</span><span class="p">,</span> <span class="n">nargs</span><span class="o">=</span><span class="s1">&#39;?&#39;</span><span class="p">,</span> <span class="n">const</span><span class="o">=</span><span class="n">DEFAULT_DOWNLOAD_DIR</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s1">&#39;DOWNLOAD_DIR&#39;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">&#39;Download directory for selected books (optional, uses default if not specified)&#39;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;-u&#39;</span><span class="p">,</span> <span class="s1">&#39;--user-info&#39;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s1">&#39;store_true&#39;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">&#39;Show Z-library user profile information&#39;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;-r&#39;</span><span class="p">,</span> <span class="s1">&#39;--recent&#39;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s1">&#39;store_true&#39;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">&#39;List recently added books&#39;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;-p&#39;</span><span class="p">,</span> <span class="s1">&#39;--popular&#39;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s1">&#39;store_true&#39;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">&#39;List most popular books&#39;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;-P&#39;</span><span class="p">,</span> <span class="s1">&#39;--popular-language&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s1">&#39;LANG&#39;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">&#39;Language code for most popular books (optional)&#39;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s1">&#39;--proxy&#39;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s1">&#39;?&#39;</span><span class="p">,</span>
+        <span class="n">const</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">proxy_config</span><span class="o">.</span><span class="n">DEFAULT_PROXY_FILE</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;Path to proxy configuration JSON file (default: </span><span class="si">{</span><span class="n">proxy_config</span><span class="o">.</span><span class="n">DEFAULT_PROXY_FILE</span><span class="si">}</span><span class="s1">).&#39;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s1">&#39;--no-proxy&#39;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s1">&#39;store_true&#39;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">&#39;Disable proxy usage for Z-library requests.&#39;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s1">&#39;--auto-proxy&#39;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s1">&#39;store_true&#39;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">&#39;Automatically fetch a working proxy configuration when missing or invalid.&#39;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">global</span> <span class="n">ACTIVE_PROXY</span>
+    <span class="n">ACTIVE_PROXY</span> <span class="o">=</span> <span class="n">proxy_config</span><span class="o">.</span><span class="n">configure_from_cli</span><span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">proxy</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">no_proxy</span><span class="p">,</span> <span class="n">auto_fetch</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">auto_proxy</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Prevent using --credentials and --clear-credentials at the same time</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">credentials</span> <span class="ow">and</span> <span class="n">args</span><span class="o">.</span><span class="n">clear_credentials</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Error: --credentials and --clear-credentials cannot be used at the same time.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">credentials</span><span class="p">:</span>
+        <span class="n">EMAIL</span><span class="p">,</span> <span class="n">PASSWORD</span> <span class="o">=</span> <span class="n">load_credentials</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">credentials</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">CONFIG_FILE</span><span class="p">):</span>
+        <span class="n">EMAIL</span><span class="p">,</span> <span class="n">PASSWORD</span> <span class="o">=</span> <span class="n">load_credentials</span><span class="p">()</span>
+        
+    <span class="k">if</span> <span class="n">is_logged_in</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="n">EMAIL</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="n">PASSWORD</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Already logged in as: </span><span class="si">{</span><span class="n">EMAIL</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Not logged in. Some features may not work without login.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">user_info</span><span class="p">:</span>
+        <span class="n">profile</span> <span class="o">=</span> <span class="n">get_profile</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="n">EMAIL</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="n">PASSWORD</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">profile</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;success&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+            <span class="n">user</span> <span class="o">=</span> <span class="n">profile</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;user&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">profile</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;user&quot;</span> <span class="ow">in</span> <span class="n">profile</span> <span class="k">else</span> <span class="n">profile</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">user</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Could not retrieve user profile.&quot;</span><span class="p">)</span>
+                <span class="k">return</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;User Profile:&quot;</span><span class="p">)</span>
+            <span class="n">ICONS</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;email&quot;</span><span class="p">:</span> <span class="s2">&quot;📧&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;👤&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;🆔&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;downloads_today&quot;</span><span class="p">:</span> <span class="s2">&quot;⬇️&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;downloads_limit&quot;</span><span class="p">:</span> <span class="s2">&quot;📥&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;confirmed&quot;</span><span class="p">:</span> <span class="s2">&quot;✅&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;isPremium&quot;</span><span class="p">:</span> <span class="s2">&quot;💎&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;kindle_email&quot;</span><span class="p">:</span> <span class="s2">&quot;📨&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;remix_userkey&quot;</span><span class="p">:</span> <span class="s2">&quot;🔑&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;donations_active&quot;</span><span class="p">:</span> <span class="s2">&quot;💰&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;donations_expire&quot;</span><span class="p">:</span> <span class="s2">&quot;⏳&quot;</span><span class="p">,</span>
+            <span class="p">}</span>
+            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">user</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">key</span> <span class="o">=</span> <span class="n">k</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">,</span> <span class="s2">&quot; &quot;</span><span class="p">)</span><span class="o">.</span><span class="n">capitalize</span><span class="p">()</span>
+                <span class="n">icon</span> <span class="o">=</span> <span class="n">ICONS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="s2">&quot;•&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+                    <span class="n">v</span> <span class="o">=</span> <span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">v</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  </span><span class="si">{</span><span class="n">icon</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Could not retrieve user profile.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">recent</span><span class="p">:</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">get_recently</span><span class="p">()</span>
+        <span class="n">books</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;books&quot;</span><span class="p">,</span> <span class="p">[])</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="n">results</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">books</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No recently added books found.&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Recently Added Books:&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">book</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">books</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;🔢 </span><span class="si">{</span><span class="n">idx</span><span class="si">:</span><span class="s2">2d</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+            <span class="n">print_book_details</span><span class="p">(</span><span class="n">book</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">popular</span><span class="p">:</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">get_most_popular</span><span class="p">(</span><span class="n">language</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">popular_language</span><span class="p">)</span>
+        <span class="n">books</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;books&quot;</span><span class="p">,</span> <span class="p">[])</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="n">results</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">books</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No popular books found.&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Most Popular Books:&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">book</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">books</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;🔢 </span><span class="si">{</span><span class="n">idx</span><span class="si">:</span><span class="s2">2d</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+            <span class="n">print_book_details</span><span class="p">(</span><span class="n">book</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">search</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No search query provided. Use --search.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">search</span> <span class="ow">and</span> <span class="n">args</span><span class="o">.</span><span class="n">download</span><span class="p">:</span>
+        <span class="n">interactive_login_search_download</span><span class="p">(</span>
+            <span class="n">query</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">search</span><span class="p">,</span>
+            <span class="n">download_dir</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">download</span><span class="p">,</span>
+            <span class="n">limit</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">search_limit</span> <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">search_limit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">20</span>
+        <span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">search</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">download</span><span class="p">:</span>
+        <span class="n">search_limit</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">search_limit</span> <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">search_limit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">20</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">search_zlibrary_books</span><span class="p">(</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">search</span><span class="p">,</span>
+            <span class="n">limit</span><span class="o">=</span><span class="n">search_limit</span><span class="p">,</span>
+            <span class="n">email</span><span class="o">=</span><span class="n">EMAIL</span><span class="p">,</span>
+            <span class="n">password</span><span class="o">=</span><span class="n">PASSWORD</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">results</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No books found.&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Search Results:&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">book</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;🔢 </span><span class="si">{</span><span class="n">idx</span><span class="si">:</span><span class="s2">2d</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+            <span class="n">print_book_details</span><span class="p">(</span><span class="n">book</span><span class="p">)</span></div>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2026, Duc A. Hoang.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

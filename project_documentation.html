@@ -1,0 +1,205 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project Architecture and Workflows &mdash; getscipapers 0.1.4 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=fd825880"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="API Reference" href="api_reference.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            getscipapers
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli_reference.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Project Architecture and Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#getscipapers-project-documentation">getscipapers Project Documentation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#package-layout">Package Layout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#configuration-and-credentials">Configuration and Credentials</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#getpapers-cli">getpapers CLI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#doi-and-metadata-helpers">DOI and Metadata Helpers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#download-pipeline">Download Pipeline</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#request-cli">request CLI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#source-integrations-highlights">Source Integrations (Highlights)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#operational-notes">Operational Notes</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">getscipapers</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Project Architecture and Workflows</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/project_documentation.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="project-architecture-and-workflows">
+<h1>Project Architecture and Workflows<a class="headerlink" href="#project-architecture-and-workflows" title="Link to this heading"></a></h1>
+</section>
+<section id="getscipapers-project-documentation">
+<h1>getscipapers Project Documentation<a class="headerlink" href="#getscipapers-project-documentation" title="Link to this heading"></a></h1>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>getscipapers is a Python toolkit for locating scientific articles, validating DOIs, and requesting or downloading PDFs from multiple community and publisher-backed sources. The project exposes two primary CLIs:</p>
+<ul class="simple">
+<li><p><strong>getpapers</strong>: end-to-end search and download orchestrator with DOI validation, metadata lookups, and multi-source downloads.</p></li>
+<li><p><strong>request</strong>: a DOI-forwarding utility that posts requests to external helper services (e.g., Nexus bot, AbleSci) for community assistance.</p></li>
+</ul>
+<p>The package also bundles source-specific helpers (Sci-Hub/Nexus/LibGen, Anna’s Archive, AbleSci, Facebook, EZProxy, etc.) and shared configuration utilities for credentials and cache paths.</p>
+</section>
+<section id="package-layout">
+<h2>Package Layout<a class="headerlink" href="#package-layout" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">getscipapers_hoanganhduc/getpapers.py</span></code>: Core CLI for searching, validating, and downloading papers. Handles argument parsing, credential loading, DOI extraction, metadata lookup, and download orchestration across sources such as Unpaywall, Nexus, Sci-Hub, and Anna’s Archive.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">getscipapers_hoanganhduc/ezproxy.py</span></code>: Selenium-based EZProxy downloader for institutional access, with per-provider browser profiles and optional credential caching.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">getscipapers_hoanganhduc/request.py</span></code>: Async DOI requester that posts DOIs to supported services (Nexus, AbleSci, Wosonhj, Facebook, SciNet) with a synchronous wrapper for legacy usage.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">getscipapers_hoanganhduc/configuration.py</span></code>: Centralized defaults, credential persistence, and directory helpers used by the CLIs.</p></li>
+<li><p>Source integrations: modules like <code class="docutils literal notranslate"><span class="pre">ablesci.py</span></code>, <code class="docutils literal notranslate"><span class="pre">nexus.py</span></code>, <code class="docutils literal notranslate"><span class="pre">libgen.py</span></code>, <code class="docutils literal notranslate"><span class="pre">scinet.py</span></code>, <code class="docutils literal notranslate"><span class="pre">facebook.py</span></code>, <code class="docutils literal notranslate"><span class="pre">Zlibrary.py</span></code>, and <code class="docutils literal notranslate"><span class="pre">zlib.py</span></code> provide site-specific login, scraping, or request routines.</p></li>
+<li><p>Utility scripts (e.g., <code class="docutils literal notranslate"><span class="pre">remove_metadata.py</span></code>, <code class="docutils literal notranslate"><span class="pre">upload.py</span></code>, <code class="docutils literal notranslate"><span class="pre">checkin.py</span></code>) offer ancillary workflows such as PDF metadata removal or daily check-ins for services that require activity.</p></li>
+</ul>
+</section>
+<section id="configuration-and-credentials">
+<h2>Configuration and Credentials<a class="headerlink" href="#configuration-and-credentials" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>The configuration module defines platform-aware defaults for the config file, download folder, and Unpaywall cache, exposing <code class="docutils literal notranslate"><span class="pre">GETPAPERS_CONFIG_FILE</span></code>, <code class="docutils literal notranslate"><span class="pre">DEFAULT_DOWNLOAD_FOLDER</span></code>, and cache paths. Directory creation is deferred to helpers so imports remain side-effect free, and calling <code class="docutils literal notranslate"><span class="pre">ensure_directory_exists</span></code> prepares folders on demand.</p></li>
+<li><p>Credentials are stored in JSON with keys for email, Elsevier API key, Wiley TDM token, and IEEE API key. <code class="docutils literal notranslate"><span class="pre">load_credentials</span></code> merges environment overrides (<code class="docutils literal notranslate"><span class="pre">GETSCIPAPERS_*</span></code>), optional interactive prompts, and file contents, updating module-level globals for reuse. It requires a terminal email value for APIs via <code class="docutils literal notranslate"><span class="pre">require_email</span></code>, surfacing a clear error when missing.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">save_credentials</span></code> writes merged credentials back to disk, creating the config directory if necessary, and normalizes outputs for verbose CLI logging.</p></li>
+</ul>
+</section>
+<section id="getpapers-cli">
+<h2>getpapers CLI<a class="headerlink" href="#getpapers-cli" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Argument parsing lives in <code class="docutils literal notranslate"><span class="pre">main()</span></code>, supporting mutually exclusive inputs for DOI (<code class="docutils literal notranslate"><span class="pre">--doi</span></code>), DOI file (<code class="docutils literal notranslate"><span class="pre">--doi-file</span></code>), keyword search (<code class="docutils literal notranslate"><span class="pre">--search</span></code>), or DOI extraction from PDF/text (<code class="docutils literal notranslate"><span class="pre">--extract-doi-from-pdf</span></code>, <code class="docutils literal notranslate"><span class="pre">--extract-doi-from-txt</span></code>). Global flags include verbosity, download folder overrides, source selection (<code class="docutils literal notranslate"><span class="pre">--db</span></code>), non-interactive credential loading, config printing, and credential clearing.</p></li>
+<li><p>The CLI initializes the Unpaywall cache, ensures download directories exist, and loads credentials from a chosen file or environment. It aborts early if required email credentials are missing or if conflicting input modes are provided.</p></li>
+<li><p>For DOI operations, the CLI validates and normalizes input, then orchestrates metadata checks (Crossref), open-access detection (Unpaywall), and download attempts across the selected sources (including optional EZProxy). It summarizes successes/failures and respects <code class="docutils literal notranslate"><span class="pre">--no-download</span></code> to only print metadata without retrieving PDFs.</p></li>
+<li><p>Search mode (<code class="docutils literal notranslate"><span class="pre">--search</span></code>) queries Crossref via the <code class="docutils literal notranslate"><span class="pre">search_and_print</span></code> helper, limiting results with <code class="docutils literal notranslate"><span class="pre">--limit</span></code> and printing basic metadata such as title, journal, and publication year. Downloads can also be initiated from DOI lists provided via text files.</p></li>
+</ul>
+</section>
+<section id="doi-and-metadata-helpers">
+<h2>DOI and Metadata Helpers<a class="headerlink" href="#doi-and-metadata-helpers" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Crossref interactions: <code class="docutils literal notranslate"><span class="pre">fetch_crossref_data</span></code> constructs requests with the configured email user agent, returning parsed metadata for DOI lookups and printing debug information when verbosity is enabled.</p></li>
+<li><p>Open access detection: <code class="docutils literal notranslate"><span class="pre">is_open_access_unpaywall</span></code> queries Unpaywall asynchronously to label DOIs as open/closed access prior to download attempts.</p></li>
+<li><p>Identifier normalization: utilities resolve Elsevier PIIs to DOIs (<code class="docutils literal notranslate"><span class="pre">resolve_pii_to_doi</span></code>), derive MDPI DOIs from URLs, and scan arbitrary URLs or text for DOI patterns (<code class="docutils literal notranslate"><span class="pre">fetch_dois_from_url</span></code>, text extraction helpers). PDF inspection is supported via PyPDF2 to locate embedded DOIs.</p></li>
+</ul>
+</section>
+<section id="download-pipeline">
+<h2>Download Pipeline<a class="headerlink" href="#download-pipeline" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>The download workflow iterates over requested DOIs, determines open-access status, and then attempts downloads from configured sources in priority order. Per-source results are tracked, and the CLI prints emoji-coded summaries for successes, failures, skipped downloads, or missing matches.</p></li>
+<li><p>Download directory preparation and caching use the shared configuration helpers to avoid hidden side effects and to reuse cache locations across runs.</p></li>
+</ul>
+</section>
+<section id="request-cli">
+<h2>request CLI<a class="headerlink" href="#request-cli" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">request_dois</span></code> exposes a synchronous entry point that guards against nested asyncio loops, delegating to <code class="docutils literal notranslate"><span class="pre">async_request_dois</span></code> for concurrent posting to helper services. Users can target a single service, provide a list, or broadcast to all.</p></li>
+<li><p>Service handlers wrap each integration (Nexus, AbleSci, Wosonhj, Facebook, SciNet), translating return payloads into a consistent <code class="docutils literal notranslate"><span class="pre">{doi:</span> <span class="pre">{service:</span> <span class="pre">result}}</span></code> shape and surfacing errors per DOI for clearer CLI reporting.</p></li>
+<li><p>The CLI accepts flexible DOI input (single string, delimited list, text file, or arbitrary text blob) and normalizes service selections (single name, delimited names, or <code class="docutils literal notranslate"><span class="pre">all</span></code>). Results are printed with success/error icons per DOI.</p></li>
+</ul>
+</section>
+<section id="source-integrations-highlights">
+<h2>Source Integrations (Highlights)<a class="headerlink" href="#source-integrations-highlights" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>AbleSci (<code class="docutils literal notranslate"><span class="pre">ablesci.py</span></code>)</strong>: Selenium-driven login and request automation with cached cookies and credential storage. Provides default download directory helpers and credential file discovery tailored per OS.</p></li>
+<li><p><strong>Nexus (<code class="docutils literal notranslate"><span class="pre">nexus.py</span></code>)</strong>: Utilities to interact with the Nexus bot/IPFS-powered database for DOI-based lookups and requests.</p></li>
+<li><p><strong>LibGen &amp; Z-Library (<code class="docutils literal notranslate"><span class="pre">libgen.py</span></code>, <code class="docutils literal notranslate"><span class="pre">zlib.py</span></code>, <code class="docutils literal notranslate"><span class="pre">Zlibrary.py</span></code>)</strong>: Search and download helpers for article/book retrieval from public libraries.</p></li>
+<li><p><strong>SciNet (<code class="docutils literal notranslate"><span class="pre">scinet.py</span></code>)</strong>: Login and request routines for the sci-net.xyz community portal.</p></li>
+<li><p><strong>Facebook (<code class="docutils literal notranslate"><span class="pre">facebook.py</span></code>)</strong>: Automation around posting DOI requests to relevant groups, including cookie handling for persisted sessions.</p></li>
+<li><p><strong>Anna’s Archive (<code class="docutils literal notranslate"><span class="pre">nexus.py</span></code>/<code class="docutils literal notranslate"><span class="pre">libgen.py</span></code> interplay)</strong>: Included in the multi-source download path for fallback retrieval.</p></li>
+</ul>
+</section>
+<section id="operational-notes">
+<h2>Operational Notes<a class="headerlink" href="#operational-notes" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Both CLIs inherit the project-wide <code class="docutils literal notranslate"><span class="pre">DEFAULT_LIMIT</span></code> and path defaults from the configuration module, ensuring consistent behavior across entry points.</p></li>
+<li><p>Non-interactive environments should supply <code class="docutils literal notranslate"><span class="pre">GETSCIPAPERS_EMAIL</span></code> (and any API keys) to bypass prompts and satisfy API requirements.</p></li>
+<li><p>The project relies on third-party services that may change behavior; verbose mode helps diagnose request headers, redirects, and fallback paths when integrations fail.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="api_reference.html" class="btn btn-neutral float-left" title="API Reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2026, Duc A. Hoang.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

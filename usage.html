@@ -1,0 +1,220 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Usage Guide &mdash; getscipapers 0.1.4 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=fd825880"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Configuration" href="configuration.html" />
+    <link rel="prev" title="getscipapers Documentation" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            getscipapers
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Usage Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#basic-usage">Basic Usage</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#example-workflows">Example Workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#ezproxy-selenium">EZProxy (Selenium)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#graphical-wrapper">Graphical wrapper</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#search-strategies">Search Strategies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#download-locations">Download Locations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#non-interactive-runs">Non-interactive Runs</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli_reference.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="project_documentation.html">Project Architecture and Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="project_documentation.html#getscipapers-project-documentation">getscipapers Project Documentation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">getscipapers</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Usage Guide</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/usage.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="usage-guide">
+<h1>Usage Guide<a class="headerlink" href="#usage-guide" title="Link to this heading"></a></h1>
+<p>The <code class="docutils literal notranslate"><span class="pre">getscipapers</span></code> command-line interface provides a set of subcommands that
+coordinate searches, downloads, and requests across multiple services.</p>
+<section id="basic-usage">
+<h2>Basic Usage<a class="headerlink" href="#basic-usage" title="Link to this heading"></a></h2>
+<ul>
+<li><p>Show available modules and entry points:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">getscipapers</span> <span class="o">--</span><span class="nb">list</span>
+</pre></div>
+</div>
+</li>
+<li><p>Get help for a specific module:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">getscipapers</span> <span class="n">getpapers</span> <span class="o">--</span><span class="n">help</span>
+</pre></div>
+</div>
+</li>
+<li><p>Perform a quick DOI search using Crossref and Unpaywall:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">getscipapers</span> <span class="n">getpapers</span> <span class="o">--</span><span class="n">doi</span> <span class="mf">10.1038</span><span class="o">/</span><span class="n">s41586</span><span class="o">-</span><span class="mi">020</span><span class="o">-</span><span class="mi">2649</span><span class="o">-</span><span class="mi">2</span> <span class="o">--</span><span class="n">email</span> <span class="n">you</span><span class="nd">@example</span><span class="o">.</span><span class="n">com</span>
+</pre></div>
+</div>
+</li>
+<li><p>Request a paper through community bots without direct downloads:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">getscipapers</span> <span class="n">request</span> <span class="o">--</span><span class="n">title</span> <span class="s2">&quot;Efficient Vision Transformers&quot;</span> <span class="o">--</span><span class="n">nexus</span> <span class="o">--</span><span class="n">non</span><span class="o">-</span><span class="n">interactive</span>
+</pre></div>
+</div>
+</li>
+</ul>
+</section>
+<section id="example-workflows">
+<h2>Example Workflows<a class="headerlink" href="#example-workflows" title="Link to this heading"></a></h2>
+<p>Use these ready-to-run commands as starting points:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Keyword search limited to 5 results, downloading PDFs when available</span>
+getscipapers<span class="w"> </span>getpapers<span class="w"> </span>--search<span class="w"> </span><span class="s2">&quot;graph neural network&quot;</span><span class="w"> </span>--limit<span class="w"> </span><span class="m">5</span>
+
+<span class="c1"># Download a DOI via Unpaywall with non-interactive credentials</span>
+<span class="nv">GETSCIPAPERS_EMAIL</span><span class="o">=</span>you@example.com<span class="w"> </span><span class="se">\\</span>
+getscipapers<span class="w"> </span>getpapers<span class="w"> </span>--doi<span class="w"> </span><span class="m">10</span>.1038/nature12373<span class="w"> </span>--db<span class="w"> </span>unpaywall<span class="w"> </span>--non-interactive
+
+<span class="c1"># Process many DOIs from a text file and save outputs to a custom folder</span>
+getscipapers<span class="w"> </span>getpapers<span class="w"> </span>--doi-file<span class="w"> </span>dois.txt<span class="w"> </span>--download-folder<span class="w"> </span>./pdfs
+
+<span class="c1"># Extract DOIs from a PDF without downloading</span>
+getscipapers<span class="w"> </span>getpapers<span class="w"> </span>--extract-doi-from-pdf<span class="w"> </span>paper.pdf<span class="w"> </span>--no-download
+
+<span class="c1"># Show metadata only across all services for a DOI</span>
+getscipapers<span class="w"> </span>getpapers<span class="w"> </span>--doi<span class="w"> </span><span class="m">10</span>.1016/j.cell.2019.05.031<span class="w"> </span>--no-download<span class="w"> </span>--verbose
+</pre></div>
+</div>
+</section>
+<section id="ezproxy-selenium">
+<h2>EZProxy (Selenium)<a class="headerlink" href="#ezproxy-selenium" title="Link to this heading"></a></h2>
+<p>Use the EZProxy module to download PDFs through institutional access. The module
+maintains a per-provider Chrome profile under the default config directory.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Single DOI (headless by default)</span>
+getscipapers<span class="w"> </span>ezproxy<span class="w"> </span>--provider<span class="w"> </span>NASATI<span class="w"> </span>--doi<span class="w"> </span><span class="m">10</span>.1038/nature12373<span class="w"> </span>--dest-dwn-dir<span class="w"> </span>./pdfs
+
+<span class="c1"># DOI list with manual login (visible browser)</span>
+getscipapers<span class="w"> </span>ezproxy<span class="w"> </span>--provider<span class="w"> </span>VNU-LIC<span class="w"> </span>--doi-file<span class="w"> </span>dois.txt<span class="w"> </span>--no-headless
+
+<span class="c1"># Use EZProxy as a getpapers source</span>
+getscipapers<span class="w"> </span>getpapers<span class="w"> </span>--doi<span class="w"> </span><span class="m">10</span>.1038/nature12373<span class="w"> </span>--db<span class="w"> </span>ezproxy<span class="w"> </span>--ezproxy-provider<span class="w"> </span>NASATI
+</pre></div>
+</div>
+</section>
+<section id="graphical-wrapper">
+<h2>Graphical wrapper<a class="headerlink" href="#graphical-wrapper" title="Link to this heading"></a></h2>
+<p>If you prefer not to remember command-line flags, start the Tkinter-based GUI wrapper (works on Windows and Linux) and trigger the same searches and DOI list downloads:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">getscipapers</span> <span class="n">gui</span>
+</pre></div>
+</div>
+<p>The window exposes database selection (toggle one or many services), metadata-only runs, verbose logging, and custom download folders while reusing the existing CLI logic under the hood.</p>
+</section>
+<section id="search-strategies">
+<h2>Search Strategies<a class="headerlink" href="#search-strategies" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">getpapers</span></code> combines several strategies to maximize discovery:</p>
+<ul class="simple">
+<li><p><strong>Crossref lookups</strong> for authoritative metadata and publisher links.</p></li>
+<li><p><strong>Unpaywall queries</strong> to find open access versions.</p></li>
+<li><p><strong>Nexus bot searches</strong> to leverage community mirrors when direct download is not possible.</p></li>
+<li><p>Optional <strong>LibGen</strong> and <strong>Z-Library</strong> queries for book-like content.</p></li>
+</ul>
+<p>Combine options thoughtfully. For example, supplying <code class="docutils literal notranslate"><span class="pre">--email</span></code> ensures
+Crossref and Unpaywall requests include a contact address, improving API
+reliability.</p>
+</section>
+<section id="download-locations">
+<h2>Download Locations<a class="headerlink" href="#download-locations" title="Link to this heading"></a></h2>
+<p>Downloads are saved to the configured output directory (see
+<a class="reference internal" href="configuration.html"><span class="doc">Configuration</span></a>). When running inside Docker or Codespaces, mount or bind a
+host directory so that downloaded files persist outside the container.</p>
+</section>
+<section id="non-interactive-runs">
+<h2>Non-interactive Runs<a class="headerlink" href="#non-interactive-runs" title="Link to this heading"></a></h2>
+<p>Many environments (CI, containers) cannot handle interactive prompts. Use the
+<code class="docutils literal notranslate"><span class="pre">--non-interactive</span></code> flag to require environment-provided credentials and avoid
+blocking for input. When set, the command will exit with an error if a needed
+credential is missing instead of waiting for keyboard input.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="getscipapers Documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="configuration.html" class="btn btn-neutral float-right" title="Configuration" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2026, Duc A. Hoang.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
