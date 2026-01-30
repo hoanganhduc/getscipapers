@@ -43,6 +43,7 @@ import sys
 import getpass
 import traceback
 import tempfile
+import threading
 
 USERNAME = "" # Replace with your Facebook username
 PASSWORD = "" # Replace with your Facebook password
@@ -284,6 +285,17 @@ class FacebookScraper:
                 
     def login(self):
         """Login to Facebook with session caching"""
+        def wait_for_human_check(timeout=180, poll=5):
+            """Wait for user to complete robot/checkpoint in visible browser."""
+            self.log(f"⏳ Waiting up to {timeout}s for manual verification...")
+            start = time.time()
+            while time.time() - start < timeout:
+                if self.is_logged_in():
+                    self.log("✅ Manual verification detected; continuing.")
+                    return True
+                time.sleep(poll)
+            self.log("❌ Manual verification timed out.")
+            return False
         
         # Try to load existing session
         if os.path.exists(CACHE_FILE):
@@ -312,6 +324,10 @@ class FacebookScraper:
                     self.log("✅ Successfully logged in using cached session!")
                     return
                 else:
+                    if self.detect_robot_check():
+                        self.log("⚠️ Possible robot check detected. Please complete it in the browser.")
+                        if wait_for_human_check():
+                            return
                     self.log("❌ Cached session expired, proceeding with fresh login...")
                     os.remove(CACHE_FILE)  # Remove invalid cache
                     
@@ -392,6 +408,16 @@ class FacebookScraper:
                         print(f"\n⏰ Timeout: No response received within {timeout} seconds.")
                         return None
 
+            def get_secret_with_timeout(prompt, timeout=30):
+                if platform.system() == "Windows":
+                    return get_input_with_timeout(prompt, timeout=timeout)
+                if sys.stdin.isatty():
+                    try:
+                        return getpass.getpass(prompt)
+                    except Exception:
+                        return get_input_with_timeout(prompt, timeout=timeout)
+                return get_input_with_timeout(prompt, timeout=timeout)
+
             if not self.email:
                 self.email = get_input_with_timeout("Enter your Facebook email/username: ")
                 if not self.email:
@@ -399,14 +425,7 @@ class FacebookScraper:
                     print("❌ Login failed: No email provided (timeout or empty input)")
                     raise Exception("Login failed: No email provided")
             if not self.password:
-                if platform.system() == "Windows":
-                    # getpass does not support timeout, so use fallback
-                    self.password = get_input_with_timeout("Enter your Facebook password: ")
-                else:
-                    try:
-                        self.password = getpass.getpass("Enter your Facebook password: ")
-                    except Exception:
-                        self.password = get_input_with_timeout("Enter your Facebook password: ")
+                self.password = get_secret_with_timeout("Enter your Facebook password: ")
                 if not self.password:
                     self.log("❌ Login failed: No password provided (timeout or empty input)")
                     print("❌ Login failed: No password provided (timeout or empty input)")
@@ -452,6 +471,9 @@ class FacebookScraper:
             except Exception as e:
                 self.log(f"Error saving session cache: {e}")
         else:
+            if self.detect_robot_check():
+                self.log("⚠️ Possible robot check detected. Please complete it in the browser.")
+                wait_for_human_check()
             self.log("❌ Login may have failed - not saving cache")
 
     def is_logged_in(self):
@@ -479,6 +501,28 @@ class FacebookScraper:
             
         except Exception as e:
             self.log(f"Error checking login status: {e}")
+            return False
+
+    def detect_robot_check(self):
+        """Best-effort detection of checkpoint/captcha pages."""
+        try:
+            current_url = self.driver.current_url.lower()
+            if any(token in current_url for token in ("checkpoint", "captcha", "challenge")):
+                return True
+            page_text = self.driver.page_source.lower()
+            indicators = (
+                "security check",
+                "confirm your identity",
+                "suspicious activity",
+                "robot",
+                "captcha",
+                "challenge",
+                "checkpoint",
+                "verify it's you",
+            )
+            return any(indicator in page_text for indicator in indicators)
+        except Exception as e:
+            self.log(f"Error detecting robot check: {e}")
             return False
         
     def navigate_to_profile(self, profile_url):
@@ -2527,6 +2571,12 @@ Examples:
                        help='Run in graphic mode (default is headless)')
     parser.add_argument('--credentials', '-c', type=str,
                        help='Path to JSON credentials file containing username and password')
+    parser.add_argument('--email', type=str,
+                       help='Facebook email/username (overrides credentials file)')
+    parser.add_argument('--password', type=str,
+                       help='Facebook password (overrides credentials file)')
+    parser.add_argument('--no-prompt', action='store_true',
+                       help='Fail if email/password are missing instead of prompting')
     parser.add_argument('--having-doi', action='store_true',
                        help='Filter posts to only include those containing DOI numbers')
     parser.add_argument('--no-comment', action='store_true',
@@ -2565,6 +2615,8 @@ Examples:
                        help='Content to post on your profile/timeline')
     parser.add_argument('--profile-post-file', '-ppf', type=str,
                        help='Path to text file containing content to post on your profile/timeline')
+    parser.add_argument('--login-test', action='store_true',
+                       help='Login only and report whether authentication succeeded')
     parser.add_argument('--request-doi', '-rd', type=str,
                        help='Request help for DOI(s): provide a DOI, comma-separated DOIs, or a file containing DOIs (one per line)')
     parser.add_argument('--request-in-group', '-rg', nargs='?', const='188053074599163', type=str, 
@@ -2711,9 +2763,28 @@ Examples:
                 print_and_log("✅ Credentials loaded successfully. Exiting...")
                 sys.exit(0)
         
+        # Allow CLI overrides for credentials before login
+        if args.email:
+            scraper.email = args.email
+        if args.password:
+            scraper.password = args.password
+        if args.no_prompt and (not scraper.email or not scraper.password):
+            print_and_log("❌ Missing credentials and --no-prompt was set.")
+            sys.exit(1)
+
         # Setup and login
         scraper.initialize_driver()
         scraper.login()
+        if args.login_test:
+            if scraper.is_logged_in():
+                print_and_log("✅ Login test successful.")
+            else:
+                print_and_log("❌ Login test failed.")
+            try:
+                scraper.driver.quit()
+            except Exception:
+                pass
+            return
 
         # Handle DOI help request
         if args.request_doi:

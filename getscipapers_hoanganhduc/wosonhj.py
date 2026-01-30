@@ -309,16 +309,19 @@ def login_and_navigate_wosonhj(url, headless=True, enable_download=True, downloa
                 password_input.send_keys(password)
                 password_input.send_keys(Keys.RETURN)
 
-                debug_print("Waiting for login redirect")
-                time.sleep(5)
-                driver.get(WOSONHJ_LOGIN_URL)
-                time.sleep(10)
-                current_url = driver.current_url
-                debug_print(f"After login, visiting login page, current URL: {current_url}")
-                if current_url.startswith(WOSONHJ_HOME_URL) and current_url != WOSONHJ_LOGIN_URL:
+                debug_print("Waiting for login redirect (up to 30s)")
+                try:
+                    WebDriverWait(driver, 30).until(
+                        lambda d: d.current_url.startswith(WOSONHJ_HOME_URL)
+                        and d.current_url != WOSONHJ_LOGIN_URL
+                    )
+                    current_url = driver.current_url
+                    debug_print(f"After login, current URL: {current_url}")
                     success_print("Login successful (redirected to homepage)")
                     login_successful = True
-                else:
+                except Exception:
+                    current_url = driver.current_url
+                    debug_print(f"After login, current URL: {current_url}")
                     error_print("Login failed - still not logged in")
                     login_successful = False
 
@@ -347,20 +350,23 @@ def login_and_navigate_wosonhj(url, headless=True, enable_download=True, downloa
                     username_input.send_keys(manual_username)
                     password_input.send_keys(manual_password)
                     password_input.send_keys(Keys.RETURN)
-                    debug_print("Manual credentials submitted, waiting for login")
-                    time.sleep(5)
-                    driver.get(WOSONHJ_LOGIN_URL)
-                    time.sleep(10)
-                    current_url = driver.current_url
-                    debug_print(f"After manual login, visiting login page, current URL: {current_url}")
-                    if current_url.startswith(WOSONHJ_HOME_URL) and current_url != WOSONHJ_LOGIN_URL:
+                    debug_print("Manual credentials submitted, waiting for login (up to 30s)")
+                    try:
+                        WebDriverWait(driver, 30).until(
+                            lambda d: d.current_url.startswith(WOSONHJ_HOME_URL)
+                            and d.current_url != WOSONHJ_LOGIN_URL
+                        )
+                        current_url = driver.current_url
+                        debug_print(f"After manual login, current URL: {current_url}")
                         success_print("Manual login successful (redirected to homepage)")
                         debug_print(f"Saving cache after manual login to {CACHE_FILE}")
                         with open(CACHE_FILE, 'wb') as f:
                             pickle.dump(driver.get_cookies(), f)
                         info_print("Cache saved successfully after manual login")
                         success_print("Login successful! Credentials have been saved for future use.")
-                    else:
+                    except Exception:
+                        current_url = driver.current_url
+                        debug_print(f"After manual login, current URL: {current_url}")
                         error_print("Manual login failed - still not logged in")
                         error_print("Manual login failed. Please check your credentials.")
                         driver.quit()
