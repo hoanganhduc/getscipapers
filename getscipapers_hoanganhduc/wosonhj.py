@@ -8,6 +8,7 @@ the remote interface changes.
 import os
 import json
 import platform
+from .selenium_utils import build_chrome_driver
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -203,7 +204,7 @@ def get_chrome_driver(headless=True, enable_download=True, download_folder=None)
         options.add_experimental_option("prefs", prefs)
         debug_print(f"Chrome will auto-download files to: {download_folder}")
 
-    driver = webdriver.Chrome(options=options)
+    driver = build_chrome_driver(options, log=debug_print)
     debug_print("Chrome driver created successfully")
     return driver
 

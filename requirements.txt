@@ -15,6 +15,6 @@ PyPDF2==3.0.1
 PySocks==1.7.1
 Requests==2.32.4
 selenium==4.33.0
+webdriver-manager==4.0.2
 Telethon==1.40.0
 unpywall==0.2.3
-webdriver-manager==4.0.2

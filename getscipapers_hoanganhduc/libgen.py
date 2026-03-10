@@ -24,6 +24,7 @@ import time
 import shutil
 import hashlib
 from . import getpapers, proxy_config
+from .selenium_utils import build_chrome_driver
 import threading
 
 # Provide generous timeouts so slow mirrors still succeed.
@@ -1329,7 +1330,7 @@ def create_chrome_driver(headless=True, extra_prefs=None):
         prefs.update(extra_prefs)
     options.add_experimental_option("prefs", prefs)
     options.add_argument("--disable-save-password-bubble")
-    return webdriver.Chrome(options=options)
+    return build_chrome_driver(options)
 
 def selenium_libgen_login(username="genesis", password="upload", headless=True, verbose=False):
     """

@@ -28,6 +28,7 @@ import argcomplete
 import signal
 import getpass
 import platform
+from .selenium_utils import build_chrome_driver
 import sys
 import random
 import tempfile
@@ -577,7 +578,7 @@ def login_to_scinet(username, password, headless=False):
     options.add_argument("--allow-running-insecure-content")
     
     debug_print("Initializing Chrome driver...")
-    driver = webdriver.Chrome(options=options)
+    driver = build_chrome_driver(options, log=debug_print)
     
     try:
         # Try to use cached login first

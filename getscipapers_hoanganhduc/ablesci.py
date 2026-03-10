@@ -25,6 +25,7 @@ import getpass
 import glob
 import platform
 from . import getpapers
+from .selenium_utils import build_chrome_driver
 import tempfile
 import datetime
 
@@ -199,7 +200,7 @@ def get_chrome_driver(headless=True):
     options.add_argument("--allow-running-insecure-content")
     options.add_argument("--enable-unsafe-swiftshader")
     
-    driver = webdriver.Chrome(options=options)
+    driver = build_chrome_driver(options, log=debug_print)
     debug_print("Chrome driver created successfully")
     return driver
 
@@ -1122,7 +1123,7 @@ def download_file_from_fulfilled_request(detail_url, download_folder=None, headl
         options.add_argument("--disable-renderer-backgrounding")
         options.page_load_strategy = 'normal'
         try:
-            driver = webdriver.Chrome(options=options)
+            driver = build_chrome_driver(options, log=debug_print)
             driver.set_page_load_timeout(180)
             driver.implicitly_wait(30)
             debug_print("Chrome driver created with download preferences")
