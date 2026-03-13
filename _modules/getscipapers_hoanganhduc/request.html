@@ -1,0 +1,400 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>getscipapers_hoanganhduc.request &mdash; getscipapers 0.1.4 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=fd825880"></script>
+      <script src="../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            getscipapers
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../cli_reference.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../project_documentation.html">Project Architecture and Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../project_documentation.html#getscipapers-project-documentation">getscipapers Project Documentation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">getscipapers</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">getscipapers_hoanganhduc.request</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for getscipapers_hoanganhduc.request</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Dispatcher for higher-level paper request workflows.</span>
+
+<span class="sd">This module ties together Nexus lookups, AbleSci and Wosonhj helpers, and</span>
+<span class="sd">fallback flows to request papers from community sources. It keeps the command</span>
+<span class="sd">parsing and orchestration code separate from the individual service</span>
+<span class="sd">implementations.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">getpapers</span><span class="p">,</span> <span class="n">nexus</span><span class="p">,</span> <span class="n">ablesci</span><span class="p">,</span> <span class="n">wosonhj</span><span class="p">,</span> <span class="n">facebook</span><span class="p">,</span> <span class="n">scinet</span><span class="p">,</span> <span class="n">proxy_config</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="n">SERVICE_LIST</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;nexus&quot;</span><span class="p">,</span> <span class="s2">&quot;ablesci&quot;</span><span class="p">,</span> <span class="s2">&quot;wosonhj&quot;</span><span class="p">,</span> <span class="s2">&quot;facebook&quot;</span><span class="p">,</span> <span class="s2">&quot;scinet&quot;</span><span class="p">]</span>
+<span class="n">ACTIVE_PROXY</span> <span class="o">=</span> <span class="n">proxy_config</span><span class="o">.</span><span class="n">ProxySettings</span><span class="p">()</span>
+
+<div class="viewcode-block" id="extract_dois_from_text_input">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.request.extract_dois_from_text_input">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_dois_from_text_input</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract a list of DOIs from the given text input using getpapers.extract_dois_from_text.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">getpapers</span><span class="o">.</span><span class="n">extract_dois_from_text</span><span class="p">(</span><span class="n">text</span><span class="p">)</span></div>
+
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_request_single_service</span><span class="p">(</span><span class="n">dois</span><span class="p">,</span> <span class="n">svc</span><span class="p">,</span> <span class="n">verbose</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">svc</span> <span class="o">==</span> <span class="s2">&quot;nexus&quot;</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nexus</span><span class="o">.</span><span class="n">request_papers_by_doi_list</span><span class="p">(</span><span class="n">dois</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;📨 Posted DOIs to Nexus bot for help.&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">doi</span><span class="p">:</span> <span class="n">response</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;No response or not found&quot;</span><span class="p">})</span> <span class="k">for</span> <span class="n">doi</span> <span class="ow">in</span> <span class="n">dois</span><span class="p">}</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;❌ Failed to post DOIs to Nexus: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">doi</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)}</span> <span class="k">for</span> <span class="n">doi</span> <span class="ow">in</span> <span class="n">dois</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">svc</span> <span class="o">==</span> <span class="s2">&quot;ablesci&quot;</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">response_list</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">to_thread</span><span class="p">(</span><span class="n">ablesci</span><span class="o">.</span><span class="n">request_multiple_dois</span><span class="p">,</span> <span class="n">dois</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;📨 Posted DOIs to AbleSci for help.&quot;</span><span class="p">)</span>
+            <span class="n">svc_results</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">response_list</span><span class="p">:</span>
+                <span class="n">doi</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;doi&#39;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;success&#39;</span><span class="p">):</span>
+                    <span class="n">svc_results</span><span class="p">[</span><span class="n">doi</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">svc_results</span><span class="p">[</span><span class="n">doi</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;error&#39;</span><span class="p">,</span> <span class="s1">&#39;Unknown error&#39;</span><span class="p">)}</span>
+            <span class="k">for</span> <span class="n">doi</span> <span class="ow">in</span> <span class="n">dois</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">doi</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">svc_results</span><span class="p">:</span>
+                    <span class="n">svc_results</span><span class="p">[</span><span class="n">doi</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;No response or not found&quot;</span><span class="p">}</span>
+            <span class="k">return</span> <span class="n">svc_results</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;❌ Failed to post DOIs to AbleSci: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">doi</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)}</span> <span class="k">for</span> <span class="n">doi</span> <span class="ow">in</span> <span class="n">dois</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">svc</span> <span class="o">==</span> <span class="s2">&quot;wosonhj&quot;</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">to_thread</span><span class="p">(</span><span class="n">wosonhj</span><span class="o">.</span><span class="n">request_multiple_dois</span><span class="p">,</span> <span class="n">dois</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;📨 Posted DOIs to Wosonhj for help.&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">doi</span><span class="p">:</span> <span class="n">response</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;No response or not found&quot;</span><span class="p">})</span> <span class="k">for</span> <span class="n">doi</span> <span class="ow">in</span> <span class="n">dois</span><span class="p">}</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;❌ Failed to post DOIs to Wosonhj: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">doi</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)}</span> <span class="k">for</span> <span class="n">doi</span> <span class="ow">in</span> <span class="n">dois</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">svc</span> <span class="o">==</span> <span class="s2">&quot;facebook&quot;</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">response_list</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">to_thread</span><span class="p">(</span><span class="n">facebook</span><span class="o">.</span><span class="n">request_multiple_dois</span><span class="p">,</span> <span class="n">dois</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;📨 Posted DOIs to Facebook for help.&quot;</span><span class="p">)</span>
+            <span class="n">response_dict</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">response_list</span><span class="p">:</span>
+                <span class="n">doi</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;doi&#39;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;success&#39;</span><span class="p">):</span>
+                    <span class="n">response_dict</span><span class="p">[</span><span class="n">doi</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">response_dict</span><span class="p">[</span><span class="n">doi</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;error&#39;</span><span class="p">,</span> <span class="s1">&#39;Unknown error&#39;</span><span class="p">)}</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">doi</span><span class="p">:</span> <span class="n">response_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;No response or not found&quot;</span><span class="p">})</span> <span class="k">for</span> <span class="n">doi</span> <span class="ow">in</span> <span class="n">dois</span><span class="p">}</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;❌ Failed to post DOIs to Facebook: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">doi</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)}</span> <span class="k">for</span> <span class="n">doi</span> <span class="ow">in</span> <span class="n">dois</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">svc</span> <span class="o">==</span> <span class="s2">&quot;scinet&quot;</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">to_thread</span><span class="p">(</span><span class="n">scinet</span><span class="o">.</span><span class="n">login_and_request_multiple_dois_simple</span><span class="p">,</span> <span class="n">dois</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;📨 Posted DOIs to SciNet for help.&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">doi</span><span class="p">:</span> <span class="n">response</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;No response or not found&quot;</span><span class="p">})</span> <span class="k">for</span> <span class="n">doi</span> <span class="ow">in</span> <span class="n">dois</span><span class="p">}</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;❌ Failed to post DOIs to SciNet: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">doi</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)}</span> <span class="k">for</span> <span class="n">doi</span> <span class="ow">in</span> <span class="n">dois</span><span class="p">}</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Service &#39;</span><span class="si">{</span><span class="n">svc</span><span class="si">}</span><span class="s2">&#39; is not supported.&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="async_request_dois">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.request.async_request_dois">[docs]</a>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">async_request_dois</span><span class="p">(</span><span class="n">dois</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">service</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dois</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">dois</span> <span class="o">=</span> <span class="p">[</span><span class="n">dois</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">service</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">service_list</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;nexus&quot;</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">service</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">service_list</span> <span class="o">=</span> <span class="n">SERVICE_LIST</span> <span class="k">if</span> <span class="n">service</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;all&quot;</span> <span class="k">else</span> <span class="p">[</span><span class="n">service</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">service_list</span> <span class="o">=</span> <span class="n">SERVICE_LIST</span> <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;all&quot;</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">service</span><span class="p">)</span> <span class="k">else</span> <span class="nb">list</span><span class="p">(</span><span class="n">service</span><span class="p">)</span>
+
+    <span class="n">tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">_request_single_service</span><span class="p">(</span><span class="n">dois</span><span class="p">,</span> <span class="n">svc</span><span class="p">,</span> <span class="n">verbose</span><span class="p">))</span> <span class="k">for</span> <span class="n">svc</span> <span class="ow">in</span> <span class="n">service_list</span><span class="p">]</span>
+    <span class="n">service_results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="n">tasks</span><span class="p">)</span>
+
+    <span class="n">results</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">svc</span><span class="p">,</span> <span class="n">svc_results</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">service_list</span><span class="p">,</span> <span class="n">service_results</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">doi</span> <span class="ow">in</span> <span class="n">dois</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">service_list</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">results</span><span class="p">[</span><span class="n">doi</span><span class="p">]</span> <span class="o">=</span> <span class="n">svc_results</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;No response or not found&quot;</span><span class="p">})</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">doi</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
+                    <span class="n">results</span><span class="p">[</span><span class="n">doi</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+                <span class="n">results</span><span class="p">[</span><span class="n">doi</span><span class="p">][</span><span class="n">svc</span><span class="p">]</span> <span class="o">=</span> <span class="n">svc_results</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;No response or not found&quot;</span><span class="p">})</span>
+    <span class="k">return</span> <span class="n">results</span></div>
+
+
+
+<div class="viewcode-block" id="request_dois">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.request.request_dois">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">request_dois</span><span class="p">(</span><span class="n">dois</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">service</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Synchronous wrapper for :func:`async_request_dois`.</span>
+<span class="sd">    Raises an informative error if called from an active event loop to avoid</span>
+<span class="sd">    nested loop failures.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">asyncio</span><span class="o">.</span><span class="n">get_running_loop</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">RuntimeError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">async_request_dois</span><span class="p">(</span><span class="n">dois</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span> <span class="n">service</span><span class="o">=</span><span class="n">service</span><span class="p">))</span>
+
+    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;request_dois cannot run inside an existing event loop; use async_request_dois instead.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="parse_doi_argument">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.request.parse_doi_argument">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">parse_doi_argument</span><span class="p">(</span><span class="n">doi_arg</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Parse the --doi argument, which can be:</span>
+<span class="sd">    - a single DOI string</span>
+<span class="sd">    - a comma/semicolon/space separated list of DOIs</span>
+<span class="sd">    - a text string containing DOIs</span>
+<span class="sd">    - a path to a text file containing DOIs or text</span>
+<span class="sd">    Returns a list of DOIs.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Check if it&#39;s a file path</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">doi_arg</span><span class="p">):</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">doi_arg</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">extract_dois_from_text_input</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+    <span class="c1"># Try to extract DOIs directly</span>
+    <span class="c1"># If it looks like a list (comma/semicolon/space separated)</span>
+    <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">sep</span> <span class="ow">in</span> <span class="n">doi_arg</span> <span class="k">for</span> <span class="n">sep</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;;&quot;</span><span class="p">,</span> <span class="s2">&quot; &quot;</span><span class="p">]):</span>
+        <span class="c1"># Try to extract DOIs from the string</span>
+        <span class="k">return</span> <span class="n">extract_dois_from_text_input</span><span class="p">(</span><span class="n">doi_arg</span><span class="p">)</span>
+    <span class="c1"># Otherwise, treat as a single DOI or text</span>
+    <span class="n">dois</span> <span class="o">=</span> <span class="n">extract_dois_from_text_input</span><span class="p">(</span><span class="n">doi_arg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">dois</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">dois</span>
+    <span class="c1"># If nothing found, return as single element list</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">doi_arg</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="parse_service_argument">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.request.parse_service_argument">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">parse_service_argument</span><span class="p">(</span><span class="n">service_arg</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Parse the --service argument, which can be:</span>
+<span class="sd">    - &quot;all&quot; (case-insensitive)</span>
+<span class="sd">    - a single service string</span>
+<span class="sd">    - a comma/semicolon/space separated list of services</span>
+<span class="sd">    Returns a list of valid services or &quot;all&quot;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">service_arg</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="s2">&quot;nexus&quot;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">service_arg</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="n">services</span> <span class="o">=</span> <span class="n">service_arg</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Split by comma, semicolon, or space</span>
+        <span class="k">for</span> <span class="n">sep</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;;&quot;</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">sep</span> <span class="ow">in</span> <span class="n">service_arg</span><span class="p">:</span>
+                <span class="n">services</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">service_arg</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">sep</span><span class="p">)]</span>
+                <span class="k">break</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">services</span> <span class="o">=</span> <span class="n">service_arg</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="c1"># Handle &quot;all&quot; (case-insensitive)</span>
+    <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;all&quot;</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">services</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;all&quot;</span>
+    <span class="c1"># Filter only valid services</span>
+    <span class="n">valid_services</span> <span class="o">=</span> <span class="p">[</span><span class="n">svc</span> <span class="k">for</span> <span class="n">svc</span> <span class="ow">in</span> <span class="n">services</span> <span class="k">if</span> <span class="n">svc</span> <span class="ow">in</span> <span class="n">SERVICE_LIST</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">valid_services</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No valid services found in input: </span><span class="si">{</span><span class="n">service_arg</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">valid_services</span></div>
+
+
+<div class="viewcode-block" id="print_result_with_icons">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.request.print_result_with_icons">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">print_result_with_icons</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;error&quot;</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;❌ DOI: </span><span class="si">{</span><span class="n">doi</span><span class="si">}</span><span class="se">\n</span><span class="s2">   Error: </span><span class="si">{</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;error&#39;</span><span class="p">]</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;✅ DOI: </span><span class="si">{</span><span class="n">doi</span><span class="si">}</span><span class="se">\n</span><span class="s2">   Result: </span><span class="si">{</span><span class="n">data</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="main">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.request.main">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Main function for testing request_dois functionality.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Get the parent package name from the module&#39;s __name__</span>
+    <span class="n">parent_package</span> <span class="o">=</span> <span class="vm">__name__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;.&#39;</span> <span class="ow">in</span> <span class="vm">__name__</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">parent_package</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">program_name</span> <span class="o">=</span> <span class="s1">&#39;request&#39;</span>
+    <span class="k">elif</span> <span class="s1">&#39;_&#39;</span> <span class="ow">in</span> <span class="n">parent_package</span><span class="p">:</span>
+        <span class="c1"># If the parent package has an underscore, strip it</span>
+        <span class="n">parent_package</span> <span class="o">=</span> <span class="n">parent_package</span><span class="p">[:</span><span class="n">parent_package</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s1">&#39;_&#39;</span><span class="p">)]</span>
+        <span class="n">program_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">parent_package</span><span class="si">}</span><span class="s2"> request&quot;</span>
+
+    <span class="n">service_list_str</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">SERVICE_LIST</span><span class="p">)</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
+        <span class="n">prog</span><span class="o">=</span><span class="n">program_name</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Post DOI requests to one or more services to ask for published papers.&quot;</span><span class="p">,</span>
+        <span class="n">epilog</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Examples:</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="s2">&quot;  </span><span class="si">%(prog)s</span><span class="s2"> --doi 10.1000/xyz123</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="s2">&quot;  </span><span class="si">%(prog)s</span><span class="s2"> --doi &#39;10.1000/xyz123,10.1000/abc456&#39; --service nexus,ablesci</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="s2">&quot;  </span><span class="si">%(prog)s</span><span class="s2"> --doi mydois.txt --service wosonhj scinet</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="s2">&quot;  </span><span class="si">%(prog)s</span><span class="s2"> --doi &#39;Here are some DOIs: 10.1000/xyz123 10.1000/abc456&#39; --service facebook</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="s2">&quot;  </span><span class="si">%(prog)s</span><span class="s2"> --doi &#39;10.1000/xyz123&#39; --service all</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="p">),</span>
+        <span class="n">formatter_class</span><span class="o">=</span><span class="n">argparse</span><span class="o">.</span><span class="n">RawTextHelpFormatter</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-d&quot;</span><span class="p">,</span> <span class="s2">&quot;--doi&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;A DOI, a list of DOIs, a text string, or a text file containing DOIs.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-s&quot;</span><span class="p">,</span> <span class="s2">&quot;--service&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;nexus&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Service(s) to use for requesting DOIs (comma, semicolon, space separated, or &#39;all&#39;). Available: </span><span class="si">{</span><span class="n">service_list_str</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-v&quot;</span><span class="p">,</span> <span class="s2">&quot;--verbose&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Enable verbose output.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--proxy&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;?&quot;</span><span class="p">,</span>
+        <span class="n">const</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">proxy_config</span><span class="o">.</span><span class="n">DEFAULT_PROXY_FILE</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Path to proxy configuration JSON file (default: </span><span class="si">{</span><span class="n">proxy_config</span><span class="o">.</span><span class="n">DEFAULT_PROXY_FILE</span><span class="si">}</span><span class="s2">).&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--no-proxy&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Disable proxy usage for DOI requests.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--auto-proxy&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Automatically fetch a working proxy configuration when missing or invalid.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">global</span> <span class="n">ACTIVE_PROXY</span>
+    <span class="n">ACTIVE_PROXY</span> <span class="o">=</span> <span class="n">proxy_config</span><span class="o">.</span><span class="n">configure_from_cli</span><span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">proxy</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">no_proxy</span><span class="p">,</span> <span class="n">auto_fetch</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">auto_proxy</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">verbose</span>
+    <span class="p">)</span>
+
+    <span class="n">dois</span> <span class="o">=</span> <span class="n">parse_doi_argument</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">doi</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">dois</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;⚠️  No valid DOIs found in the input.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="c1"># Parse the service argument using the updated function</span>
+    <span class="n">services</span> <span class="o">=</span> <span class="n">parse_service_argument</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">service</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">request_dois</span><span class="p">(</span><span class="n">dois</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span> <span class="n">service</span><span class="o">=</span><span class="n">services</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">doi</span><span class="p">,</span> <span class="n">data</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">print_result_with_icons</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span></div>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2026, Duc A. Hoang.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
