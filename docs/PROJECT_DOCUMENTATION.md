@@ -43,7 +43,7 @@ The package also bundles source-specific helpers (Sci-Hub/Nexus/LibGen, Anna’s
 ## Source Integrations (Highlights)
 - **AbleSci (`ablesci.py`)**: Selenium-driven login and request automation with cached cookies and credential storage. Provides default download directory helpers and credential file discovery tailored per OS.
 - **Nexus (`nexus.py`)**: Utilities to interact with the Nexus bot/IPFS-powered database for DOI-based lookups and requests.
-- **LibGen & Z-Library (`libgen.py`, `zlib.py`, `Zlibrary.py`)**: Search and download helpers for article/book retrieval from public libraries.
+- **LibGen & Z-Library (`libgen.py`, `zlib.py`, `Zlibrary.py`)**: Search and download helpers for article/book retrieval from public libraries. The `zlib` CLI supports `--login`, `--clear-credentials`, and `--non-interactive` to manage saved credentials.
 - **SciNet (`scinet.py`)**: Login and request routines for the sci-net.xyz community portal.
 - **Facebook (`facebook.py`)**: Automation around posting DOI requests to relevant groups, including cookie handling for persisted sessions.
 - **Anna’s Archive (`nexus.py`/`libgen.py` interplay)**: Included in the multi-source download path for fallback retrieval.

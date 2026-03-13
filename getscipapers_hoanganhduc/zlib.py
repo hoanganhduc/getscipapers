@@ -17,6 +17,7 @@ import sys
 import threading
 import getpass
 import requests
+import shutil
 
 def get_default_config_dir():
     system = platform.system()
@@ -42,6 +43,17 @@ CONFIG_DIR = get_default_config_dir()
 CONFIG_FILE = os.path.join(CONFIG_DIR, "zlib_config.json")
 DEFAULT_DOWNLOAD_DIR = get_default_download_dir()
 ACTIVE_PROXY = proxy_config.ProxySettings()
+NON_INTERACTIVE = False
+
+def read_credentials_file(path):
+    if not path or not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r") as f:
+            creds = json.load(f)
+        return creds if isinstance(creds, dict) else {}
+    except Exception:
+        return {}
 
 def save_credentials(email=None, password=None):
     os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -52,7 +64,7 @@ def save_credentials(email=None, password=None):
     with open(CONFIG_FILE, "w") as f:
         json.dump(creds, f)
 
-def load_credentials(credentials_path=None):
+def load_credentials(credentials_path=None, non_interactive=None):
     """
     Load credentials from the given path or the default config file.
     Returns a list: [email, password].
@@ -60,6 +72,9 @@ def load_credentials(credentials_path=None):
     If not specified but default config exists, load default config.
     If neither exists, prompt user to input and save.
     """
+    if non_interactive is None:
+        non_interactive = NON_INTERACTIVE
+
     # Determine which path to use
     if credentials_path is not None:
         path = credentials_path
@@ -69,8 +84,7 @@ def load_credentials(credentials_path=None):
         path = None
 
     if path and os.path.exists(path):
-        with open(path, "r") as f:
-            creds = json.load(f)
+        creds = read_credentials_file(path)
         # If loaded from a custom path, save to default location if different
         if credentials_path and os.path.abspath(credentials_path) != os.path.abspath(CONFIG_FILE):
             save_credentials(creds.get("zlib_email"), creds.get("zlib_password"))
@@ -79,6 +93,10 @@ def load_credentials(credentials_path=None):
         return [email, password]
 
     # If no credentials found, prompt user to input and save
+    if non_interactive:
+        print("No credentials found and --non-interactive is set.")
+        return ["", ""]
+
     print("No credentials found. Please enter your Z-library credentials.")
     prompt_and_save_credentials()
     # After prompting, load from default config file
@@ -96,7 +114,10 @@ def prompt_and_save_credentials():
     Also sets global EMAIL and PASSWORD after user input.
     """
     global EMAIL, PASSWORD
-    current_creds = load_credentials()
+    if NON_INTERACTIVE:
+        print("Cannot prompt for credentials with --non-interactive set.")
+        return
+    current_creds = read_credentials_file(CONFIG_FILE)
     current_email = current_creds.get("zlib_email", "")
     current_password = current_creds.get("zlib_password", "")
 
@@ -239,7 +260,8 @@ def get_profile(email=None, password=None):
             zlib_password = zlib_password or creds.get("zlib_password")
     Z = Zlibrary(email=zlib_email, password=zlib_password)
     try:
-        return Z.getProfile()
+        profile = Z.getProfile()
+        return profile if isinstance(profile, dict) else {}
     except Exception as e:
         print(f"Error getting profile: {e}")
         return {}
@@ -390,6 +412,9 @@ def interactive_login_search_download(query=None, download_dir=None, limit=20, s
     Login, search, print results, and allow user to select (single or range) books to download.
     Optionally takes a search query, a download directory, a limit on number of results, and sort_by_year.
     """
+    if NON_INTERACTIVE:
+        print("Interactive login/search/download is disabled with --non-interactive.")
+        return
     # Ensure credentials are loaded or prompt user
     creds = load_credentials()
     if isinstance(creds, list):
@@ -405,6 +430,9 @@ def interactive_login_search_download(query=None, download_dir=None, limit=20, s
         else:
             email = creds.get("zlib_email", "")
             password = creds.get("zlib_password", "")
+        if not email or not password:
+            print("No credentials available. Aborting login.")
+            return
 
     # Login and show profile info
     Z = Zlibrary(email=email, password=password)
@@ -493,7 +521,7 @@ def interactive_login_search_download(query=None, download_dir=None, limit=20, s
             print("Download failed.")
 
 def main():
-    global EMAIL, PASSWORD, CONFIG_DIR, CONFIG_FILE, DEFAULT_DOWNLOAD_DIR
+    global EMAIL, PASSWORD, CONFIG_DIR, CONFIG_FILE, DEFAULT_DOWNLOAD_DIR, NON_INTERACTIVE
     
     # Get the parent package name from the module's __name__
     parent_package = __name__.split('.')[0] if '.' in __name__ else None
@@ -523,6 +551,8 @@ def main():
     parser.add_argument('-L', '--search-limit', type=int, help='Number of results to return (only with --search)')
     parser.add_argument('-c', '--credentials', type=str, metavar='CREDENTIALS', help='Path to Z-library credentials JSON file')
     parser.add_argument('-C', '--clear-credentials', action='store_true', help='Clear saved Z-library credentials')
+    parser.add_argument('--login', action='store_true', help='Log in using saved credentials (prompts if missing)')
+    parser.add_argument('--non-interactive', action='store_true', help='Do not prompt for missing credentials')
     parser.add_argument('-d', '--download', nargs='?', const=DEFAULT_DOWNLOAD_DIR, default=None, metavar='DOWNLOAD_DIR', help='Download directory for selected books (optional, uses default if not specified)')
     parser.add_argument('-u', '--user-info', action='store_true', help='Show Z-library user profile information')
     parser.add_argument('-r', '--recent', action='store_true', help='List recently added books')
@@ -547,6 +577,8 @@ def main():
     )
     args = parser.parse_args()
 
+    NON_INTERACTIVE = args.non_interactive
+
     global ACTIVE_PROXY
     ACTIVE_PROXY = proxy_config.configure_from_cli(
         args.proxy, args.no_proxy, auto_fetch=args.auto_proxy
@@ -557,11 +589,37 @@ def main():
         print("Error: --credentials and --clear-credentials cannot be used at the same time.")
         return
 
+    if args.clear_credentials:
+        if os.path.exists(CONFIG_DIR):
+            shutil.rmtree(CONFIG_DIR)
+            print(f"Cleared credentials at {CONFIG_DIR}")
+        else:
+            print("No saved credentials to clear.")
+        return
+
     if args.credentials:
         EMAIL, PASSWORD = load_credentials(args.credentials)
     elif os.path.exists(CONFIG_FILE):
         EMAIL, PASSWORD = load_credentials()
         
+    if args.login:
+        if not EMAIL or not PASSWORD:
+            EMAIL, PASSWORD = load_credentials(args.credentials if args.credentials else None)
+        if not EMAIL or not PASSWORD:
+            print("No credentials provided.")
+            return
+        try:
+            Z = Zlibrary(email=EMAIL, password=PASSWORD)
+            if Z.isLoggedIn():
+                profile = Z.getProfile()
+                logged_email = profile.get("email", EMAIL) if isinstance(profile, dict) else EMAIL
+                print(f"Logged in as: {logged_email}")
+            else:
+                print("Login failed. Please check your credentials.")
+        except Exception as e:
+            print(f"Login failed: {e}")
+        return
+
     if is_logged_in(email=EMAIL, password=PASSWORD):
         print(f"Already logged in as: {EMAIL}")
     else:
@@ -569,7 +627,7 @@ def main():
 
     if args.user_info:
         profile = get_profile(email=EMAIL, password=PASSWORD)
-        if profile.get("success", False):
+        if isinstance(profile, dict) and profile.get("success", False):
             user = profile.get("user") if isinstance(profile, dict) and "user" in profile else profile
             if not user:
                 print("Could not retrieve user profile.")

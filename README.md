@@ -139,6 +139,15 @@ getscipapers getpapers --search "quantum error correction" --non-interactive
 getscipapers getpapers --doi 10.1371/journal.pcbi.1007128 --proxy ./sample_proxy_config.json
 getscipapers getpapers --search "graph neural networks" --no-proxy
 getscipapers getpapers --search "graph neural networks" --auto-proxy  # fetch a working proxy if one is missing
+
+# Log in to Z-Library using saved credentials (prompts and saves if missing)
+getscipapers zlib --login
+
+# Log in to Z-Library without prompting (fails if credentials are missing)
+getscipapers zlib --login --non-interactive
+
+# Search Z-Library and download selected books (interactive)
+getscipapers zlib --search "deep learning" --download
 ```
 
 ### Graphical wrapper

@@ -11,6 +11,8 @@ Credential Sources
   be provided to avoid interactive prompts.
 * JSON files at ``~/.config/getscipapers/credentials.json`` (Linux/macOS) or
   ``%APPDATA%/getscipapers/credentials.json`` (Windows) are loaded when present.
+* Z-Library stores credentials in ``~/.config/getscipapers/zlib/zlib_config.json``
+  (Linux/macOS) or ``%APPDATA%/getscipapers/zlib/zlib_config.json`` (Windows).
 * The ``--non-interactive`` flag forces the CLI to abort if credentials are
   missing instead of prompting for input.
 

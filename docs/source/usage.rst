@@ -46,6 +46,15 @@ Use these ready-to-run commands as starting points:
    # Show metadata only across all services for a DOI
    getscipapers getpapers --doi 10.1016/j.cell.2019.05.031 --no-download --verbose
 
+   # Log in to Z-Library using saved credentials (prompts and saves if missing)
+   getscipapers zlib --login
+
+   # Log in to Z-Library without prompting (fails if credentials are missing)
+   getscipapers zlib --login --non-interactive
+
+   # Search Z-Library and download selected books (interactive)
+   getscipapers zlib --search "deep learning" --download
+
 Graphical wrapper
 -----------------
 
