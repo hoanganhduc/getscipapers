@@ -83,6 +83,7 @@ class FacebookScraper:
         self.driver = None
         self.verbose = verbose
         self.headless = headless
+        self.last_error = None
         
     def load_credentials(self, json_file_path=None, save_to_cache=True):
         """Load username and password from a JSON file and optionally save to cache directory for default use"""
@@ -218,9 +219,10 @@ class FacebookScraper:
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         self.log("Webdriver initialized successfully")
         
-    def simulate_human_typing(self, element, text):
+    def simulate_human_typing(self, element, text, label="text", sensitive=False):
         """Simulate human-like typing patterns"""
-        self.log(f"Typing text: {text[:20]}{'...' if len(text) > 20 else ''}")
+        preview = "[hidden]" if sensitive else f"{text[:20]}{'...' if len(text) > 20 else ''}"
+        self.log(f"Typing {label}: {preview}")
         for char in text:
             element.send_keys(char)
             time.sleep(random.uniform(0.1, 0.3))
@@ -324,8 +326,11 @@ class FacebookScraper:
                     return
                 else:
                     if self.detect_robot_check():
-                        self.log("⚠️ Possible robot check detected. Please complete it in the browser.")
-                        if wait_for_human_check():
+                        if self.headless:
+                            self.log("⚠️ Possible robot check detected in headless mode; invalidating cached session.")
+                        else:
+                            self.log("⚠️ Possible robot check detected. Please complete it in the browser.")
+                        if not self.headless and wait_for_human_check():
                             return
                     self.log("❌ Cached session expired, proceeding with fresh login...")
                     os.remove(CACHE_FILE)  # Remove invalid cache
@@ -436,7 +441,7 @@ class FacebookScraper:
             EC.presence_of_element_located((By.NAME, "email"))
         )
         self.log("Email input found, entering email...")
-        self.simulate_human_typing(email_input, self.email)
+        self.simulate_human_typing(email_input, self.email, label="email")
         
         # Enter password
         self.log("Looking for password input field...")
@@ -444,17 +449,36 @@ class FacebookScraper:
             EC.presence_of_element_located((By.NAME, "pass"))
         )
         self.log("Password input found, entering password...")
-        self.simulate_human_typing(password_input, self.password)
+        self.simulate_human_typing(password_input, self.password, label="password", sensitive=True)
         
         # Click login button
         self.log("Looking for login button...")
-        login_button = self.driver.find_element(By.XPATH, "//button[@type='submit']")
-        self.log("Login button found, clicking...")
-        ActionChains(self.driver)\
-            .move_to_element(login_button)\
-            .pause(random.uniform(0.2, 0.4))\
-            .click()\
-            .perform()
+        login_button = None
+        login_selectors = [
+            (By.CSS_SELECTOR, "button[name='login']"),
+            (By.CSS_SELECTOR, "button[type='submit']"),
+            (By.XPATH, "//button[@type='submit']"),
+            (By.XPATH, "//button[contains(., 'Log in') or contains(., 'Log In')]"),
+            (By.XPATH, "//div[@role='button' and (@aria-label='Log in' or @aria-label='Log In')]"),
+        ]
+        for by, selector in login_selectors:
+            try:
+                candidate = self.driver.find_element(by, selector)
+                if candidate.is_displayed() and candidate.is_enabled():
+                    login_button = candidate
+                    self.log(f"Login button found using selector: {selector}")
+                    break
+            except Exception:
+                continue
+        if login_button:
+            ActionChains(self.driver)\
+                .move_to_element(login_button)\
+                .pause(random.uniform(0.2, 0.4))\
+                .click()\
+                .perform()
+        else:
+            self.log("Login button not found; submitting password field with Enter")
+            password_input.send_keys(Keys.ENTER)
             
         self.log("Waiting 15 seconds for login to complete...")
         time.sleep(15)
@@ -471,18 +495,50 @@ class FacebookScraper:
                 self.log(f"Error saving session cache: {e}")
         else:
             if self.detect_robot_check():
+                if self.headless:
+                    self.last_error = "Facebook login requires manual verification; rerun in non-headless mode."
+                    self.log(f"❌ {self.last_error}")
+                    raise Exception(self.last_error)
                 self.log("⚠️ Possible robot check detected. Please complete it in the browser.")
-                wait_for_human_check()
-            self.log("❌ Login may have failed - not saving cache")
+                if wait_for_human_check() and self.is_logged_in():
+                    self.log("Login successful after manual verification, saving session cache...")
+                    try:
+                        cookies = self.driver.get_cookies()
+                        with open(CACHE_FILE, 'wb') as f:
+                            pickle.dump(cookies, f)
+                        self.log(f"✅ Session cached successfully to {CACHE_FILE}")
+                    except Exception as e:
+                        self.log(f"Error saving session cache: {e}")
+                    return
+            self.last_error = "Facebook login failed; no logged-in account indicators were found."
+            self.log(f"❌ {self.last_error}")
+            raise Exception(self.last_error)
 
     def is_logged_in(self):
         """Check if user is currently logged in to Facebook"""
         try:
+            current_url = self.driver.current_url.lower()
+            if "login" in current_url or "checkpoint" in current_url:
+                return False
+
+            page_text = self.driver.page_source.lower()
+            logged_out_indicators = (
+                'name="email"',
+                'name="pass"',
+                "log in to facebook",
+                "email address or phone number",
+                "forgotten password",
+                "create new account",
+            )
+            if any(indicator in page_text for indicator in logged_out_indicators):
+                return False
+
             # Look for elements that only appear when logged in
             login_indicators = [
-                "div[role='banner']",  # Top navigation bar
-                "div[data-testid='Facepile']",  # Friends suggestions
                 "div[aria-label*='Account']",  # Account menu
+                "div[aria-label*='account']",
+                "div[aria-label*='Your profile']",
+                "div[aria-label*='your profile']",
                 "a[aria-label*='Profile']"  # Profile link
             ]
             
@@ -490,13 +546,8 @@ class FacebookScraper:
                 elements = self.driver.find_elements(By.CSS_SELECTOR, indicator)
                 if elements and any(elem.is_displayed() for elem in elements):
                     return True
-            
-            # Check current URL for login indicators
-            current_url = self.driver.current_url.lower()
-            if "login" in current_url or "checkpoint" in current_url:
-                return False
-                
-            return "facebook.com" in current_url and "login" not in current_url
+
+            return False
             
         except Exception as e:
             self.log(f"Error checking login status: {e}")
@@ -1072,9 +1123,11 @@ class FacebookScraper:
 
     def create_post(self, post_content, image_path=None):
         """Create a new post on Facebook"""
+        self.last_error = None
 
         # Check for non-BMP characters (codepoints > 0xFFFF)
         if any(ord(char) > 0xFFFF for char in post_content):
+            self.last_error = "Post content contains non-BMP characters unsupported by Chrome driver"
             self.log("❌ Error: Post content contains non-BMP characters (e.g., rare CJK, emoji, etc.) which are not supported by Chrome driver.")
             print("❌ Error: Post content contains non-BMP characters (e.g., rare CJK, emoji, etc.) which are not supported by Chrome driver. Please remove or replace them and try again.")
             return False
@@ -1316,6 +1369,7 @@ class FacebookScraper:
                 return True
 
         except Exception as e:
+            self.last_error = str(e)
             self.log(f"❌ Error creating post: {e}")
             return False
 
@@ -1991,11 +2045,13 @@ class FacebookScraper:
             group_id (str): Facebook group ID to post in.
             extra_message (str): Optional extra message to include.
         Returns:
-            list: List of (doi, success) tuples (all DOIs share the same status).
+            list: List of dicts with keys: 'doi', 'success' (all DOIs share
+            the same status).
         """
         if not dois:
             self.log("❌ No valid DOIs provided for help request.")
-            return [(None, False)]
+            return [{"doi": None, "success": False, "error": "No valid DOIs provided"}]
+        group_id = group_id or "188053074599163"
         if isinstance(dois, str):
             dois = [dois]
         elif not isinstance(dois, list):
@@ -2003,7 +2059,7 @@ class FacebookScraper:
         dois = [d for d in dois if d is not None and str(d).strip()]
         if not dois:
             self.log("❌ No valid DOIs provided for help request.")
-            return [(None, False)]
+            return [{"doi": None, "success": False, "error": "No valid DOIs provided"}]
         # Compose the help message
         if len(dois) == 1:
             message = (
@@ -2029,7 +2085,8 @@ class FacebookScraper:
             self.log(f"✅ Successfully posted help request for DOIs to group {group_id}")
         else:
             self.log(f"❌ Failed to post help request for DOIs to group {group_id}")
-        return [(doi, success) for doi in dois]
+        error = None if success else (self.last_error or "Facebook post creation failed")
+        return [{"doi": doi, "success": success, "error": error} for doi in dois]
     
     def scrape_and_comment(self, max_posts=10, having_doi=False, no_comment=False):
         """
@@ -2420,21 +2477,23 @@ class FacebookScraper:
             self.driver.quit()
             self.log("Browser closed successfully")
 
-def request_multiple_dois(dois, group_id="188053074599163", extra_message=None):
+def request_multiple_dois(dois, group_id="188053074599163", extra_message=None, verbose=False, headless=True):
     """
     Request help for multiple DOIs by posting to a Facebook group.
     Args:
         dois (list or str): List of DOI strings or a single DOI string.
         group_id (str): Facebook group ID to post in.
         extra_message (str): Optional extra message to include.
+        verbose (bool): Whether to print debug output.
+        headless (bool): Whether to run Chrome in headless mode.
     Returns:
-        list: List of (doi, success) tuples.
+        list: List of dicts with keys: 'doi', 'success'.
     """
     scraper = FacebookScraper(
         USERNAME,
         PASSWORD,
-        verbose=False,
-        headless=True
+        verbose=verbose,
+        headless=headless
     )
     try:
         scraper.initialize_driver()
@@ -2618,7 +2677,7 @@ Examples:
                        help='Login only and report whether authentication succeeded')
     parser.add_argument('--request-doi', '-rd', type=str,
                        help='Request help for DOI(s): provide a DOI, comma-separated DOIs, or a file containing DOIs (one per line)')
-    parser.add_argument('--request-in-group', '-rg', nargs='?', const='188053074599163', type=str, 
+    parser.add_argument('--request-in-group', '-rg', nargs='?', const='188053074599163', default='188053074599163', type=str,
                        help='Group ID to post DOI help requests in (default: 188053074599163)')
     parser.add_argument('--clear-cache', '-C', action='store_true',
                        help='Delete the default cache directory and exit')
@@ -2794,7 +2853,9 @@ Examples:
             else:
                 print_and_log(f"🆘 Requesting help for {len(dois)} DOI(s) in group {group_id}...")
                 results = scraper.request_help_for_multiple_dois(dois, group_id=group_id)
-                for doi, success in results:
+                for item in results:
+                    doi = item.get('doi')
+                    success = item.get('success')
                     if success:
                         print_and_log(f"✅ Successfully posted help request for DOI: {doi} in group {group_id}")
                     else:

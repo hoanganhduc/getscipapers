@@ -20,7 +20,7 @@ def extract_dois_from_text_input(text):
     """
     return getpapers.extract_dois_from_text(text)
 
-async def _request_single_service(dois, svc, verbose):
+async def _request_single_service(dois, svc, verbose, facebook_headless=True):
     if svc == "nexus":
         try:
             response = await nexus.request_papers_by_doi_list(dois)
@@ -63,7 +63,12 @@ async def _request_single_service(dois, svc, verbose):
             return {doi: {"error": str(e)} for doi in dois}
     if svc == "facebook":
         try:
-            response_list = await asyncio.to_thread(facebook.request_multiple_dois, dois)
+            response_list = await asyncio.to_thread(
+                facebook.request_multiple_dois,
+                dois,
+                verbose=verbose,
+                headless=facebook_headless,
+            )
             if verbose:
                 print("📨 Posted DOIs to Facebook for help.")
             response_dict = {}
@@ -91,7 +96,7 @@ async def _request_single_service(dois, svc, verbose):
     raise ValueError(f"Service '{svc}' is not supported.")
 
 
-async def async_request_dois(dois, verbose=False, service=None):
+async def async_request_dois(dois, verbose=False, service=None, facebook_headless=True):
     if isinstance(dois, str):
         dois = [dois]
 
@@ -102,7 +107,10 @@ async def async_request_dois(dois, verbose=False, service=None):
     else:
         service_list = SERVICE_LIST if any(s.lower() == "all" for s in service) else list(service)
 
-    tasks = [asyncio.create_task(_request_single_service(dois, svc, verbose)) for svc in service_list]
+    tasks = [
+        asyncio.create_task(_request_single_service(dois, svc, verbose, facebook_headless=facebook_headless))
+        for svc in service_list
+    ]
     service_results = await asyncio.gather(*tasks)
 
     results = {}
@@ -117,7 +125,7 @@ async def async_request_dois(dois, verbose=False, service=None):
     return results
 
 
-def request_dois(dois, verbose=False, service=None):
+def request_dois(dois, verbose=False, service=None, facebook_headless=True):
     """
     Synchronous wrapper for :func:`async_request_dois`.
     Raises an informative error if called from an active event loop to avoid
@@ -126,7 +134,14 @@ def request_dois(dois, verbose=False, service=None):
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(async_request_dois(dois, verbose=verbose, service=service))
+        return asyncio.run(
+            async_request_dois(
+                dois,
+                verbose=verbose,
+                service=service,
+                facebook_headless=facebook_headless,
+            )
+        )
 
     raise RuntimeError("request_dois cannot run inside an existing event loop; use async_request_dois instead.")
 
@@ -251,6 +266,11 @@ def main():
         action="store_true",
         help="Automatically fetch a working proxy configuration when missing or invalid."
     )
+    parser.add_argument(
+        "--no-headless",
+        action="store_true",
+        help="Run Facebook browser automation in graphic mode for manual verification."
+    )
     args = parser.parse_args()
 
     global ACTIVE_PROXY
@@ -265,7 +285,12 @@ def main():
 
     # Parse the service argument using the updated function
     services = parse_service_argument(args.service)
-    result = request_dois(dois, verbose=args.verbose, service=services)
+    result = request_dois(
+        dois,
+        verbose=args.verbose,
+        service=services,
+        facebook_headless=not args.no_headless,
+    )
     for doi, data in result.items():
         print_result_with_icons(doi, data)
 
