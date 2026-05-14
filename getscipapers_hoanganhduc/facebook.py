@@ -231,6 +231,77 @@ class FacebookScraper:
                 self.log(f"Random pause: {pause_time:.2f}s")
                 time.sleep(pause_time)
 
+    def _first_visible_enabled_element(self, selectors):
+        for by, selector in selectors:
+            try:
+                for element in self.driver.find_elements(by, selector):
+                    try:
+                        if element.is_displayed() and element.is_enabled():
+                            return element
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+        return None
+
+    def _find_login_form_fields(self):
+        email_selectors = [
+            (By.NAME, "email"),
+            (By.ID, "email"),
+            (By.CSS_SELECTOR, "input[type='email']"),
+            (By.CSS_SELECTOR, "input[autocomplete='username']"),
+            (
+                By.XPATH,
+                "//input[contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'email')]",
+            ),
+            (
+                By.XPATH,
+                "//input[contains(translate(@placeholder, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'email')]",
+            ),
+            (
+                By.XPATH,
+                "//input[contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'phone')]",
+            ),
+            (
+                By.XPATH,
+                "//input[contains(translate(@placeholder, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'phone')]",
+            ),
+        ]
+        password_selectors = [
+            (By.NAME, "pass"),
+            (By.ID, "pass"),
+            (By.CSS_SELECTOR, "input[type='password']"),
+            (By.CSS_SELECTOR, "input[autocomplete='current-password']"),
+        ]
+        email_input = self._first_visible_enabled_element(email_selectors)
+        password_input = self._first_visible_enabled_element(password_selectors)
+        if email_input and password_input:
+            return email_input, password_input
+        return None, None
+
+    def _wait_for_login_state(self, timeout=30, poll=1, return_on_robot_check=True):
+        """Wait until Facebook shows a logged-in page, login form, or checkpoint."""
+        start = time.time()
+        saw_robot_check = False
+        while time.time() - start < timeout:
+            if self.is_logged_in():
+                return "logged_in", None, None
+
+            email_input, password_input = self._find_login_form_fields()
+            if email_input and password_input:
+                return "login_form", email_input, password_input
+
+            if self.detect_robot_check():
+                saw_robot_check = True
+                if return_on_robot_check:
+                    return "robot_check", None, None
+
+            time.sleep(poll)
+
+        if saw_robot_check:
+            return "robot_check", None, None
+        return "timeout", None, None
+
     def click_see_more_buttons(self):
         """Click all 'See more' buttons to expand post content"""
         self.log("Looking for 'See more' buttons...")
@@ -297,6 +368,15 @@ class FacebookScraper:
                 time.sleep(poll)
             self.log("❌ Manual verification timed out.")
             return False
+
+        def save_current_session():
+            try:
+                cookies = self.driver.get_cookies()
+                with open(CACHE_FILE, 'wb') as f:
+                    pickle.dump(cookies, f)
+                self.log(f"✅ Session cached successfully to {CACHE_FILE}")
+            except Exception as e:
+                self.log(f"Error saving session cache: {e}")
         
         # Try to load existing session
         if os.path.exists(CACHE_FILE):
@@ -369,6 +449,36 @@ class FacebookScraper:
                 self.log(f"Error loading default credentials file: {e}")
         else:
             self.log(f"No default credentials file found at: {default_cred_file}")
+
+        self.log("Waiting for Facebook login form or account state...")
+        login_state, email_input, password_input = self._wait_for_login_state(timeout=20)
+        if login_state == "logged_in":
+            self.log("✅ Browser profile is already logged in, saving session cache...")
+            save_current_session()
+            return
+        if login_state == "robot_check":
+            if self.headless:
+                self.last_error = "Facebook login requires manual verification; rerun in non-headless mode."
+                self.log(f"❌ {self.last_error}")
+                raise Exception(self.last_error)
+            self.log("⚠️ Facebook showed a security check before the login form. Please complete it in the browser.")
+            login_state, email_input, password_input = self._wait_for_login_state(
+                timeout=180,
+                poll=2,
+                return_on_robot_check=False,
+            )
+            if login_state == "logged_in":
+                self.log("Login successful after manual verification, saving session cache...")
+                save_current_session()
+                return
+
+        if login_state != "login_form":
+            self.last_error = (
+                "Facebook login form was not found. The page may be showing a security check, "
+                "unsupported-browser notice, or another interstitial."
+            )
+            self.log(f"❌ {self.last_error}")
+            raise Exception(self.last_error)
         
         # Prompt for email and password if not provided
         if not self.email or not self.password:
@@ -435,19 +545,17 @@ class FacebookScraper:
                     print("❌ Login failed: No password provided (timeout or empty input)")
                     raise Exception("Login failed: No password provided")
         
-        # Enter email
-        self.log("Looking for email input field...")
-        email_input = WebDriverWait(self.driver, 10).until(
-            EC.presence_of_element_located((By.NAME, "email"))
-        )
+        # Reacquire fields after prompting to avoid stale elements on slow manual input.
+        self.log("Looking for email and password input fields...")
+        login_state, email_input, password_input = self._wait_for_login_state(timeout=15)
+        if login_state != "login_form":
+            self.last_error = "Facebook login form disappeared before credentials could be entered."
+            self.log(f"❌ {self.last_error}")
+            raise Exception(self.last_error)
         self.log("Email input found, entering email...")
         self.simulate_human_typing(email_input, self.email, label="email")
         
         # Enter password
-        self.log("Looking for password input field...")
-        password_input = WebDriverWait(self.driver, 10).until(
-            EC.presence_of_element_located((By.NAME, "pass"))
-        )
         self.log("Password input found, entering password...")
         self.simulate_human_typing(password_input, self.password, label="password", sensitive=True)
         
@@ -486,13 +594,7 @@ class FacebookScraper:
         # Save session cookies for future use
         if self.is_logged_in():
             self.log("Login successful, saving session cache...")
-            try:
-                cookies = self.driver.get_cookies()
-                with open(CACHE_FILE, 'wb') as f:
-                    pickle.dump(cookies, f)
-                self.log(f"✅ Session cached successfully to {CACHE_FILE}")
-            except Exception as e:
-                self.log(f"Error saving session cache: {e}")
+            save_current_session()
         else:
             if self.detect_robot_check():
                 if self.headless:
@@ -502,13 +604,7 @@ class FacebookScraper:
                 self.log("⚠️ Possible robot check detected. Please complete it in the browser.")
                 if wait_for_human_check() and self.is_logged_in():
                     self.log("Login successful after manual verification, saving session cache...")
-                    try:
-                        cookies = self.driver.get_cookies()
-                        with open(CACHE_FILE, 'wb') as f:
-                            pickle.dump(cookies, f)
-                        self.log(f"✅ Session cached successfully to {CACHE_FILE}")
-                    except Exception as e:
-                        self.log(f"Error saving session cache: {e}")
+                    save_current_session()
                     return
             self.last_error = "Facebook login failed; no logged-in account indicators were found."
             self.log(f"❌ {self.last_error}")
@@ -2832,7 +2928,13 @@ Examples:
 
         # Setup and login
         scraper.initialize_driver()
-        scraper.login()
+        try:
+            scraper.login()
+        except Exception as e:
+            print_and_log(f"❌ Login failed: {e}")
+            if args.login_test:
+                print_and_log("❌ Login test failed.")
+            sys.exit(1)
         if args.login_test:
             if scraper.is_logged_in():
                 print_and_log("✅ Login test successful.")
