@@ -307,11 +307,6 @@ class GetSciPapersGUI(ttk.Frame):
             text="Ko-fi",
             url="https://ko-fi.com/hoanganhduc",
         ).grid(column=1, row=4, sticky="w", **padding)
-        self._link_label(
-            about_frame,
-            text="Crypto tip (BMACC)",
-            url="https://bmacc.app/tip/hoanganhduc",
-        ).grid(column=0, row=5, sticky="w", **padding)
         ttk.Label(
             about_frame,
             text="Thank you for supporting continued development!",
