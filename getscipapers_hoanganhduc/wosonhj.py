@@ -3246,6 +3246,7 @@ Examples:
 
     if args.request_doi:
         debug_print(f"Request by DOI option selected: {args.request_doi}")
+        getpapers.load_credentials()
         result = request_by_doi(args.request_doi, headless=not args.no_headless)
         if result:
             success_print("Request by DOI posted successfully.")
@@ -3266,6 +3267,7 @@ Examples:
                 error_print("No DOIs found in the provided file.")
                 return
             info_print(f"Found {len(dois)} DOIs in file. Requesting all...")
+            getpapers.load_credentials()
             results = request_multiple_dois(dois, headless=not args.no_headless)
             for doi, result in results.items():
                 if result:
