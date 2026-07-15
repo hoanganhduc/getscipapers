@@ -9,6 +9,7 @@ concurrent contexts.
 
 import argparse
 import asyncio
+from contextlib import asynccontextmanager
 import json
 from libstc_geck.advices import format_document
 from libstc_geck.client import StcGeck
@@ -46,6 +47,7 @@ DEFAULT_LIMIT = configuration.DEFAULT_LIMIT
 
 VERBOSE = False  # Global verbose flag
 ACTIVE_PROXY = proxy_config.ProxySettings()
+PROXY_RETRY_STATUSES = {403, 407, 408, 429, 500, 502, 503, 504}
 
 
 def vprint(*args, **kwargs):
@@ -53,12 +55,87 @@ def vprint(*args, **kwargs):
         print(*args, **kwargs)
 
 
-def _requests_kwargs(kwargs: Optional[dict] = None) -> dict:
-    kwargs = kwargs.copy() if kwargs else {}
+def _requests_request(method: str, url: str, **kwargs):
+    """Run a requests call direct first, then retry with proxy if direct fails."""
+
     proxies = ACTIVE_PROXY.requests_proxies()
-    if proxies:
-        kwargs.setdefault("proxies", proxies)
-    return kwargs
+    direct_kwargs = kwargs.copy()
+    direct_kwargs.pop("proxies", None)
+
+    try:
+        with requests.Session() as session:
+            session.trust_env = False
+            response = session.request(method, url, **direct_kwargs)
+            if proxies and response.status_code in PROXY_RETRY_STATUSES:
+                vprint(
+                    f"Direct {method.upper()} request to {url} returned "
+                    f"HTTP {response.status_code}; retrying with configured proxy."
+                )
+                response.close()
+                proxy_kwargs = direct_kwargs.copy()
+                proxy_kwargs["proxies"] = proxies
+                return session.request(method, url, **proxy_kwargs)
+            return response
+    except requests.exceptions.RequestException as exc:
+        if not proxies:
+            raise
+        vprint(
+            f"Direct {method.upper()} request to {url} failed: {exc}; "
+            "retrying with configured proxy."
+        )
+        proxy_kwargs = direct_kwargs.copy()
+        proxy_kwargs["proxies"] = proxies
+        with requests.Session() as session:
+            session.trust_env = False
+            return session.request(method, url, **proxy_kwargs)
+
+
+def _requests_get(url: str, **kwargs):
+    return _requests_request("get", url, **kwargs)
+
+
+def _requests_head(url: str, **kwargs):
+    return _requests_request("head", url, **kwargs)
+
+
+class _ProxyRetryStatus(Exception):
+    pass
+
+
+@asynccontextmanager
+async def _aiohttp_get(url: str, **kwargs):
+    """Open an aiohttp GET response direct first, then retry with proxy."""
+
+    proxy_url = ACTIVE_PROXY.proxy_url if ACTIVE_PROXY.enabled else None
+    direct_kwargs = kwargs.copy()
+    direct_kwargs.pop("proxy", None)
+
+    try:
+        async with aiohttp.ClientSession(trust_env=False) as session:
+            async with session.get(url, **direct_kwargs) as resp:
+                if proxy_url and resp.status in PROXY_RETRY_STATUSES:
+                    vprint(
+                        f"Direct GET request to {url} returned HTTP {resp.status}; "
+                        "retrying with configured proxy."
+                    )
+                    raise _ProxyRetryStatus()
+                yield resp
+                return
+    except _ProxyRetryStatus:
+        pass
+    except Exception as exc:
+        if not proxy_url:
+            raise
+        vprint(f"Direct GET request to {url} failed: {exc}; retrying with configured proxy.")
+
+    if not proxy_url:
+        raise RuntimeError("Proxy retry requested but no proxy is configured.")
+
+    proxy_kwargs = direct_kwargs.copy()
+    proxy_kwargs["proxy"] = proxy_url
+    async with aiohttp.ClientSession(trust_env=False) as session:
+        async with session.get(url, **proxy_kwargs) as resp:
+            yield resp
 
 # Global variable for default config file location
 GETPAPERS_CONFIG_FILE = str(configuration.GETPAPERS_CONFIG_FILE)
@@ -182,24 +259,22 @@ def fetch_crossref_data(doi):
     }
     
     try:
-        with requests.Session() as session:
-            session.headers.update(headers)
-            response = session.get(url, timeout=10, allow_redirects=True)
-            response.raise_for_status()  # Raise an error for bad status codes
-            data = response.json()
-            
-            # Extract and return the message part if status is ok
-            if data.get("status") == "ok":
-                item = data.get("message", {})
-                vprint(f"Crossref data fetched for DOI {doi}:")
-                vprint(f"Title: {item.get('title', ['N/A'])[0]}")
-                vprint(f"Authors: {[author.get('given', '') + ' ' + author.get('family', '') for author in item.get('author', [])]}")
-                vprint(f"Published: {item.get('published', {}).get('date-parts', [['N/A']])[0][0]}")
-                vprint(f"Journal: {item.get('container-title', ['N/A'])[0]}")
-                return item
-            else:
-                vprint(f"Crossref API returned non-ok status for DOI {doi}")
-                return None
+        response = _requests_get(url, headers=headers, timeout=10, allow_redirects=True)
+        response.raise_for_status()  # Raise an error for bad status codes
+        data = response.json()
+
+        # Extract and return the message part if status is ok
+        if data.get("status") == "ok":
+            item = data.get("message", {})
+            vprint(f"Crossref data fetched for DOI {doi}:")
+            vprint(f"Title: {item.get('title', ['N/A'])[0]}")
+            vprint(f"Authors: {[author.get('given', '') + ' ' + author.get('family', '') for author in item.get('author', [])]}")
+            vprint(f"Published: {item.get('published', {}).get('date-parts', [['N/A']])[0][0]}")
+            vprint(f"Journal: {item.get('container-title', ['N/A'])[0]}")
+            return item
+        else:
+            vprint(f"Crossref API returned non-ok status for DOI {doi}")
+            return None
                 
     except requests.exceptions.RequestException as e:
         vprint(f"Error fetching Crossref data for DOI {doi}: {e}")
@@ -219,14 +294,13 @@ async def is_open_access_unpaywall(doi: str, email: Optional[str] = None) -> boo
     active_email = email or require_email()
     api_url = f"https://api.unpaywall.org/v2/{quote_plus(doi)}?email={quote_plus(active_email)}"
     try:
-        async with aiohttp.ClientSession(trust_env=ACTIVE_PROXY.enabled) as session:
-            async with session.get(api_url, timeout=15) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    return data.get("is_oa", False)
-                else:
-                    vprint(f"Unpaywall API returned status {resp.status} for DOI {doi}")
-                    return False
+        async with _aiohttp_get(api_url, timeout=15) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                return data.get("is_oa", False)
+            else:
+                vprint(f"Unpaywall API returned status {resp.status} for DOI {doi}")
+                return False
     except Exception as e:
         vprint(f"Error checking OA status for DOI {doi} via Unpaywall API: {e}")
         return False
@@ -258,7 +332,7 @@ def resolve_pii_to_doi(pii: str) -> str:
         'X-ELS-APIKey': configuration.ELSEVIER_API_KEY,
     }
     try:
-        resp = requests.get(api_url, **_requests_kwargs({"headers": headers, "timeout": 10}))
+        resp = _requests_get(api_url, headers=headers, timeout=10)
         if resp.status_code == 200:
             content_type = resp.headers.get('content-type', '').lower()
             if 'application/json' in content_type:
@@ -386,9 +460,7 @@ def fetch_dois_from_url(url: str, doi_pattern: str) -> list:
         'DNT': '1',
     }
     try:
-        session = requests.Session()
-        session.headers.update(headers)
-        response = session.get(url, timeout=15, allow_redirects=True)
+        response = _requests_get(url, headers=headers, timeout=15, allow_redirects=True)
         if 'unsupported_browser' in response.url or response.status_code == 403:
             vprint(f"Access denied or unsupported browser page for {url}")
             return []
@@ -452,7 +524,7 @@ def is_valid_doi(doi: str) -> bool:
     }
     
     try:
-        response = requests.get(api_url, **_requests_kwargs({"headers": headers, "timeout": 15}))
+        response = _requests_get(api_url, headers=headers, timeout=15)
         if response.status_code == 200:
             data = response.json()
             response_code = data.get("responseCode")
@@ -510,7 +582,7 @@ def is_valid_doi(doi: str) -> bool:
             "DNT": "1"
         }
         url = f"https://doi.org/{doi}"
-        resp = requests.head(url, allow_redirects=True, timeout=10, headers=browser_headers)
+        resp = _requests_head(url, allow_redirects=True, timeout=10, headers=browser_headers)
         if resp.status_code in (200, 301, 302):
             vprint(f"DOI {doi} resolves via HEAD request (status={resp.status_code})")
             return True
@@ -1780,7 +1852,7 @@ def fetch_doi_rest_api(doi: str, params: dict = None) -> dict:
         "DNT": "1",
     }
     try:
-        resp = requests.get(url, **_requests_kwargs({"headers": headers, "timeout": 10}))
+        resp = _requests_get(url, headers=headers, timeout=10)
         resp.raise_for_status()
         return resp.json()
     except Exception as e:
@@ -1970,7 +2042,7 @@ def is_elsevier_doi(doi: str) -> bool:
 
     try:
         url = f"https://doi.org/{doi}"
-        resp = requests.head(url, allow_redirects=True, timeout=10)
+        resp = _requests_head(url, allow_redirects=True, timeout=10)
         final_url = resp.url.lower()
         elsevier_domains = [
             "elsevier.com",
@@ -2012,7 +2084,7 @@ async def download_elsevier_pdf_by_doi(
     
     expected_pages = None
     try:
-        metadata_resp = requests.get(metadata_url, **_requests_kwargs({"headers": metadata_headers, "timeout": 15}))
+        metadata_resp = _requests_get(metadata_url, headers=metadata_headers, timeout=15)
         if metadata_resp.status_code == 200:
             metadata = metadata_resp.json()
             # Extract page count from various possible fields
@@ -2056,7 +2128,7 @@ async def download_elsevier_pdf_by_doi(
         "X-ELS-APIKey": active_api_key,
     }
     try:
-        resp = requests.get(api_url, **_requests_kwargs({"headers": headers, "timeout": 20, "allow_redirects": True}))
+        resp = _requests_get(api_url, headers=headers, timeout=20, allow_redirects=True)
         if resp.status_code == 200 and resp.headers.get("Content-Type", "").startswith("application/pdf"):
             # Name file based on OA status
             if is_oa:
@@ -2148,7 +2220,7 @@ def is_wiley_doi(doi: str) -> bool:
 
     try:
         url = f"https://doi.org/{doi}"
-        resp = requests.head(url, allow_redirects=True, timeout=10)
+        resp = _requests_head(url, allow_redirects=True, timeout=10)
         final_url = resp.url.lower()
         wiley_domains = [
             "wiley.com",
@@ -2193,31 +2265,29 @@ async def download_wiley_pdf_by_doi(
     }
 
     try:
-        async with aiohttp.TCPConnector() as conn:
-            async with aiohttp.ClientSession(connector=conn, trust_env=ACTIVE_PROXY.enabled) as session:
-                async with session.get(
-                    pdf_url,
-                    headers=headers,
-                    timeout=DOWNLOAD_TIMEOUT,
-                    allow_redirects=True,
-                ) as resp:
-                    # Save headers for debugging
-                    with open(headers_path, "w", encoding="utf-8") as hfile:
-                        for k, v in resp.headers.items():
-                            hfile.write(f"{k}: {v}\n")
-                    if resp.status == 200 and resp.content_type == "application/pdf":
-                        with open(filepath, "wb") as f:
-                            f.write(await resp.read())
-                        print(f"Downloaded PDF from Wiley: {filepath}")
-                        return True
-                    elif resp.status == 200:
-                        # Sometimes content-type is not set correctly, try anyway
-                        with open(filepath, "wb") as f:
-                            f.write(await resp.read())
-                        print(f"Downloaded (possibly non-PDF) file from Wiley: {filepath}")
-                        return True
-                    else:
-                        vprint(f"Wiley PDF not found at {pdf_url} (HTTP {resp.status})")
+        async with _aiohttp_get(
+            pdf_url,
+            headers=headers,
+            timeout=DOWNLOAD_TIMEOUT,
+            allow_redirects=True,
+        ) as resp:
+            # Save headers for debugging
+            with open(headers_path, "w", encoding="utf-8") as hfile:
+                for k, v in resp.headers.items():
+                    hfile.write(f"{k}: {v}\n")
+            if resp.status == 200 and resp.content_type == "application/pdf":
+                with open(filepath, "wb") as f:
+                    f.write(await resp.read())
+                print(f"Downloaded PDF from Wiley: {filepath}")
+                return True
+            elif resp.status == 200:
+                # Sometimes content-type is not set correctly, try anyway
+                with open(filepath, "wb") as f:
+                    f.write(await resp.read())
+                print(f"Downloaded (possibly non-PDF) file from Wiley: {filepath}")
+                return True
+            else:
+                vprint(f"Wiley PDF not found at {pdf_url} (HTTP {resp.status})")
     except Exception as e:
         vprint(f"Error downloading Wiley PDF for DOI {doi} from {pdf_url}: {e}")
 
@@ -2234,7 +2304,7 @@ def is_pmc_doi(doi: str) -> bool:
             "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
             f"?db=pmc&term={quote_plus(doi)}[DOI]&retmode=json"
         )
-        resp = requests.get(esearch_url, **_requests_kwargs({"timeout": 10}))
+        resp = _requests_get(esearch_url, timeout=10)
         resp.raise_for_status()
         data = resp.json()
         idlist = data.get("esearchresult", {}).get("idlist", [])
@@ -2258,7 +2328,7 @@ async def download_from_pmc(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FO
             "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
             f"?db=pmc&term={quote_plus(doi)}[DOI]&retmode=json"
         )
-        resp = requests.get(esearch_url, **_requests_kwargs({"timeout": 10}))
+        resp = _requests_get(esearch_url, timeout=10)
         resp.raise_for_status()
         data = resp.json()
         idlist = data.get("esearchresult", {}).get("idlist", [])
@@ -2288,7 +2358,7 @@ async def download_from_pmc(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FO
         # Access the PMC article page
         pmc_url = f"https://pmc.ncbi.nlm.nih.gov/articles/PMC{pmcid}/"
         vprint(f"Accessing PMC article page: {pmc_url}")
-        resp = requests.get(pmc_url, **_requests_kwargs({"headers": browser_headers, "timeout": 15}))
+        resp = _requests_get(pmc_url, headers=browser_headers, timeout=15)
         resp.raise_for_status()
         
         # Look for PDF links using various patterns
@@ -2390,25 +2460,23 @@ async def download_from_unpaywall(
             filepath = os.path.join(download_folder, filename)
             vprint(f"Attempting to download Unpaywall PDF #{idx}: {pdf_url} -> {filepath}")
             try:
-                async with aiohttp.TCPConnector() as conn:
-                    async with aiohttp.ClientSession(connector=conn, trust_env=ACTIVE_PROXY.enabled) as session:
-                        async with session.get(pdf_url, headers=headers, timeout=DOWNLOAD_TIMEOUT) as resp:
-                            vprint(f"Unpaywall PDF HTTP status: {resp.status}")
-                            if resp.status == 200 and resp.content_type == "application/pdf":
-                                with open(filepath, "wb") as f:
-                                    f.write(await resp.read())
-                                print(f"Downloaded PDF from Unpaywall: {filepath}")
-                                downloaded += 1
-                                continue
-                            elif resp.status == 200:
-                                # Sometimes content-type is not set correctly, try anyway
-                                with open(filepath, "wb") as f:
-                                    f.write(await resp.read())
-                                print(f"Downloaded (possibly non-PDF) file from Unpaywall: {filepath}")
-                                downloaded += 1
-                                continue
-                            else:
-                                print(f"Failed to download PDF from Unpaywall for DOI: {doi} (HTTP {resp.status})")
+                async with _aiohttp_get(pdf_url, headers=headers, timeout=DOWNLOAD_TIMEOUT) as resp:
+                    vprint(f"Unpaywall PDF HTTP status: {resp.status}")
+                    if resp.status == 200 and resp.content_type == "application/pdf":
+                        with open(filepath, "wb") as f:
+                            f.write(await resp.read())
+                        print(f"Downloaded PDF from Unpaywall: {filepath}")
+                        downloaded += 1
+                        continue
+                    elif resp.status == 200:
+                        # Sometimes content-type is not set correctly, try anyway
+                        with open(filepath, "wb") as f:
+                            f.write(await resp.read())
+                        print(f"Downloaded (possibly non-PDF) file from Unpaywall: {filepath}")
+                        downloaded += 1
+                        continue
+                    else:
+                        print(f"Failed to download PDF from Unpaywall for DOI: {doi} (HTTP {resp.status})")
             except Exception as e:
                 print(f"Error downloading PDF from Unpaywall for DOI {doi} at {pdf_url}: {e}")
 
@@ -2421,36 +2489,34 @@ async def download_from_unpaywall(
                 continue  # Already tried direct PDF links
             vprint(f"Trying to download OA link directly as PDF: {url}")
             try:
-                async with aiohttp.TCPConnector() as conn:
-                    async with aiohttp.ClientSession(connector=conn, trust_env=ACTIVE_PROXY.enabled) as session:
-                        browser_headers = {
-                            "User-Agent": (
-                                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                "Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.67"
-                            ),
-                            "Accept": "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
-                            "Referer": f"https://doi.org/{doi}",
-                            "DNT": "1",
-                            "Connection": "keep-alive",
-                        }
-                        async with session.get(url, headers=browser_headers, timeout=DOWNLOAD_TIMEOUT) as resp:
-                            if resp.status == 200 and resp.content_type == "application/pdf":
-                                filename = f"{safe_doi}_unpaywall_browser_{idx}.pdf"
-                                filepath = os.path.join(download_folder, filename)
-                                with open(filepath, "wb") as f:
-                                    f.write(await resp.read())
-                                print(f"Downloaded PDF by direct OA link (browser): {filepath}")
-                                downloaded += 1
-                                # Don't break, try all links
-                            elif resp.status == 200:
-                                # Sometimes content-type is not set correctly, try anyway
-                                filename = f"{safe_doi}_unpaywall_browser_{idx}.pdf"
-                                filepath = os.path.join(download_folder, filename)
-                                with open(filepath, "wb") as f:
-                                    f.write(await resp.read())
-                                print(f"Downloaded (possibly non-PDF) file by direct OA link (browser): {filepath}")
-                                downloaded += 1
+                browser_headers = {
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.67"
+                    ),
+                    "Accept": "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
+                    "Referer": f"https://doi.org/{doi}",
+                    "DNT": "1",
+                    "Connection": "keep-alive",
+                }
+                async with _aiohttp_get(url, headers=browser_headers, timeout=DOWNLOAD_TIMEOUT) as resp:
+                    if resp.status == 200 and resp.content_type == "application/pdf":
+                        filename = f"{safe_doi}_unpaywall_browser_{idx}.pdf"
+                        filepath = os.path.join(download_folder, filename)
+                        with open(filepath, "wb") as f:
+                            f.write(await resp.read())
+                        print(f"Downloaded PDF by direct OA link (browser): {filepath}")
+                        downloaded += 1
+                        # Don't break, try all links
+                    elif resp.status == 200:
+                        # Sometimes content-type is not set correctly, try anyway
+                        filename = f"{safe_doi}_unpaywall_browser_{idx}.pdf"
+                        filepath = os.path.join(download_folder, filename)
+                        with open(filepath, "wb") as f:
+                            f.write(await resp.read())
+                        print(f"Downloaded (possibly non-PDF) file by direct OA link (browser): {filepath}")
+                        downloaded += 1
             except Exception as e:
                 vprint(f"Error downloading OA link directly as PDF {url}: {e}")
 
@@ -2463,71 +2529,69 @@ async def download_from_unpaywall(
                 continue  # Already tried direct PDF links
             vprint(f"Trying to follow OA link to find PDF: {url}")
             try:
-                async with aiohttp.TCPConnector() as conn:
-                    async with aiohttp.ClientSession(connector=conn, trust_env=ACTIVE_PROXY.enabled) as session:
-                        # Use a more realistic browser header to avoid 403 errors
-                        oa_headers = {
-                            "User-Agent": (
-                                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                "Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.67"
-                            ),
-                            "Accept": (
-                                "text/html,application/xhtml+xml,application/xml;"
-                                "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,"
-                                "application/signed-exchange;v=b3;q=0.7"
-                            ),
-                            "Accept-Language": "en-US,en;q=0.9",
-                            "Accept-Encoding": "gzip, deflate, br",
-                            "Connection": "keep-alive",
-                            "Upgrade-Insecure-Requests": "1",
-                            "Sec-Fetch-Dest": "document",
-                            "Sec-Fetch-Mode": "navigate",
-                            "Sec-Fetch-Site": "none",
-                            "Sec-Fetch-User": "?1",
-                            "Pragma": "no-cache",
-                            "Cache-Control": "no-cache",
-                            "DNT": "1",
-                            "Referer": f"https://doi.org/{doi}",
-                        }
-                        async with session.get(url, headers=oa_headers, timeout=DOWNLOAD_TIMEOUT) as resp:
-                            if resp.status != 200:
-                                vprint(f"Failed to fetch OA link {url} (HTTP {resp.status})")
-                                continue
-                            html = await resp.text()
-                            # Try to find PDF links in the HTML
-                            found_pdf = False
-                            pdf_candidates = re.findall(r'href=["\']([^"\']+\.pdf[^"\']*)["\']', html, re.IGNORECASE)
-                            for pdf_candidate in pdf_candidates:
-                                # Make absolute URL if needed
-                                if pdf_candidate.startswith("//"):
-                                    pdf_candidate_url = "https:" + pdf_candidate
-                                elif pdf_candidate.startswith("/"):
-                                    pdf_candidate_url = urljoin(url, pdf_candidate)
-                                elif pdf_candidate.startswith("http"):
-                                    pdf_candidate_url = pdf_candidate
-                                else:
-                                    pdf_candidate_url = url.rstrip("/") + "/" + pdf_candidate
-                                vprint(f"Found candidate PDF link: {pdf_candidate_url}")
-                                try:
-                                    async with session.get(
-                                        pdf_candidate_url,
-                                        headers=oa_headers,
-                                        timeout=DOWNLOAD_TIMEOUT,
-                                    ) as pdf_resp:
-                                        if pdf_resp.status == 200 and pdf_resp.content_type == "application/pdf":
-                                            filename = f"{safe_doi}_unpaywall_follow_{idx}.pdf"
-                                            filepath = os.path.join(download_folder, filename)
-                                            with open(filepath, "wb") as f:
-                                                f.write(await pdf_resp.read())
-                                            print(f"Downloaded PDF by following OA link: {filepath}")
-                                            downloaded += 1
-                                            found_pdf = True
-                                            break
-                                except Exception as e:
-                                    vprint(f"Error downloading candidate PDF {pdf_candidate_url}: {e}")
-                            if found_pdf:
-                                break
+                # Use a more realistic browser header to avoid 403 errors
+                oa_headers = {
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36 Edg/124.0.2478.67"
+                    ),
+                    "Accept": (
+                        "text/html,application/xhtml+xml,application/xml;"
+                        "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,"
+                        "application/signed-exchange;v=b3;q=0.7"
+                    ),
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Connection": "keep-alive",
+                    "Upgrade-Insecure-Requests": "1",
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "none",
+                    "Sec-Fetch-User": "?1",
+                    "Pragma": "no-cache",
+                    "Cache-Control": "no-cache",
+                    "DNT": "1",
+                    "Referer": f"https://doi.org/{doi}",
+                }
+                async with _aiohttp_get(url, headers=oa_headers, timeout=DOWNLOAD_TIMEOUT) as resp:
+                    if resp.status != 200:
+                        vprint(f"Failed to fetch OA link {url} (HTTP {resp.status})")
+                        continue
+                    html = await resp.text()
+                    # Try to find PDF links in the HTML
+                    found_pdf = False
+                    pdf_candidates = re.findall(r'href=["\']([^"\']+\.pdf[^"\']*)["\']', html, re.IGNORECASE)
+                    for pdf_candidate in pdf_candidates:
+                        # Make absolute URL if needed
+                        if pdf_candidate.startswith("//"):
+                            pdf_candidate_url = "https:" + pdf_candidate
+                        elif pdf_candidate.startswith("/"):
+                            pdf_candidate_url = urljoin(url, pdf_candidate)
+                        elif pdf_candidate.startswith("http"):
+                            pdf_candidate_url = pdf_candidate
+                        else:
+                            pdf_candidate_url = url.rstrip("/") + "/" + pdf_candidate
+                        vprint(f"Found candidate PDF link: {pdf_candidate_url}")
+                        try:
+                            async with _aiohttp_get(
+                                pdf_candidate_url,
+                                headers=oa_headers,
+                                timeout=DOWNLOAD_TIMEOUT,
+                            ) as pdf_resp:
+                                if pdf_resp.status == 200 and pdf_resp.content_type == "application/pdf":
+                                    filename = f"{safe_doi}_unpaywall_follow_{idx}.pdf"
+                                    filepath = os.path.join(download_folder, filename)
+                                    with open(filepath, "wb") as f:
+                                        f.write(await pdf_resp.read())
+                                    print(f"Downloaded PDF by following OA link: {filepath}")
+                                    downloaded += 1
+                                    found_pdf = True
+                                    break
+                        except Exception as e:
+                            vprint(f"Error downloading candidate PDF {pdf_candidate_url}: {e}")
+                    if found_pdf:
+                        break
             except Exception as e:
                 vprint(f"Error following OA link {url}: {e}")
 
@@ -2562,15 +2626,13 @@ async def download_from_nexus(id: str, doi: str, download_folder: str = DEFAULT_
     for file_url in file_urls:
         vprint(f"Attempting to download from Nexus: {file_url} -> {filepath}")
         try:
-            async with aiohttp.TCPConnector() as conn:
-                async with aiohttp.ClientSession(connector=conn, trust_env=ACTIVE_PROXY.enabled) as session:
-                    async with session.get(file_url) as resp:
-                        vprint(f"Nexus HTTP status: {resp.status}")
-                        if resp.status == 200:
-                            with open(filepath, "wb") as f:
-                                f.write(await resp.read())
-                            print(f"Downloaded PDF location: {filepath}")
-                            return True
+            async with _aiohttp_get(file_url) as resp:
+                vprint(f"Nexus HTTP status: {resp.status}")
+                if resp.status == 200:
+                    with open(filepath, "wb") as f:
+                        f.write(await resp.read())
+                    print(f"Downloaded PDF location: {filepath}")
+                    return True
         except Exception as e:
             vprint(f"Exception occurred while downloading file for DOI {doi} from Nexus URL {file_url}: {e}")
     
@@ -2646,26 +2708,24 @@ async def download_from_scihub(doi: str, download_folder: str = DEFAULT_DOWNLOAD
         sci_hub_url = f"{domain}/{doi}"
         vprint(f"Trying Sci-Hub domain: {sci_hub_url}")
         try:
-            async with aiohttp.TCPConnector() as conn:
-                async with aiohttp.ClientSession(connector=conn, trust_env=ACTIVE_PROXY.enabled) as session:
-                    async with session.get(sci_hub_url) as resp:
-                        vprint(f"Sci-Hub HTTP status: {resp.status}")
-                        html = await resp.text()
-                        m = re.search(r'src\s*=\s*["\'](.*?\.pdf.*?)["\']', html)
-                        if m:
-                            pdf_url = m.group(1)
-                            if pdf_url.startswith("//"):
-                                pdf_url = "https:" + pdf_url
-                            elif pdf_url.startswith("/"):
-                                pdf_url = domain + pdf_url
-                            vprint(f"Found PDF URL on Sci-Hub: {pdf_url}")
-                            async with session.get(pdf_url) as pdf_resp:
-                                vprint(f"Sci-Hub PDF HTTP status: {pdf_resp.status}")
-                                if pdf_resp.status == 200:
-                                    with open(filepath, "wb") as f:
-                                        f.write(await pdf_resp.read())
-                                    print(f"Downloaded PDF from {domain}: {filepath}")
-                                    return True
+            async with _aiohttp_get(sci_hub_url) as resp:
+                vprint(f"Sci-Hub HTTP status: {resp.status}")
+                html = await resp.text()
+                m = re.search(r'src\s*=\s*["\'](.*?\.pdf.*?)["\']', html)
+                if m:
+                    pdf_url = m.group(1)
+                    if pdf_url.startswith("//"):
+                        pdf_url = "https:" + pdf_url
+                    elif pdf_url.startswith("/"):
+                        pdf_url = domain + pdf_url
+                    vprint(f"Found PDF URL on Sci-Hub: {pdf_url}")
+                    async with _aiohttp_get(pdf_url) as pdf_resp:
+                        vprint(f"Sci-Hub PDF HTTP status: {pdf_resp.status}")
+                        if pdf_resp.status == 200:
+                            with open(filepath, "wb") as f:
+                                f.write(await pdf_resp.read())
+                            print(f"Downloaded PDF from {domain}: {filepath}")
+                            return True
         except Exception as e:
             print(f"Error accessing Sci-Hub at {domain}: {e}")
     return False
@@ -2683,48 +2743,46 @@ async def download_from_anna_archive(doi: str, download_folder: str = DEFAULT_DO
         anna_url = f"{domain}/scidb/{doi}"
         vprint(f"Trying Anna's Archive domain: {anna_url}")
         try:
-            async with aiohttp.TCPConnector() as conn:
-                async with aiohttp.ClientSession(connector=conn, trust_env=ACTIVE_PROXY.enabled) as session:
-                    async with session.get(anna_url) as resp:
-                        vprint(f"Anna's Archive HTTP status: {resp.status}")
-                        if resp.status != 200:
-                            vprint(f"Anna's Archive page not found for DOI: {doi} at {domain}")
-                            continue
-                        html = await resp.text()
-                        # Find md5sum from the "Record in Anna’s Archive" link
-                        md5_match = re.search(r'<a[^>]+href=["\']/md5/([a-fA-F0-9]{32})["\']', html)
-                        if not md5_match:
-                            vprint(f"No md5sum found on Anna's Archive for DOI: {doi} at {domain}")
-                            continue
-                        md5sum = md5_match.group(1)
-                        vprint(f"Found md5sum on Anna's Archive: {md5sum}")
-                        # Find all links ending with <md5sum>.pdf
-                        pdf_links = re.findall(r'<a[^>]+href=["\']([^"\']*' + re.escape(md5sum) + r'\.pdf[^"\']*)["\']', html)
-                        if not pdf_links:
-                            vprint(f"No PDF links found for md5sum {md5sum} on Anna's Archive for DOI: {doi} at {domain}")
-                            continue
-                        for pdf_url in pdf_links:
-                            # Make absolute URL if needed
-                            if pdf_url.startswith("/"):
-                                pdf_url_full = domain + pdf_url
-                            elif pdf_url.startswith("http"):
-                                pdf_url_full = pdf_url
+            async with _aiohttp_get(anna_url) as resp:
+                vprint(f"Anna's Archive HTTP status: {resp.status}")
+                if resp.status != 200:
+                    vprint(f"Anna's Archive page not found for DOI: {doi} at {domain}")
+                    continue
+                html = await resp.text()
+                # Find md5sum from the "Record in Anna’s Archive" link
+                md5_match = re.search(r'<a[^>]+href=["\']/md5/([a-fA-F0-9]{32})["\']', html)
+                if not md5_match:
+                    vprint(f"No md5sum found on Anna's Archive for DOI: {doi} at {domain}")
+                    continue
+                md5sum = md5_match.group(1)
+                vprint(f"Found md5sum on Anna's Archive: {md5sum}")
+                # Find all links ending with <md5sum>.pdf
+                pdf_links = re.findall(r'<a[^>]+href=["\']([^"\']*' + re.escape(md5sum) + r'\.pdf[^"\']*)["\']', html)
+                if not pdf_links:
+                    vprint(f"No PDF links found for md5sum {md5sum} on Anna's Archive for DOI: {doi} at {domain}")
+                    continue
+                for pdf_url in pdf_links:
+                    # Make absolute URL if needed
+                    if pdf_url.startswith("/"):
+                        pdf_url_full = domain + pdf_url
+                    elif pdf_url.startswith("http"):
+                        pdf_url_full = pdf_url
+                    else:
+                        pdf_url_full = domain + "/" + pdf_url
+                    vprint(f"Trying PDF link from Anna's Archive: {pdf_url_full}")
+                    try:
+                        async with _aiohttp_get(pdf_url_full) as pdf_resp:
+                            vprint(f"Anna's Archive PDF HTTP status: {pdf_resp.status}")
+                            if pdf_resp.status == 200:
+                                with open(filepath, "wb") as f:
+                                    f.write(await pdf_resp.read())
+                                print(f"Downloaded PDF from Anna's Archive: {filepath}")
+                                return True
                             else:
-                                pdf_url_full = domain + "/" + pdf_url
-                            vprint(f"Trying PDF link from Anna's Archive: {pdf_url_full}")
-                            try:
-                                async with session.get(pdf_url_full) as pdf_resp:
-                                    vprint(f"Anna's Archive PDF HTTP status: {pdf_resp.status}")
-                                    if pdf_resp.status == 200:
-                                        with open(filepath, "wb") as f:
-                                            f.write(await pdf_resp.read())
-                                        print(f"Downloaded PDF from Anna's Archive: {filepath}")
-                                        return True
-                                    else:
-                                        print(f"PDF download failed from Anna's Archive for DOI: {doi} at {pdf_url_full}")
-                            except Exception as e:
-                                print(f"Error downloading PDF from Anna's Archive for DOI {doi} at {pdf_url_full}: {e}")
-                        print(f"All PDF links tried for md5sum {md5sum} but failed for DOI: {doi} at {domain}")
+                                print(f"PDF download failed from Anna's Archive for DOI: {doi} at {pdf_url_full}")
+                    except Exception as e:
+                        print(f"Error downloading PDF from Anna's Archive for DOI {doi} at {pdf_url_full}: {e}")
+                print(f"All PDF links tried for md5sum {md5sum} but failed for DOI: {doi} at {domain}")
         except Exception as e:
             print(f"Error accessing Anna's Archive for DOI {doi} at {domain}: {e}")
     return False
@@ -3156,6 +3214,10 @@ async def main(argv: list[str] | None = None):
         ACTIVE_PROXY = proxy_config.load_proxy_settings(
             args.proxy, enabled=not args.no_proxy, auto_fetch=args.auto_proxy, verbose=VERBOSE
         )
+        # getpapers now tries direct network access first and retries through
+        # ACTIVE_PROXY explicitly. Keep environment-level proxies cleared so
+        # third-party clients do not bypass the direct-first policy.
+        proxy_config.ProxySettings(enabled=False).apply_environment()
     except proxy_config.ProxyConfigError as exc:
         print(f"❌ {exc}")
         sys.exit(1)

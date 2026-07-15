@@ -46,6 +46,10 @@ Use these ready-to-run commands as starting points:
    # Show metadata only across all services for a DOI
    getscipapers getpapers --doi 10.1016/j.cell.2019.05.031 --no-download --verbose
 
+   # If a proxy is configured, getpapers tries direct access first and retries
+   # through the proxy only when the direct request fails or returns a
+   # retryable HTTP status.
+
    # Log in to Z-Library using saved credentials (prompts and saves if missing)
    getscipapers zlib --login
 
