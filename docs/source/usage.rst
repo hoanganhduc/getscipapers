@@ -89,6 +89,8 @@ Downloads are saved to the configured output directory (see
 :doc:`configuration`). When running inside Docker or Codespaces, mount or bind a
 host directory so that downloaded files persist outside the container.
 
+For a complete Docker Compose setup with IPFS integration, see :doc:`docker_compose`.
+
 Non-interactive Runs
 --------------------
 

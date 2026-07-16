@@ -16,3 +16,5 @@ Latest update: |last_updated|
    cli_reference
    api_reference
    project_documentation
+   docker_compose
+   ipfs_optimization

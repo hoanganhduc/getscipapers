@@ -1,0 +1,47 @@
+services:
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: ipfs_host
+    restart: unless-stopped
+    ports:
+      - "4001:4001"  # P2P port
+      - "8080:8080"  # HTTP gateway
+      - "5001:5001"  # API port
+    volumes:
+      - ipfs_data:/data/ipfs
+      - ipfs_staging:/export
+    environment:
+      # Basic optimizations for Nexus Search access
+      - IPFS_DATASTORE_STORAGEMAX=20GB  # Enough for cached papers
+      - IPFS_REPROVIDER_INTERVAL=24h    # Less frequent DHT updates
+    command:
+      - daemon
+      - --migrate=true
+      - --agent-version-suffix=docker
+    networks:
+      - getscipapers-network
+
+  getscipapers:
+    image: ghcr.io/hoanganhduc/getscipapers:latest
+    container_name: getscipapers-container
+    restart: unless-stopped
+    depends_on:
+      - ipfs
+    volumes:
+      - ./downloads:/home/getscipaper/Downloads
+      - ./config:/home/getscipaper/.config/getscipapers
+      - ./credentials.json:/home/getscipaper/.config/getscipapers/credentials.json:ro
+    environment:
+      - GETSCIPAPERS_IPFS_HTTP_BASE_URL=http://ipfs:8080
+    networks:
+      - getscipapers-network
+    stdin_open: true
+    tty: true
+
+volumes:
+  ipfs_data:
+  ipfs_staging:
+
+networks:
+  getscipapers-network:
+    driver: bridge

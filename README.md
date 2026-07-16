@@ -41,8 +41,8 @@
 
 * **(Optional)** ![🧊](https://img.shields.io/badge/IPFS-Kubo-green?logo=ipfs) Install [IPFS Kubo](https://docs.ipfs.tech/install/command-line/) to access the [Nexus Search](https://www.reddit.com/r/science_nexus) database:
   ```bash
-  wget https://dist.ipfs.tech/kubo/v0.35.0/kubo_v0.35.0_linux-amd64.tar.gz
-  tar -xvzf kubo_v0.35.0_linux-amd64.tar.gz
+  wget https://github.com/ipfs/kubo/releases/download/v0.42.0/kubo_v0.42.0_linux-amd64.tar.gz
+  tar -xvzf kubo_v0.42.0_linux-amd64.tar.gz
   cd kubo
   sudo ./install.sh
   ```
@@ -179,7 +179,7 @@ The fastest way to run `getscipapers` is via GitHub Codespaces. This provides a 
 
 ## Docker Container for Running getscipapers
 
-![Docker](https://img.shields.io/badge/-Docker-blue?logo=docker) ![Container](https://img.shields.io/badge/-Container-green?logo=docker) ![Isolated](https://img.shields.io/badge/-Isolated-lightgrey?logo=lock)
+![Docker](https://img.shields.io/badge/-Docker-blue?logo=docker) ![Container](https://img.shields.io/badge/-Container-green?logo=docker) ![Isolated](https://img.shields.io/badge/-Isolated-lightgrey?logo=lock) ![Compose](https://img.shields.io/badge/-Compose-blue?logo=docker)
 
 
 ### Overview
@@ -226,6 +226,28 @@ docker run -it --rm -v $(pwd):/workspace getscipapers
 
 To keep the container running in the background and ensure downloads and configuration persist:
 
+**Quick start with Docker Compose:**
+
+For a complete setup with IPFS integration:
+
+```bash
+# Copy example credentials file
+cp credentials.example.json credentials.json
+# Edit credentials.json with your API keys
+
+# Start both services (getscipapers + IPFS)
+docker-compose up -d
+
+# Run getscipapers commands
+docker-compose exec getscipapers getscipapers --help
+```
+
+The default configuration includes basic optimizations for Nexus Search access while being resource-friendly.
+
+See the Docker Compose documentation for detailed instructions.
+
+**Manual Docker setup:**
+
 ```bash
 docker run -d \
     --name getscipapers-container \
@@ -242,7 +264,7 @@ This setup saves downloaded papers and settings to your host machine. Adjust fol
 
 ![IPFS](https://img.shields.io/badge/IPFS-Kubo-green?logo=ipfs) ![Integration](https://img.shields.io/badge/-Integration-blue?logo=link)
 
-To use IPFS with getscipapers, run an IPFS Kubo daemon in a separate container:
+To use IPFS with getscipapers, run an IPFS Kubo daemon in a separate container. For a complete Docker Compose setup with both services, see the Docker Compose documentation.
 
 ```bash
 docker pull ipfs/kubo:latest
@@ -352,6 +374,8 @@ This setup allows you to use **getscipapers** in an isolated environment, keepin
 ## Documentation
 
 The repository ships with a comprehensive overview of the architecture, configuration model, and command-line workflows in [docs/PROJECT_DOCUMENTATION.md](docs/PROJECT_DOCUMENTATION.md). Refer to it for details on how each module collaborates to search, request, and download papers across supported services.
+
+For Docker Compose deployment with IPFS integration, see the Docker Compose documentation.
 
 For a browsable HTML site, build the Sphinx documentation:
 
