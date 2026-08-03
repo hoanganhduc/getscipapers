@@ -1,4 +1,4 @@
-aiohttp==3.11.13
+aiohttp==3.11.15
 aiohttp_socks==0.10.1
 aiosumma==2.47.0
 argcomplete==3.5.2
@@ -8,8 +8,8 @@ izihawa-utils==1.2.3
 libstc_geck==2.1.7
 numpy==2.2.6
 pandas==2.3.0
-pikepdf==7.2.0
-protobuf==5.29.0
+pikepdf==8.5.1
+protobuf==5.29.1
 PyMuPDF==1.25.5
 PyPDF2==3.0.1
 PySocks==1.7.1
