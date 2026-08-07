@@ -2756,8 +2756,11 @@ async def download_from_anna_archive(doi: str, download_folder: str = DEFAULT_DO
                     continue
                 md5sum = md5_match.group(1)
                 vprint(f"Found md5sum on Anna's Archive: {md5sum}")
-                # Find all links ending with <md5sum>.pdf
-                pdf_links = re.findall(r'<a[^>]+href=["\']([^"\']*' + re.escape(md5sum) + r'\.pdf[^"\']*)["\']', html)
+                # Find all links that carry the md5sum and end in .pdf.  The md5sum is
+                # no longer adjacent to the extension: served filenames now read
+                # "<title> -- <authors> -- <md5sum> -- Anna's Archive.pdf", so anything
+                # may sit between the two.
+                pdf_links = re.findall(r'<a[^>]+href=["\']([^"\']*' + re.escape(md5sum) + r'[^"\']*\.pdf[^"\']*)["\']', html)
                 if not pdf_links:
                     vprint(f"No PDF links found for md5sum {md5sum} on Anna's Archive for DOI: {doi} at {domain}")
                     continue
