@@ -46,7 +46,8 @@ The package also bundles source-specific helpers (Sci-Hub/Nexus/LibGen, Anna’s
 - **LibGen & Z-Library (`libgen.py`, `zlib.py`, `Zlibrary.py`)**: Search and download helpers for article/book retrieval from public libraries. The `zlib` CLI supports `--login`, `--clear-credentials`, and `--non-interactive` to manage saved credentials.
 - **SciNet (`scinet.py`)**: Login and request routines for the sci-net.xyz community portal.
 - **Facebook (`facebook.py`)**: Automation around posting DOI requests to relevant groups, including cookie handling for persisted sessions.
-- **Anna’s Archive (`nexus.py`/`libgen.py` interplay)**: Included in the multi-source download path for fallback retrieval.
+- **Anna’s Archive (`nexus.py`/`libgen.py` interplay)**: Included in the multi-source download path for fallback retrieval. Currently the only reliable route for closed-access DOIs.
+- **Sci-Hub (`getpapers.py`, `download_from_scihub`)**: Retained in the multi-source download path, but not currently functional. Every mirror in the list responds, yet none yields a PDF — the responses are placeholder pages, robot-check interstitials, or account landing pages — so the handler resolves no link and falls through to the next source. The gate is server-side and cannot be lifted by changing mirrors.
 
 ## Operational Notes
 - Both CLIs inherit the project-wide `DEFAULT_LIMIT` and path defaults from the configuration module, ensuring consistent behavior across entry points.
