@@ -2689,7 +2689,7 @@ async def download_from_scihub(doi: str, download_folder: str = DEFAULT_DOWNLOAD
     filename = f"{safe_doi}_scihub.pdf"
     filepath = os.path.join(download_folder, filename)
     sci_hub_domains = [
-        "https://sci-hub.se",
+        "https://sci-hub.vn",
         "https://sci-hub.st",
         "https://sci-hub.ru",
         "https://sci-hub.red",
@@ -2735,9 +2735,9 @@ async def download_from_anna_archive(doi: str, download_folder: str = DEFAULT_DO
     filename = f"{safe_doi}_anna.pdf"
     filepath = os.path.join(download_folder, filename)
     anna_domains = [
-        "https://annas-archive.li",
-        "https://annas-archive.se",
-        "https://annas-archive.org"
+        "https://annas-archive.gl",
+        "https://annas-archive.pk",
+        "https://annas-archive.gd"
     ]
     for domain in anna_domains:
         anna_url = f"{domain}/scidb/{doi}"
