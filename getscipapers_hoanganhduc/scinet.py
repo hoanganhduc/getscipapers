@@ -371,6 +371,14 @@ def simulate_human_typing(element, text, log_func=None):
 def perform_login(driver, username, password):
     """Perform actual login process with human-like typing and paste."""
     try:
+        # The browser profile outlives the login cache, so the session may still
+        # be live.  The site then serves the logged-in page, which carries no form
+        # to fill, and the cache is rewritten from the session already in hand.
+        if is_logged_in(driver):
+            print("Already logged in from a previous session!")
+            save_login_cache(driver, username)
+            return True
+
         print("Navigating to sci-net.xyz for login...")
         driver.get("https://sci-net.xyz")
 
@@ -5699,12 +5707,23 @@ def handle_credentials(args, parser):
             print(f"Using credentials from file: {args.credentials}")
             print(f"Username: {USERNAME}")
     else:
-        # If USERNAME is not set from cache or credentials, prompt user
-        if not USERNAME:
-            USERNAME = get_username_with_timeout()
-        if not USERNAME:
-            print("Error: No username provided")
-            exit(1)
+        # The cache names the account but holds no password, so the file saved by
+        # an earlier run is read before anything is asked again.
+        credentials = None
+        if os.path.exists(CREDENTIAL_FILE):
+            credentials = load_credentials_from_json(CREDENTIAL_FILE)
+        if credentials:
+            USERNAME = credentials['scinet_username']
+            PASSWORD = credentials['scinet_password']
+            print(f"Using credentials from file: {CREDENTIAL_FILE}")
+            print(f"Username: {USERNAME}")
+        else:
+            # If USERNAME is not set from cache or credentials, prompt user
+            if not USERNAME:
+                USERNAME = get_username_with_timeout()
+            if not USERNAME:
+                print("Error: No username provided")
+                exit(1)
 
 def get_password_for_username(username):
     """Get password for username, using cache if available"""
