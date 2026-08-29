@@ -9,6 +9,7 @@ mirror the patterns used elsewhere in the package for clarity.
 
 from .Zlibrary import Zlibrary
 from . import proxy_config
+from .document_utils import save_document_if_valid
 import argparse
 import os
 import json
@@ -379,8 +380,9 @@ def download_book(book, email=None, password=None, download_dir=None):
     try:
         filename, content = Z.downloadBook(book)
         filepath = os.path.join(download_dir, filename)
-        with open(filepath, "wb") as f:
-            f.write(content)
+        if not save_document_if_valid(content, filepath):
+            print(f"Z-Library did not return a document for: {filename}")
+            return None
         print(f"Downloaded: {filepath}")
         return filepath
     except Exception as e:

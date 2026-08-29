@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 import re
 import requests
 from . import proxy_config
+from .document_utils import discard_invalid_download
 from selenium.webdriver.common.keys import Keys
 import readline
 import glob
@@ -2251,9 +2252,12 @@ def login_and_check_fulfilled_requests(username, password, headless=False):
                                             if chunk:
                                                 f.write(chunk)
                                     
-                                    file_size = os.path.getsize(filepath)
-                                    print(f"    ✓ PDF downloaded successfully: {filepath}")
-                                    print(f"    File size: {file_size} bytes")
+                                    if not discard_invalid_download(filepath):
+                                        print(f"    ✗ Response was not a PDF, discarded: {pdf_url}")
+                                    else:
+                                        file_size = os.path.getsize(filepath)
+                                        print(f"    ✓ PDF downloaded successfully: {filepath}")
+                                        print(f"    File size: {file_size} bytes")
                                     
                                 except Exception as download_error:
                                     print(f"    Error downloading PDF: {str(download_error)}")

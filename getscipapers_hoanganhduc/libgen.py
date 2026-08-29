@@ -24,6 +24,7 @@ import time
 import shutil
 import hashlib
 from . import getpapers, proxy_config
+from .document_utils import discard_invalid_download
 from .selenium_utils import build_chrome_driver
 import threading
 
@@ -609,6 +610,11 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
                     for chunk in r.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
+            if not discard_invalid_download(out_path):
+                if verbose:
+                    print(f"Mirror '{label}' did not return a document, trying next mirror.")
+                failures.append((label, "Response was not a document"))
+                continue
             if verbose:
                 print(f"Download completed from mirror '{label}'.")
             successes.append((label, out_path))
@@ -1078,6 +1084,10 @@ def interactive_libgen_download(query, limit=10, preferred_exts=None, dest_folde
                             for chunk in r.iter_content(chunk_size=8192):
                                 if chunk:
                                     f.write(chunk)
+                    if not discard_invalid_download(out_path):
+                        if verbose:
+                            print(f"❌ Mirror '{label}' did not return a document, trying next mirror.")
+                        continue
                     if verbose:
                         print(f"✅ Downloaded to: {out_path}")
                     successes.append((idx, entry.get("title", "N/A"), out_path))
