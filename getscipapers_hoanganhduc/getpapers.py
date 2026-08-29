@@ -42,6 +42,7 @@ from . import nexus  # Import Nexus bot functions from .nexus module
 from . import libgen  # Import LibGen functions from .libgen module
 from . import configuration
 from . import proxy_config
+from .document_utils import looks_like_pdf
 
 DEFAULT_LIMIT = configuration.DEFAULT_LIMIT
 
@@ -1061,6 +1062,22 @@ def extract_dois_from_file(input_file: str):
         return []
 
     return filtered_dois
+
+def save_pdf_if_valid(data: bytes, filepath: str, source: str) -> bool:
+    """
+    Write the downloaded bytes to filepath only when they are a real PDF.
+
+    Returns True when the file was written, and False otherwise so that the
+    caller can keep trying the remaining download sources instead of counting a
+    rejected page as a successful download.
+    """
+    if not looks_like_pdf(data):
+        vprint(f"Discarded non-PDF content from {source} ({len(data)} bytes)")
+        return False
+    with open(filepath, "wb") as f:
+        f.write(data)
+    return True
+
 
 def extract_text_from_pdf(pdf_file: str, max_pages: int = None) -> str:
     """
@@ -2275,17 +2292,12 @@ async def download_wiley_pdf_by_doi(
             with open(headers_path, "w", encoding="utf-8") as hfile:
                 for k, v in resp.headers.items():
                     hfile.write(f"{k}: {v}\n")
-            if resp.status == 200 and resp.content_type == "application/pdf":
-                with open(filepath, "wb") as f:
-                    f.write(await resp.read())
-                print(f"Downloaded PDF from Wiley: {filepath}")
-                return True
-            elif resp.status == 200:
-                # Sometimes content-type is not set correctly, try anyway
-                with open(filepath, "wb") as f:
-                    f.write(await resp.read())
-                print(f"Downloaded (possibly non-PDF) file from Wiley: {filepath}")
-                return True
+            if resp.status == 200:
+                # The content type is not always set correctly, so the body decides.
+                if save_pdf_if_valid(await resp.read(), filepath, "Wiley"):
+                    print(f"Downloaded PDF from Wiley: {filepath}")
+                    return True
+                print(f"Wiley did not return a PDF for DOI {doi} at {pdf_url}")
             else:
                 vprint(f"Wiley PDF not found at {pdf_url} (HTTP {resp.status})")
     except Exception as e:
@@ -2462,18 +2474,12 @@ async def download_from_unpaywall(
             try:
                 async with _aiohttp_get(pdf_url, headers=headers, timeout=DOWNLOAD_TIMEOUT) as resp:
                     vprint(f"Unpaywall PDF HTTP status: {resp.status}")
-                    if resp.status == 200 and resp.content_type == "application/pdf":
-                        with open(filepath, "wb") as f:
-                            f.write(await resp.read())
-                        print(f"Downloaded PDF from Unpaywall: {filepath}")
-                        downloaded += 1
-                        continue
-                    elif resp.status == 200:
-                        # Sometimes content-type is not set correctly, try anyway
-                        with open(filepath, "wb") as f:
-                            f.write(await resp.read())
-                        print(f"Downloaded (possibly non-PDF) file from Unpaywall: {filepath}")
-                        downloaded += 1
+                    if resp.status == 200:
+                        if save_pdf_if_valid(await resp.read(), filepath, "Unpaywall"):
+                            print(f"Downloaded PDF from Unpaywall: {filepath}")
+                            downloaded += 1
+                        else:
+                            print(f"Unpaywall link for DOI {doi} did not return a PDF: {pdf_url}")
                         continue
                     else:
                         print(f"Failed to download PDF from Unpaywall for DOI: {doi} (HTTP {resp.status})")
@@ -2501,22 +2507,15 @@ async def download_from_unpaywall(
                     "Connection": "keep-alive",
                 }
                 async with _aiohttp_get(url, headers=browser_headers, timeout=DOWNLOAD_TIMEOUT) as resp:
-                    if resp.status == 200 and resp.content_type == "application/pdf":
+                    if resp.status == 200:
                         filename = f"{safe_doi}_unpaywall_browser_{idx}.pdf"
                         filepath = os.path.join(download_folder, filename)
-                        with open(filepath, "wb") as f:
-                            f.write(await resp.read())
-                        print(f"Downloaded PDF by direct OA link (browser): {filepath}")
-                        downloaded += 1
-                        # Don't break, try all links
-                    elif resp.status == 200:
-                        # Sometimes content-type is not set correctly, try anyway
-                        filename = f"{safe_doi}_unpaywall_browser_{idx}.pdf"
-                        filepath = os.path.join(download_folder, filename)
-                        with open(filepath, "wb") as f:
-                            f.write(await resp.read())
-                        print(f"Downloaded (possibly non-PDF) file by direct OA link (browser): {filepath}")
-                        downloaded += 1
+                        if save_pdf_if_valid(await resp.read(), filepath, "direct OA link"):
+                            print(f"Downloaded PDF by direct OA link (browser): {filepath}")
+                            downloaded += 1
+                            # Don't break, try all links
+                        else:
+                            vprint(f"Direct OA link did not return a PDF: {url}")
             except Exception as e:
                 vprint(f"Error downloading OA link directly as PDF {url}: {e}")
 
@@ -2579,15 +2578,14 @@ async def download_from_unpaywall(
                                 headers=oa_headers,
                                 timeout=DOWNLOAD_TIMEOUT,
                             ) as pdf_resp:
-                                if pdf_resp.status == 200 and pdf_resp.content_type == "application/pdf":
+                                if pdf_resp.status == 200:
                                     filename = f"{safe_doi}_unpaywall_follow_{idx}.pdf"
                                     filepath = os.path.join(download_folder, filename)
-                                    with open(filepath, "wb") as f:
-                                        f.write(await pdf_resp.read())
-                                    print(f"Downloaded PDF by following OA link: {filepath}")
-                                    downloaded += 1
-                                    found_pdf = True
-                                    break
+                                    if save_pdf_if_valid(await pdf_resp.read(), filepath, "OA link"):
+                                        print(f"Downloaded PDF by following OA link: {filepath}")
+                                        downloaded += 1
+                                        found_pdf = True
+                                        break
                         except Exception as e:
                             vprint(f"Error downloading candidate PDF {pdf_candidate_url}: {e}")
                     if found_pdf:
@@ -2629,10 +2627,10 @@ async def download_from_nexus(id: str, doi: str, download_folder: str = DEFAULT_
             async with _aiohttp_get(file_url) as resp:
                 vprint(f"Nexus HTTP status: {resp.status}")
                 if resp.status == 200:
-                    with open(filepath, "wb") as f:
-                        f.write(await resp.read())
-                    print(f"Downloaded PDF location: {filepath}")
-                    return True
+                    if save_pdf_if_valid(await resp.read(), filepath, "Nexus"):
+                        print(f"Downloaded PDF location: {filepath}")
+                        return True
+                    vprint(f"Nexus URL did not return a PDF: {file_url}")
         except Exception as e:
             vprint(f"Exception occurred while downloading file for DOI {doi} from Nexus URL {file_url}: {e}")
     
@@ -2684,19 +2682,148 @@ async def download_from_nexus_bot(doi: str, download_folder: str = DEFAULT_DOWNL
         print(f"Error downloading PDF from Nexus bot for DOI {doi}: {e}")
     return False
 
+SCI_HUB_PDF_HOST = "https://sci.bban.top/pdf"
+
+# The official project no longer resolves DOIs -- every path under sci-hub.vn
+# answers with the same advertisement page -- but it still serves the files
+# themselves, so resolved /storage/ paths are fetched from it first.
+SCI_HUB_OFFICIAL_HOST = "https://sci-hub.vn"
+
+# Serving files and resolving DOIs are separate jobs, and a mirror can do one
+# without the other: sci-hub.box refuses article pages with 403 yet serves
+# storage fine, while sci-hub.ee resolves DOIs but has no storage at all.  The
+# official host leads; the rest cover it going the way of the other mirrors.
+SCI_HUB_STORAGE_HOSTS = (
+    SCI_HUB_OFFICIAL_HOST,
+    "https://sci-hub.su",
+    "https://sci-hub.box",
+    "https://sci-hub.ru",
+)
+
+# A stored paper is addressed as /storage/<bucket>/<shard>/<hash>/<name>.pdf.
+# Buckets are interchangeable between mirrors but not guessable: an unknown one
+# answers 200 with the advertisement page instead of a PDF, so the bucket the
+# mirror handed out is kept as-is.
+_SCIHUB_STORAGE_PATH_RE = re.compile(r"(/storage/[^/]+/[^/]+/[^/]+/[^/]+\.pdf)$", re.IGNORECASE)
+
+# How many times a mirror is re-asked after it answers with the bot challenge.
+# The challenge fires intermittently rather than in response to request rate, so
+# spacing the retries does not help and immediate ones are cheap.
+SCI_HUB_GATE_RETRIES = 5
+
+# The PDF host rejects requests that carry no User-Agent.
+SCI_HUB_HEADERS = {"User-Agent": "Mozilla/5.0"}
+
+_DOI_URL_PREFIXES = (
+    "https://doi.org/",
+    "http://doi.org/",
+    "https://dx.doi.org/",
+    "http://dx.doi.org/",
+    "doi:",
+)
+
+# Article pages expose the PDF as an <iframe src>, an <embed src>, or a
+# location.href assignment inside an onclick handler.
+_SCIHUB_PDF_LINK_RE = re.compile(
+    r"""(?:src|href|location\.href\s*=\s*)\s*=?\s*["']([^"']*?\.pdf[^"']*)["']""",
+    re.IGNORECASE,
+)
+
+
+def scihub_direct_pdf_url(doi: str) -> str:
+    """Build the Sci-Hub PDF-host URL for a DOI.
+
+    The host serves papers under a DOI-derived path, so no article page has to
+    be scraped.  The path is case-sensitive: an uppercase DOI returns 404.
+    """
+    cleaned = doi.strip()
+    for prefix in _DOI_URL_PREFIXES:
+        if cleaned.lower().startswith(prefix):
+            cleaned = cleaned[len(prefix):]
+            break
+    return f"{SCI_HUB_PDF_HOST}/{cleaned.strip().lower()}.pdf"
+
+
+def is_scihub_robot_check(html: str) -> bool:
+    """Report whether an article page is Sci-Hub's Altcha bot challenge.
+
+    Every mirror page loads the Altcha widget, so the script alone proves
+    nothing.  Only the challenge page carries a numbered ``challengeurl`` and
+    asks the reader whether they are a robot; an article page shows the passive
+    "I am not a robot" badge against the unnumbered endpoint.
+    """
+    lowered = html.lower()
+    return (
+        "are you are robot" in lowered
+        or "ru:isrobot" in lowered
+        or "\u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u043d\u0430 \u0440\u043e\u0431\u043e\u0442\u0430" in lowered
+        or re.search(r"challengeurl\s*=\s*[\"']/captcha/challenge/\d+", lowered) is not None
+    )
+
+
+def scihub_storage_urls(pdf_url: str) -> list[str]:
+    """Order the hosts that can serve a resolved ``/storage/`` path.
+
+    The official project is asked first.  A URL that is not a stored paper
+    yields an empty list, leaving the caller with the URL it already had.
+    """
+    match = _SCIHUB_STORAGE_PATH_RE.search(pdf_url)
+    if not match:
+        return []
+    path = match.group(1)
+    return [host + path for host in SCI_HUB_STORAGE_HOSTS]
+
+
+def extract_scihub_pdf_url(html: str, domain: str) -> str | None:
+    """Return the PDF URL advertised by a Sci-Hub article page, if any."""
+    for raw in _SCIHUB_PDF_LINK_RE.findall(html):
+        url = raw.replace("\\/", "/").split("#")[0].split("?")[0]
+        if not url.lower().endswith(".pdf"):
+            continue
+        if url.startswith("//"):
+            return "https:" + url
+        if url.startswith("/"):
+            return domain + url
+        if url.lower().startswith("http"):
+            return url
+    return None
+
+
 async def download_from_scihub(doi: str, download_folder: str = DEFAULT_DOWNLOAD_FOLDER):
     safe_doi = doi.replace('/', '_')
     filename = f"{safe_doi}_scihub.pdf"
     filepath = os.path.join(download_folder, filename)
+    # Mirrors that currently serve article pages are listed first so the loop
+    # settles on a working one early.
     sci_hub_domains = [
-        "https://sci-hub.vn",
-        "https://sci-hub.st",
+        "https://sci-hub.ee",
+        "https://sci-hub.al",
+        "https://sci-hub.mk",
+        "https://sci-hub.vg",
         "https://sci-hub.ru",
+        "https://sci-hub.su",
+        "https://sci-hub.st",
         "https://sci-hub.red",
         "https://sci-hub.box",
         "https://sci-net.xyz",
         "https://sci-net.ru"
     ]
+
+    # The PDF host needs no article page and carries no bot check, so it is
+    # tried before the mirrors.
+    direct_url = scihub_direct_pdf_url(doi)
+    vprint(f"Trying Sci-Hub PDF host: {direct_url}")
+    try:
+        async with _aiohttp_get(direct_url, headers=SCI_HUB_HEADERS) as resp:
+            vprint(f"Sci-Hub PDF host HTTP status: {resp.status}")
+            if resp.status == 200:
+                if save_pdf_if_valid(await resp.read(), filepath, SCI_HUB_PDF_HOST):
+                    print(f"Downloaded PDF from Sci-Hub: {filepath}")
+                    return True
+            elif resp.status == 404:
+                vprint(f"Sci-Hub PDF host has no PDF for DOI {doi}")
+    except Exception as e:
+        print(f"Error accessing Sci-Hub PDF host: {e}")
     for domain in sci_hub_domains:
         # Use different filename for sci-net domains
         if "sci-net" in domain:
@@ -2708,24 +2835,37 @@ async def download_from_scihub(doi: str, download_folder: str = DEFAULT_DOWNLOAD
         sci_hub_url = f"{domain}/{doi}"
         vprint(f"Trying Sci-Hub domain: {sci_hub_url}")
         try:
-            async with _aiohttp_get(sci_hub_url) as resp:
-                vprint(f"Sci-Hub HTTP status: {resp.status}")
-                html = await resp.text()
-                m = re.search(r'src\s*=\s*["\'](.*?\.pdf.*?)["\']', html)
-                if m:
-                    pdf_url = m.group(1)
-                    if pdf_url.startswith("//"):
-                        pdf_url = "https:" + pdf_url
-                    elif pdf_url.startswith("/"):
-                        pdf_url = domain + pdf_url
-                    vprint(f"Found PDF URL on Sci-Hub: {pdf_url}")
-                    async with _aiohttp_get(pdf_url) as pdf_resp:
+            pdf_url = None
+            for attempt in range(SCI_HUB_GATE_RETRIES):
+                async with _aiohttp_get(sci_hub_url, headers=SCI_HUB_HEADERS) as resp:
+                    vprint(f"Sci-Hub HTTP status: {resp.status}")
+                    html = await resp.text()
+                if is_scihub_robot_check(html):
+                    vprint(
+                        f"{domain} served a bot challenge instead of the article page "
+                        f"(attempt {attempt + 1}/{SCI_HUB_GATE_RETRIES})"
+                    )
+                    continue
+                pdf_url = extract_scihub_pdf_url(html, domain)
+                break
+            if pdf_url:
+                vprint(f"Found PDF URL on Sci-Hub: {pdf_url}")
+                # A stored paper is served by the official project too, so it is
+                # fetched from there before the mirror that named it.
+                sources = scihub_storage_urls(pdf_url)
+                if pdf_url not in sources:
+                    sources.append(pdf_url)
+                for source in sources:
+                    vprint(f"Fetching PDF from: {source}")
+                    async with _aiohttp_get(source, headers=SCI_HUB_HEADERS) as pdf_resp:
                         vprint(f"Sci-Hub PDF HTTP status: {pdf_resp.status}")
                         if pdf_resp.status == 200:
-                            with open(filepath, "wb") as f:
-                                f.write(await pdf_resp.read())
-                            print(f"Downloaded PDF from {domain}: {filepath}")
-                            return True
+                            if save_pdf_if_valid(await pdf_resp.read(), filepath, source):
+                                print(f"Downloaded PDF from {source}: {filepath}")
+                                return True
+                    vprint(f"{source} did not return a PDF for DOI {doi}")
+            else:
+                vprint(f"{domain} advertised no PDF link for DOI {doi}")
         except Exception as e:
             print(f"Error accessing Sci-Hub at {domain}: {e}")
     return False
