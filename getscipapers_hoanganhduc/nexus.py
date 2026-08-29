@@ -861,28 +861,217 @@ def create_telegram_client(api_id, api_hash, session_file=SESSION_FILE, proxy=No
     else:
         return TelegramClient(session_file, api_id, api_hash)
 
+def render_rich_text(rich_text):
+    """Render a Telegram ``RichText`` tree into Markdown-style plain text.
+
+    Nexus now delivers paper cards as ``rich_message`` page blocks with an empty
+    ``message`` field, so the readable text has to be rebuilt from the tree. The
+    emitted markup matches Telethon's Markdown conventions (``**bold**``,
+    ``__italic__``, ``[text](url)``) so the existing result markers and regexes
+    keep matching.
+    """
+    if rich_text is None:
+        return ""
+
+    # Match on the class name so a newer Telethon adding node types cannot break
+    # this with an ImportError.
+    node_type = type(rich_text).__name__
+
+    if node_type == "TextEmpty":
+        return ""
+    if node_type == "TextConcat":
+        return "".join(render_rich_text(part) for part in (rich_text.texts or []))
+
+    inner = getattr(rich_text, "text", "")
+    if not isinstance(inner, str):
+        inner = render_rich_text(inner)
+
+    if node_type == "TextBold":
+        return f"**{inner}**"
+    if node_type in ("TextItalic", "TextUnderline"):
+        return f"__{inner}__"
+    if node_type == "TextStrike":
+        return f"~~{inner}~~"
+    if node_type in ("TextFixed", "TextMath"):
+        return f"`{inner}`"
+    if node_type == "TextUrl":
+        url = getattr(rich_text, "url", None)
+        return f"[{inner}]({url})" if url else inner
+    if node_type == "TextEmail":
+        email = getattr(rich_text, "email", None)
+        return f"[{inner}](mailto:{email})" if email else inner
+
+    # TextPlain and anything else (mentions, hashtags, custom emoji, ...) keep
+    # their visible text only.
+    return inner
+
+
+def render_rich_message(rich_message):
+    """Render a ``RichMessage`` (Instant-View style page blocks) into text"""
+    if rich_message is None:
+        return ""
+
+    parts = []
+    for block in getattr(rich_message, "blocks", None) or []:
+        block_type = type(block).__name__
+        if block_type == "PageBlockList" or block_type == "PageBlockOrderedList":
+            for item in getattr(block, "items", None) or []:
+                item_text = render_rich_text(getattr(item, "text", None))
+                if item_text:
+                    parts.append(item_text)
+            continue
+        text = render_rich_text(getattr(block, "text", None))
+        if text:
+            parts.append(text)
+    return "\n".join(parts)
+
+
+def is_unsupported_media(message):
+    """True when Telegram downgraded the message because our API layer is old.
+
+    Telegram replies with ``messageMediaUnsupported`` and strips both the text
+    and the inline keyboard when the client's layer cannot parse the message.
+    """
+    return type(getattr(message, "media", None)).__name__ == "MessageMediaUnsupported"
+
+
+def extract_message_text(message):
+    """Get the readable text of a bot message, including rich-message cards"""
+    text = getattr(message, "text", None) or ""
+    if text:
+        return text
+
+    rich_text = render_rich_message(getattr(message, "rich_message", None))
+    if rich_text:
+        debug_print(f"Recovered {len(rich_text)} chars of text from rich_message blocks")
+        return rich_text
+
+    if is_unsupported_media(message):
+        error_print(
+            "Telegram returned an unsupported-media placeholder for this bot message. "
+            "The installed Telethon is too old to parse Nexus replies - "
+            "upgrade it with 'pip install -U \"Telethon>=1.44.0\"'."
+        )
+    return ""
+
+
 def extract_button_info(reply_markup):
     """Extract button information from reply markup"""
     buttons = []
     if reply_markup:
         debug_print("Processing reply markup buttons...")
-        for row_idx, row in enumerate(reply_markup.rows):
+        for row_idx, row in enumerate(getattr(reply_markup, "rows", None) or []):
             for btn_idx, button in enumerate(row.buttons):
-                button_info = {"text": button.text}
-                if hasattr(button, 'url') and button.url:
+                button_info = {"text": getattr(button, "text", "")}
+                if getattr(button, 'data', None) is not None:
+                    data = button.data.decode(errors="replace") if isinstance(button.data, bytes) else str(button.data)
+                    button_info["data"] = data
+                    button_info["callback_data"] = data
+                    button_info["type"] = "callback"
+                    debug_print(f"Button {row_idx}-{btn_idx}: Callback button '{button_info['text']}' -> {data}")
+                elif getattr(button, 'url', None):
                     button_info["url"] = button.url
                     button_info["type"] = "url"
-                    debug_print(f"Button {row_idx}-{btn_idx}: URL button '{button.text}' -> {button.url}")
-                elif hasattr(button, 'data'):
-                    button_info["data"] = button.data.decode() if button.data else None
-                    button_info["callback_data"] = button.data.decode() if button.data else None
-                    button_info["type"] = "callback"
-                    debug_print(f"Button {row_idx}-{btn_idx}: Callback button '{button.text}' -> {button_info['data']}")
+                    debug_print(f"Button {row_idx}-{btn_idx}: URL button '{button_info['text']}' -> {button.url}")
+                elif getattr(button, 'copy_text', None):
+                    button_info["copy_text"] = button.copy_text
+                    button_info["type"] = "copy"
+                    debug_print(f"Button {row_idx}-{btn_idx}: Copy button '{button_info['text']}'")
                 else:
                     button_info["type"] = "keyboard"
-                    debug_print(f"Button {row_idx}-{btn_idx}: Keyboard button '{button.text}'")
+                    debug_print(f"Button {row_idx}-{btn_idx}: Keyboard button '{button_info['text']}'")
                 buttons.append(button_info)
     return buttons
+
+
+# Nexus marks the download button with a down arrow and serves it through a
+# "/d_<id>.pdf" callback; the other card buttons (Similar, Like, close) are not
+# actionable for retrieval.
+DOWNLOAD_BUTTON_SYMBOLS = ("⬇️", "⬇", "↓", "📥")
+DOWNLOAD_BUTTON_WORDS = ("download", "pdf", "get", "file")
+
+
+def get_button_callback_data(button):
+    """Return the callback payload of an extracted button, as a string"""
+    data = button.get("callback_data") or button.get("data")
+    if isinstance(data, bytes):
+        return data.decode(errors="replace")
+    return data or ""
+
+
+def is_download_button(button):
+    """True if the button triggers a file download on Nexus"""
+    text = (button.get("text") or "").lower()
+    if get_button_callback_data(button).startswith("/d_"):
+        return True
+    if any(symbol in text for symbol in DOWNLOAD_BUTTON_SYMBOLS):
+        return True
+    return any(word in text for word in DOWNLOAD_BUTTON_WORDS)
+
+
+def is_request_button(button):
+    """True if the button asks the community to upload the paper"""
+    text = (button.get("text") or "").lower()
+    return "request" in text or "request" in get_button_callback_data(button).lower()
+
+
+def find_callback_button(buttons, predicate):
+    """Return the first callback button matching predicate, or None"""
+    for button in buttons or []:
+        if button.get("type") == "callback" and predicate(button):
+            return button
+    return None
+
+
+# Clicking a request button does not place the request: Nexus answers with a
+# confirmation card that carries the points bounty and only spends points once
+# its Confirm button is clicked. The card exposes "/reqok_" (confirm),
+# "/requ_" (raise by one), "/reqd_" (lower by one), "/reqx2_" (double) and
+# "/reqx" (cancel).
+def is_confirm_button(button):
+    """True if the button confirms a pending Nexus request"""
+    text = (button.get("text") or "").lower()
+    return "confirm" in text or get_button_callback_data(button).startswith("/reqok")
+
+
+def is_cancel_button(button):
+    """True if the button cancels a pending Nexus request"""
+    text = (button.get("text") or "").lower()
+    return "cancel" in text or get_button_callback_data(button) == "/reqx"
+
+
+def is_increase_points_button(button):
+    """True if the button raises the bounty of a pending request by one point"""
+    text = (button.get("text") or "").strip()
+    return text in ("➕", "+") or get_button_callback_data(button).startswith("/requ_")
+
+
+def is_decrease_points_button(button):
+    """True if the button lowers the bounty of a pending request by one point"""
+    text = (button.get("text") or "").strip()
+    return text in ("➖", "−", "-") or get_button_callback_data(button).startswith("/reqd_")
+
+
+def is_double_points_button(button):
+    """True if the button doubles the bounty of a pending request"""
+    text = (button.get("text") or "").strip().lower()
+    return text == "x2" or get_button_callback_data(button).startswith("/reqx2_")
+
+
+def is_request_confirmation(bot_reply):
+    """True if the bot reply is a confirmation card awaiting a Confirm click"""
+    buttons = (bot_reply or {}).get("buttons") or []
+    return find_callback_button(buttons, is_confirm_button) is not None
+
+
+def extract_allocated_points(buttons, text=""):
+    """Read the bounty currently allocated on a request confirmation card"""
+    for button in buttons or []:
+        match = re.search(r"(\d+)\s*pts", button.get("text") or "")
+        if match:
+            return int(match.group(1))
+    match = re.search(r"Allocating:\s*\**\s*(\d+)", text or "")
+    return int(match.group(1)) if match else None
 
 def create_message_handler(bot_entity):
     """Create message handler for bot replies"""
@@ -890,14 +1079,15 @@ def create_message_handler(bot_entity):
     
     async def handler(event):
         nonlocal bot_reply
-        debug_print(f"Received message from bot: ID={event.message.id}, Text={event.message.text[:100]}...")
-        
+        message_text = extract_message_text(event.message)
+        debug_print(f"Received message from bot: ID={event.message.id}, Text={message_text[:100]}...")
+
         buttons = extract_button_info(event.message.reply_markup)
-        
+
         bot_reply = {
             "message_id": event.message.id,
             "date": event.message.date.timestamp(),
-            "text": event.message.text,
+            "text": message_text,
             "buttons": buttons
         }
         debug_print(f"Bot reply captured: {len(buttons)} buttons found")
@@ -949,17 +1139,18 @@ async def fetch_recent_messages(client, bot_entity, sent_message):
             continue
         
         seen_messages.add(message.id)
-        debug_print(f"Checking message {message_count}: ID={message.id}, Date={message.date}, Text={message.text[:50]}...")
-        
+        message_text = extract_message_text(message)
+        debug_print(f"Checking message {message_count}: ID={message.id}, Date={message.date}, Text={message_text[:50]}...")
+
         # Check if this message is newer than our sent message
         if message.date >= sent_message.date:
             debug_print("Found newer message from bot!")
             buttons = extract_button_info(message.reply_markup)
-            
+
             bot_reply = {
                 "message_id": message.id,
                 "date": message.date.timestamp(),
-                "text": message.text,
+                "text": message_text,
                 "buttons": buttons
             }
             debug_print("Found recent message from bot!")
@@ -1018,42 +1209,45 @@ async def click_callback_button(api_id, api_hash, phone_number, bot_username, me
         @client.on(events.NewMessage(from_users=bot_entity))
         async def message_handler(event):
             nonlocal bot_reply
-            debug_print(f"Received response after button click: {event.message.text[:100]}...")
-            buttons = []
-            
-            if event.message.reply_markup:
-                debug_print("Processing reply markup after button click...")
-                for row in event.message.reply_markup.rows:
-                    for button in row.buttons:
-                        button_info = {"text": button.text}
-                        if hasattr(button, 'url') and button.url:
-                            button_info["url"] = button.url
-                            button_info["type"] = "url"
-                        elif hasattr(button, 'data'):
-                            button_info["data"] = button.data.decode() if button.data else None
-                            button_info["type"] = "callback"
-                        else:
-                            button_info["type"] = "keyboard"
-                        buttons.append(button_info)
-            
-            bot_reply = {
+            message_text = extract_message_text(event.message)
+            debug_print(f"Received response after button click: {message_text[:100]}...")
+
+            buttons = extract_button_info(event.message.reply_markup)
+
+            reply = {
                 "message_id": event.message.id,
                 "date": event.message.date.timestamp(),
-                "text": event.message.text,
-                "buttons": buttons
+                "text": message_text,
+                "buttons": buttons,
+                "has_media": event.message.media is not None
             }
-        
+
+            # A download click can be followed by a plain status message, so never
+            # let one overwrite the reply that actually carries the file.
+            if bot_reply is None or reply["has_media"] or not bot_reply.get("has_media"):
+                bot_reply = reply
+
         # Click the callback button using the correct method
         debug_print("Executing callback button click...")
         from telethon.tl.functions.messages import GetBotCallbackAnswerRequest
+        from telethon.errors import BotResponseTimeoutError
 
-        await client(GetBotCallbackAnswerRequest(
-            peer=bot_entity,
-            msg_id=message_id,
-            data=button_data.encode() if isinstance(button_data, str) else button_data
-        ))
-        info_print("Callback button clicked successfully")
-        
+        callback_answered = True
+        try:
+            await client(GetBotCallbackAnswerRequest(
+                peer=bot_entity,
+                msg_id=message_id,
+                data=button_data.encode() if isinstance(button_data, str) else button_data
+            ))
+            info_print("Callback button clicked successfully")
+        except BotResponseTimeoutError:
+            # Nexus delivers the file as a separate message and never answers the
+            # callback query, so a missing answer is not a failure - the click did
+            # register. Keep waiting for the message the bot sends.
+            callback_answered = False
+            info_print("Callback button clicked (bot sent no callback answer)")
+            debug_print("GetBotCallbackAnswerRequest timed out; still waiting for the bot message")
+
         # Wait for bot reply (timeout after 30 seconds)
         timeout = 30
         elapsed = 0
@@ -1067,42 +1261,41 @@ async def click_callback_button(api_id, api_hash, phone_number, bot_username, me
         if bot_reply is None:
             debug_print("No immediate response, checking recent messages...")
             await asyncio.sleep(2)
-            
-            async for message in client.iter_messages(bot_entity, limit=3):
+
+            # An unanswered callback query costs its own timeout before we get
+            # here, so keep the window wide enough to still see the bot's reply.
+            fallback = None
+            async for message in client.iter_messages(bot_entity, limit=5):
                 # Ensure both datetimes are timezone-aware for comparison
                 now = dt.datetime.now(message.date.tzinfo) if message.date.tzinfo else dt.datetime.now()
-                if message.date > now - timedelta(seconds=35):  # Messages from last 35 seconds
-                    debug_print(f"Found recent message: {message.text[:50]}...")
-                    buttons = []
-                    
-                    if message.reply_markup:
-                        for row in message.reply_markup.rows:
-                            for button in row.buttons:
-                                button_info = {"text": button.text}
-                                if hasattr(button, 'url') and button.url:
-                                    button_info["url"] = button.url
-                                    button_info["type"] = "url"
-                                elif hasattr(button, 'data'):
-                                    button_info["data"] = button.data.decode() if button.data else None
-                                    button_info["type"] = "callback"
-                                else:
-                                    button_info["type"] = "keyboard"
-                                buttons.append(button_info)
-                    
-                    bot_reply = {
-                        "message_id": message.id,
-                        "date": message.date.timestamp(),
-                        "text": message.text,
-                        "buttons": buttons
-                    }
+                if message.date <= now - timedelta(seconds=90):
                     break
-        
+
+                message_text = extract_message_text(message)
+                debug_print(f"Found recent message: {message_text[:50]}...")
+
+                candidate = {
+                    "message_id": message.id,
+                    "date": message.date.timestamp(),
+                    "text": message_text,
+                    "buttons": extract_button_info(message.reply_markup),
+                    "has_media": message.media is not None
+                }
+
+                if fallback is None or (candidate["has_media"] and not fallback["has_media"]):
+                    fallback = candidate
+                if fallback["has_media"]:
+                    break
+
+            bot_reply = fallback
+
         result = {
             "ok": True,
             "button_clicked": {
                 "message_id": message_id,
                 "button_data": button_data
             },
+            "callback_answered": callback_answered,
             "bot_reply": bot_reply
         }
         debug_print("Button click operation completed successfully")
@@ -1114,6 +1307,165 @@ async def click_callback_button(api_id, api_hash, phone_number, bot_username, me
         return {"error": f"Error clicking button: {str(e)}"}
     finally:
         debug_print("Disconnecting client after button click...")
+        await client.disconnect()
+
+async def confirm_paper_request(api_id, api_hash, phone_number, bot_username, message_id,
+                                buttons=None, points=None, session_file=SESSION_FILE, proxy=None):
+    """
+    Complete a Nexus request confirmation card.
+
+    Clicking a request button only opens this card - the request is not placed,
+    and no points are spent, until its Confirm button is clicked. The card edits
+    itself in place, so every click is followed by re-reading the same message
+    rather than waiting for a new one.
+
+    Args:
+        api_id: Your Telegram API ID
+        api_hash: Your Telegram API hash
+        phone_number: Your phone number (not used, kept for compatibility)
+        bot_username: Bot's username
+        message_id: ID of the confirmation card message
+        buttons: Buttons already extracted from the card (re-read if omitted)
+        points: Bounty to allocate before confirming (default: leave as offered)
+        session_file: Name of the session file
+        proxy: Proxy configuration dict or file path (see create_telegram_client)
+
+    Returns:
+        dict: {"ok": True, "points_allocated": int, "text": str} on success,
+              {"error": "..."} otherwise.
+    """
+    debug_print(f"Confirming Nexus request: message_id={message_id}, points={points}")
+
+    proxy_config = load_proxy_config(proxy)
+    if proxy and proxy_config is None:
+        return {"error": "Error loading proxy configuration"}
+
+    client = create_telegram_client(api_id, api_hash, session_file, proxy_config)
+
+    try:
+        if not os.path.exists(session_file):
+            error_print(f"Session file not found: {session_file}")
+            return {"error": "Session file not found. Run script interactively first to create session."}
+
+        await client.start()
+
+        if not await client.is_user_authorized():
+            error_print("Session expired or not authorized")
+            return {"error": "Session expired. Please delete the session file and run interactively to re-authenticate."}
+
+        bot_entity = await client.get_entity(bot_username)
+
+        from telethon.tl.functions.messages import GetBotCallbackAnswerRequest
+        from telethon.errors import BotResponseTimeoutError
+
+        async def press(button):
+            """Click a card button; Nexus does not answer callback queries"""
+            data = get_button_callback_data(button)
+            debug_print(f"Pressing confirmation card button: {button.get('text')!r} ({data})")
+            try:
+                await client(GetBotCallbackAnswerRequest(
+                    peer=bot_entity,
+                    msg_id=message_id,
+                    data=data.encode() if isinstance(data, str) else data
+                ))
+            except BotResponseTimeoutError:
+                debug_print("No callback answer for card button; the click still registered")
+
+        async def read_card():
+            """Re-read the card, which the bot edits in place after every click"""
+            message = await client.get_messages(bot_entity, ids=message_id)
+            if not message:
+                return "", []
+            return extract_message_text(message), extract_button_info(message.reply_markup)
+
+        card_text = ""
+        if buttons is None:
+            card_text, buttons = await read_card()
+
+        current = extract_allocated_points(buttons, card_text)
+        debug_print(f"Confirmation card currently allocates {current} pts")
+
+        # Adjust the bounty with the card's own +/-/x2 buttons before confirming
+        if points is not None and current is not None:
+            if points < 1:
+                return {"error": f"Requested bounty must be at least 1 point, got {points}"}
+
+            for _ in range(64):
+                if current == points:
+                    break
+
+                double_button = find_callback_button(buttons, is_double_points_button)
+                increase_button = find_callback_button(buttons, is_increase_points_button)
+                decrease_button = find_callback_button(buttons, is_decrease_points_button)
+
+                if current < points:
+                    # Doubling is worth a click only when it does not overshoot
+                    if double_button and current * 2 <= points:
+                        target_button = double_button
+                    else:
+                        target_button = increase_button
+                else:
+                    target_button = decrease_button
+
+                if not target_button:
+                    info_print(f"Cannot reach {points} pts with the buttons offered - staying at {current} pts")
+                    break
+
+                await press(target_button)
+
+                previous = current
+                for _ in range(10):
+                    await asyncio.sleep(1)
+                    card_text, buttons = await read_card()
+                    current = extract_allocated_points(buttons, card_text)
+                    if current is not None and current != previous:
+                        break
+
+                if current is None or current == previous:
+                    info_print(f"Bounty stopped responding at {previous} pts - confirming with that")
+                    current = previous
+                    break
+
+                debug_print(f"Bounty now {current} pts")
+            else:
+                debug_print("Bounty adjustment hit its iteration guard")
+
+            if current != points:
+                info_print(f"Allocating {current} pts instead of the requested {points} pts")
+
+        confirm_button = find_callback_button(buttons, is_confirm_button)
+        if not confirm_button:
+            return {"error": "No Confirm button on the request confirmation card"}
+
+        info_print(f"Confirming request with {current if current is not None else 'the default'} pts...")
+        await press(confirm_button)
+
+        # The card is edited once the request is placed, dropping its Confirm button
+        confirmed = False
+        for _ in range(15):
+            await asyncio.sleep(1)
+            card_text, buttons = await read_card()
+            if not find_callback_button(buttons, is_confirm_button):
+                confirmed = True
+                break
+
+        if not confirmed:
+            return {"error": "Clicked Confirm but the card still shows a Confirm button"}
+
+        info_print("✓ Request confirmed")
+        return {
+            "ok": True,
+            "message_id": message_id,
+            "points_allocated": current,
+            "text": card_text
+        }
+
+    except Exception as e:
+        error_print(f"Error confirming request: {str(e)}")
+        debug_print(f"Request confirmation exception: {type(e).__name__}: {str(e)}")
+        return {"error": f"Error confirming request: {str(e)}"}
+    finally:
+        debug_print("Disconnecting client after request confirmation...")
         await client.disconnect()
 
 async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, message, session_file=SESSION_FILE, proxy=None, limit=None):
@@ -1196,14 +1548,15 @@ async def send_message_to_bot(api_id, api_hash, phone_number, bot_username, mess
             bot_reply_value = [None]
 
             async def new_handler(event):
-                debug_print(f"Received message from bot: ID={event.message.id}, Text={event.message.text[:100]}...")
+                message_text = extract_message_text(event.message)
+                debug_print(f"Received message from bot: ID={event.message.id}, Text={message_text[:100]}...")
 
                 buttons = extract_button_info(event.message.reply_markup)
 
                 bot_reply_value[0] = {
                     "message_id": event.message.id,
                     "date": event.message.date.timestamp(),
-                    "text": event.message.text,
+                    "text": message_text,
                     "buttons": buttons
                 }
                 debug_print(f"Bot reply captured: {len(buttons)} buttons found")
@@ -2180,12 +2533,30 @@ async def handle_request_button(button_text, callback_data, message_id, proxy_to
             message_id, callback_data, SESSION_FILE, proxy_to_use
         )
         
-        if click_result.get("ok"):
-            info_print("✓ Successfully requested the paper")
-            if click_result.get("bot_reply") and click_result["bot_reply"].get("text"):
-                print(f"Bot response: {click_result['bot_reply']['text']}")
-        else:
+        if not click_result.get("ok"):
             error_print(f"✗ Failed to request the paper: {click_result.get('error', 'Unknown error')}")
+            return
+
+        # The request button only opens a confirmation card - the request is not
+        # placed until its Confirm button is clicked.
+        confirmation = click_result.get("bot_reply") or {}
+        if is_request_confirmation(confirmation):
+            confirm_result = await confirm_paper_request(
+                TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME,
+                confirmation.get("message_id"), confirmation.get("buttons"),
+                None, SESSION_FILE, proxy_to_use
+            )
+            if not confirm_result.get("ok"):
+                error_print(f"✗ Failed to confirm the request: {confirm_result.get('error', 'Unknown error')}")
+                return
+            info_print(f"✓ Successfully requested the paper ({confirm_result.get('points_allocated')} pts allocated)")
+            if confirm_result.get("text"):
+                print(f"Bot response: {confirm_result['text']}")
+            return
+
+        info_print("✓ Successfully requested the paper")
+        if confirmation.get("text"):
+            print(f"Bot response: {confirmation['text']}")
     else:
         info_print("User chose not to request the paper")
 
@@ -2496,26 +2867,27 @@ async def process_callback_buttons(bot_reply, proxy_to_use):
         return
     
     info_print(f"Found {len(callback_buttons)} callback buttons in search results")
-    
-    # Only handle the first callback button
-    first_button = callback_buttons[0]
-    button_text = first_button.get("text", "").strip()
-    callback_data = first_button.get("callback_data") or first_button.get("data")
-    message_id = bot_reply.get("message_id")
-    
-    info_print(f"\n--- Processing First Button ---")
-    info_print(f"Button text: {button_text}")
-    
-    # Determine if this is a request or download button
-    has_request = "request" in button_text.lower()
-    # Check if the button text contains a download symbol (e.g., "⬇️" or "↓" or "download")
-    has_download = any(sym in button_text.lower() for sym in ["⬇️", "↓", "download"])
 
-    if has_request:
+    # Pick the actionable button rather than assuming it comes first
+    request_button = find_callback_button(callback_buttons, is_request_button)
+    action_button = request_button or find_callback_button(callback_buttons, is_download_button)
+
+    if not action_button:
+        info_print("No request or download button found in search results")
+        return
+
+    button_text = action_button.get("text", "").strip()
+    callback_data = get_button_callback_data(action_button)
+    message_id = bot_reply.get("message_id")
+
+    info_print(f"\n--- Processing Button ---")
+    info_print(f"Button text: {button_text}")
+
+    if request_button:
         await handle_request_button(button_text, callback_data, message_id, proxy_to_use)
-    elif has_download:
+    else:
         await handle_download_button(button_text, callback_data, message_id, proxy_to_use)
-    
+
     info_print(f"\n--- Completed processing all {len(callback_buttons)} buttons ---")
 
 async def get_latest_messages_from_bot(api_id, api_hash, bot_username, session_file=SESSION_FILE, limit=10, proxy=None):
@@ -2585,11 +2957,13 @@ async def get_latest_messages_from_bot(api_id, api_hash, bot_username, session_f
                 else:
                     media_type = "other"
             
+            message_text = extract_message_text(message)
+
             message_data = {
                 "message_id": message.id,
                 "date": message.date.timestamp(),
                 "date_formatted": message.date.strftime("%Y-%m-%d %H:%M:%S"),
-                "text": message.text,
+                "text": message_text,
                 "buttons": buttons,
                 "has_media": has_media,
                 "media_type": media_type,
@@ -2597,9 +2971,9 @@ async def get_latest_messages_from_bot(api_id, api_hash, bot_username, session_f
                 "views": getattr(message, 'views', None),
                 "forwards": getattr(message, 'forwards', None)
             }
-            
+
             messages.append(message_data)
-            debug_print(f"Retrieved message {message.id}: {message.text[:50]}...")
+            debug_print(f"Retrieved message {message.id}: {message_text[:50]}...")
         
         info_print(f"Successfully retrieved {len(messages)} messages from {bot_username}")
         
@@ -4180,7 +4554,10 @@ async def check_doi_availability_on_nexus(api_id, api_hash, phone_number, bot_us
             "search returned no results"
         ]
         
-        if any(indicator in reply_text for indicator in not_found_indicators):
+        # Only trust the text markers when the bot sent no buttons: a result card
+        # carries the paper abstract, which can legitimately contain words such
+        # as "error" or "not found".
+        if not buttons and any(indicator in reply_text for indicator in not_found_indicators):
             availability_result["status"] = "not_found"
             availability_result["available"] = False
             availability_result["details"]["reason"] = "DOI not found in Nexus database"
@@ -4197,7 +4574,7 @@ async def check_doi_availability_on_nexus(api_id, api_hash, phone_number, bot_us
             "failed to search"
         ]
         
-        if any(indicator in reply_text for indicator in error_indicators):
+        if not buttons and any(indicator in reply_text for indicator in error_indicators):
             availability_result["status"] = "error"
             availability_result["available"] = False
             availability_result["details"]["reason"] = "Error processing DOI query"
@@ -4213,35 +4590,40 @@ async def check_doi_availability_on_nexus(api_id, api_hash, phone_number, bot_us
             callback_buttons = [btn for btn in buttons if btn.get("type") == "callback"]
             
             if callback_buttons:
+                # The card now carries several callback buttons (download, Similar,
+                # Like, close), so scan them all instead of trusting the first one.
+                request_button = find_callback_button(callback_buttons, is_request_button)
+                download_button = find_callback_button(callback_buttons, is_download_button)
                 first_button = callback_buttons[0]
-                button_text = first_button.get("text", "").lower()
-                
-                debug_print(f"First callback button text: '{button_text}'")
-                
+
+                debug_print(f"Callback buttons: {[btn.get('text') for btn in callback_buttons]}")
+                debug_print(f"Request button: {request_button.get('text') if request_button else None}, "
+                            f"download button: {download_button.get('text') if download_button else None}")
+
                 # Check if button indicates availability
-                if "request" in button_text:
+                if request_button:
                     # Paper is not available, needs to be requested
                     availability_result["status"] = "not_available_requestable"
                     availability_result["available"] = False
                     availability_result["details"]["reason"] = "Paper not available but can be requested"
                     availability_result["details"]["request_button"] = {
-                        "text": first_button.get("text"),
-                        "callback_data": first_button.get("callback_data") or first_button.get("data"),
+                        "text": request_button.get("text"),
+                        "callback_data": get_button_callback_data(request_button),
                         "message_id": bot_reply.get("message_id")
                     }
                     info_print(f"DOI {doi} is NOT available on Nexus but can be requested")
                     debug_print("DOI can be requested based on button analysis")
-                    
-                elif any(word in button_text for word in ["download", "get", "pdf", "file"]):
+
+                elif download_button:
                     # Paper is available for download
                     availability_result["status"] = "available"
                     availability_result["available"] = True
                     availability_result["details"]["reason"] = "Paper is available for download"
-                    
+
                     # Try to extract file size information
-                    button_size_info = extract_file_size_from_button_text(first_button.get("text", ""))
-                    callback_size_info = extract_file_size_from_callback_data(first_button.get("callback_data") or first_button.get("data"))
-                    
+                    button_size_info = extract_file_size_from_button_text(download_button.get("text", ""))
+                    callback_size_info = extract_file_size_from_callback_data(get_button_callback_data(download_button))
+
                     size_info = button_size_info or callback_size_info
                     if size_info:
                         availability_result["details"]["file_size_mb"] = size_info["size_mb"]
@@ -4250,8 +4632,8 @@ async def check_doi_availability_on_nexus(api_id, api_hash, phone_number, bot_us
                         debug_print(f"Extracted file size: {size_info['original_size']} {size_info['unit']} ({size_info['size_mb']:.2f} MB)")
                     
                     availability_result["details"]["download_button"] = {
-                        "text": first_button.get("text"),
-                        "callback_data": first_button.get("callback_data") or first_button.get("data"),
+                        "text": download_button.get("text"),
+                        "callback_data": get_button_callback_data(download_button),
                         "message_id": bot_reply.get("message_id")
                     }
                     info_print(f"DOI {doi} is AVAILABLE on Nexus for download")
@@ -4264,7 +4646,7 @@ async def check_doi_availability_on_nexus(api_id, api_hash, phone_number, bot_us
                         
                         try:
                             # Click the download button using existing function
-                            button_callback_data = first_button.get("callback_data") or first_button.get("data")
+                            button_callback_data = get_button_callback_data(download_button)
                             message_id = bot_reply.get("message_id")
                             
                             debug_print(f"Clicking download button - Message ID: {message_id}, Callback: {button_callback_data}")
@@ -5114,7 +5496,7 @@ def format_download_from_nexus_bot_result(download_result):
         logger.info("Formatting download result for display")
         logger.info(result_text)
 
-async def request_paper_by_doi(api_id, api_hash, phone_number, bot_username, doi, session_file=SESSION_FILE, proxy=None):
+async def request_paper_by_doi(api_id, api_hash, phone_number, bot_username, doi, session_file=SESSION_FILE, proxy=None, points=None):
     """
     Request a paper from Nexus by DOI.
     This will send the DOI to the bot, detect if a request is needed, and click the request button if available.
@@ -5149,31 +5531,32 @@ async def request_paper_by_doi(api_id, api_hash, phone_number, bot_username, doi
         return {"error": "No reply or no buttons found in bot response", "doi": doi}
 
     # Step 2: Find the request button
-    request_button = None
-    for btn in bot_reply.get("buttons", []):
-        if btn.get("type") == "callback" and "request" in btn.get("text", "").lower():
-            request_button = btn
-            break
+    buttons = bot_reply.get("buttons", [])
+    request_button = find_callback_button(buttons, is_request_button)
 
     if not request_button:
+        # An already-available paper shows a download button instead, so say so
+        # rather than reporting an ambiguous failure.
+        download_button = find_callback_button(buttons, is_download_button)
+        if download_button:
+            info_print(f"Paper is already available on Nexus ({download_button.get('text')}) - nothing to request.")
+            return {
+                "ok": False,
+                "doi": doi,
+                "request_sent": False,
+                "already_available": True,
+                "details": f"Paper is already available on Nexus. Download it with --check-doi {doi} --download"
+            }
         return {"ok": False, "doi": doi, "request_sent": False, "details": "No request button found. Paper may already be available or not requestable."}
 
     # Step 3: Click the request button
     message_id = bot_reply.get("message_id")
-    callback_data = request_button.get("callback_data") or request_button.get("data")
+    callback_data = get_button_callback_data(request_button)
     click_result = await click_callback_button(
         api_id, api_hash, phone_number, bot_username, message_id, callback_data, session_file, proxy
     )
 
-    if click_result.get("ok"):
-        info_print("Paper request sent successfully.")
-        return {
-            "ok": True,
-            "doi": doi,
-            "request_sent": True,
-            "details": click_result
-        }
-    else:
+    if not click_result.get("ok"):
         return {
             "ok": False,
             "doi": doi,
@@ -5181,7 +5564,43 @@ async def request_paper_by_doi(api_id, api_hash, phone_number, bot_username, doi
             "details": click_result.get("error", "Unknown error")
         }
 
-async def batch_request_papers_by_doi(api_id, api_hash, phone_number, bot_username, doi_list, session_file=SESSION_FILE, proxy=None, delay=2):
+    # Step 4: The request button only opens a confirmation card - nothing is
+    # requested until its Confirm button is clicked.
+    confirmation = click_result.get("bot_reply") or {}
+    if not is_request_confirmation(confirmation):
+        info_print("Paper request sent successfully.")
+        return {
+            "ok": True,
+            "doi": doi,
+            "request_sent": True,
+            "details": click_result
+        }
+
+    info_print("Bot asked to confirm the request - completing the confirmation card")
+    confirm_result = await confirm_paper_request(
+        api_id, api_hash, phone_number, bot_username,
+        confirmation.get("message_id"), confirmation.get("buttons"),
+        points, session_file, proxy
+    )
+
+    if not confirm_result.get("ok"):
+        return {
+            "ok": False,
+            "doi": doi,
+            "request_sent": False,
+            "details": confirm_result.get("error", "Failed to confirm the request")
+        }
+
+    info_print("Paper request sent successfully.")
+    return {
+        "ok": True,
+        "doi": doi,
+        "request_sent": True,
+        "points_allocated": confirm_result.get("points_allocated"),
+        "details": confirm_result
+    }
+
+async def batch_request_papers_by_doi(api_id, api_hash, phone_number, bot_username, doi_list, session_file=SESSION_FILE, proxy=None, delay=2, points=None):
     """
     Request multiple papers from Nexus by DOI.
     For each DOI, sends the DOI to the bot, detects if a request is needed, and clicks the request button if available.
@@ -5218,7 +5637,7 @@ async def batch_request_papers_by_doi(api_id, api_hash, phone_number, bot_userna
         info_print(f"Requesting DOI {i}/{len(doi_list)}: {doi}")
         try:
             result = await request_paper_by_doi(
-                api_id, api_hash, phone_number, bot_username, doi, session_file, proxy
+                api_id, api_hash, phone_number, bot_username, doi, session_file, proxy, points
             )
             results.append(result)
             if result.get("ok"):
@@ -5425,6 +5844,8 @@ Examples:
                        help='Automatically download papers if available (use with --check-doi)')
     parser.add_argument('-r', '--request-doi', type=str, metavar='DOI_OR_LIST_OR_FILE',
                        help='Request a paper by DOI, a comma/space separated list of DOIs, or a file containing DOIs (one per line)')
+    parser.add_argument('--request-points', type=int, metavar='POINTS',
+                       help='Points bounty to allocate on the confirmation card (use with --request-doi; default: the 1 pt Nexus offers)')
     parser.add_argument(
         "--print-default",
         action="store_true",
@@ -5600,18 +6021,27 @@ Examples:
         if len(doi_list) == 1:
             info_print(f"Requesting paper by DOI: {doi_list[0]}")
             request_result = await request_paper_by_doi(
-                TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME, doi_list[0], SESSION_FILE, proxy_to_use
+                TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME, doi_list[0], SESSION_FILE, proxy_to_use,
+                args.request_points
             )
             if request_result.get("ok"):
-                info_print(f"✓ Paper request sent for DOI {doi_list[0]}")
+                points_allocated = request_result.get("points_allocated")
+                if points_allocated is not None:
+                    info_print(f"✓ Paper request sent for DOI {doi_list[0]} ({points_allocated} pts allocated)")
+                else:
+                    info_print(f"✓ Paper request sent for DOI {doi_list[0]}")
                 print("Request details:")
+                print(request_result.get("details"))
+            elif request_result.get("already_available"):
+                info_print(f"No request needed for DOI {doi_list[0]}")
                 print(request_result.get("details"))
             else:
                 error_print(f"✗ Failed to request paper: {request_result.get('details', request_result.get('error', 'Unknown error'))}")
         else:
             info_print(f"Requesting papers for {len(doi_list)} DOIs...")
             batch_result = await batch_request_papers_by_doi(
-                TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME, doi_list, SESSION_FILE, proxy_to_use
+                TG_API_ID, TG_API_HASH, PHONE, BOT_USERNAME, doi_list, SESSION_FILE, proxy_to_use,
+                points=args.request_points
             )
             print("\nBatch request summary:")
             print(f"  Total: {batch_result.get('total', 0)}")
