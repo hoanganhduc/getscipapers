@@ -128,6 +128,35 @@ cache_dir = get_default_cache_dir()
 DEFAULT_CHROME_USER_DIR = os.path.join(cache_dir, "chrome_user_data")
 os.makedirs(DEFAULT_CHROME_USER_DIR, exist_ok=True)
 
+def find_md5_by_doi(doi):
+    """Return the md5 LibGen holds for a DOI, preferring the PDF.
+
+    LibGen indexes the same files Anna's Archive serves, so this resolves a
+    cold DOI to the md5 that Anna's quota-free record route needs. Returns
+    None when the DOI is unknown or the record carries no files.
+    """
+
+    try:
+        record = search_libgen_by_doi(doi, limit=1)
+    except Exception:
+        return None
+
+    fallback = None
+    for entry in (record or {}).values():
+        if not isinstance(entry, dict):
+            continue
+        for md5, details in (entry.get("files") or {}).items():
+            md5 = (details.get("md5") if isinstance(details, dict) else None) or md5
+            if not md5:
+                continue
+            extension = (details.get("extension") or "").lower() if isinstance(details, dict) else ""
+            if extension == "pdf":
+                return md5.lower()
+            if fallback is None:
+                fallback = md5.lower()
+    return fallback
+
+
 def search_libgen_by_doi(doi, limit=10):
     """
     Search for documents on LibGen using a DOI number via the JSON API,

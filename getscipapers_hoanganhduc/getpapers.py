@@ -2954,6 +2954,19 @@ async def download_from_anna_archive_all_routes(
         allow_browser = bool(ANNA_ROUTE_OPTIONS.get("browser", True))
     if md5 is None:
         md5 = ANNA_ROUTE_OPTIONS.get("md5")
+    if md5 is None:
+        md5 = anna.lookup_md5(doi)
+    if md5 is None:
+        # LibGen indexes the same files, so it resolves a cold DOI to the md5
+        # that R1 needs without paying for the browser check. Imported here
+        # because libgen imports this module and probes its mirrors on import.
+        from . import libgen
+
+        md5 = await asyncio.to_thread(libgen.find_md5_by_doi, doi)
+        if md5:
+            anna.remember_md5(doi, md5)
+            if VERBOSE:
+                print(f"Resolved md5 {md5} for {doi} via LibGen")
 
     safe_doi = doi.replace('/', '_')
     filename = f"{safe_doi}_anna.pdf"
