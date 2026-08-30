@@ -52,11 +52,26 @@ ACTIVE_PROXY = proxy_config.ProxySettings()
 PROXY_RETRY_STATUSES = {403, 407, 408, 429, 500, 502, 503, 504}
 # Route options for Anna's Archive, set from the CLI flags in main().
 ANNA_ROUTE_OPTIONS: Dict[str, object] = {"scidb": False, "browser": True, "md5": None}
+# The IPFS gateway StcGeck reads the Nexus/STC index through.
+IPFS_HTTP_BASE_URL_ENV = "GETSCIPAPERS_IPFS_HTTP_BASE_URL"
+DEFAULT_IPFS_HTTP_BASE_URL = "http://127.0.0.1:8080"
 
 
 def vprint(*args, **kwargs):
     if VERBOSE:
         print(*args, **kwargs)
+
+
+def get_ipfs_http_base_url() -> str:
+    """Return the IPFS gateway to read the Nexus/STC index through.
+
+    A Kubo daemon on the same host is the default. A container stack runs the
+    gateway as a separate service, where ``127.0.0.1`` is the calling container
+    rather than the gateway, so the address is taken from the environment when
+    ``GETSCIPAPERS_IPFS_HTTP_BASE_URL`` is set.
+    """
+
+    return os.getenv(IPFS_HTTP_BASE_URL_ENV, "").strip() or DEFAULT_IPFS_HTTP_BASE_URL
 
 
 def _requests_request(method: str, url: str, **kwargs):
@@ -1379,7 +1394,7 @@ async def search_documents(query: str, limit: int = 1):
     try:
         vprint("Trying StcGeck search...")
         geck = StcGeck(
-            ipfs_http_base_url="http://127.0.0.1:8080",
+            ipfs_http_base_url=get_ipfs_http_base_url(),
             timeout=300,
         )
         try:
