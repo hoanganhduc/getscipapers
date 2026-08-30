@@ -18,7 +18,7 @@ RECORD = {
             "1": {
                 "extension": "pdf",
                 "mirrors": {
-                    "100k Torrent": "torrents/scimag/sm_100000.torrent",
+                    "100k Torrent": "/torrents/scimag/sm_84900000-84999999.torrent",
                     "Libgen": "/ads.php?md5=a5efa9791b836507541d615ed3f069e9",
                 },
             }
@@ -93,7 +93,7 @@ class RelativeMirrorTests(unittest.TestCase):
                 f"mirror URL was passed through unresolved: {url!r}",
             )
         self.assertIn(
-            f"https://{libgen.LIBGEN_DOMAIN}/torrents/scimag/sm_100000.torrent",
+            f"https://{libgen.LIBGEN_DOMAIN}/torrents/scimag/sm_84900000-84999999.torrent",
             stub.urls,
         )
 
