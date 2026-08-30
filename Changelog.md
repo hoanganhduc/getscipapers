@@ -3,6 +3,8 @@
 All notable changes to this project are documented in this file. Dates reflect the commit timestamps for each recorded version in `pyproject.toml`.
 
 ## [Unreleased]
+- Read the IPFS gateway address from `GETSCIPAPERS_IPFS_HTTP_BASE_URL` instead of hardcoding `http://127.0.0.1:8080`, so the Nexus/STC search works when the gateway is a separate container rather than a daemon on the same host.
+- Document running getscipapers and an IPFS gateway as a Docker Compose stack, and the Kubo settings worth revisiting for a read-only node.
 
 ## [0.1.5] - 2026-08-30
 - Reach Anna's Archive through the routes its DDoS-Guard challenge does not gate: the quota-free record route, the fast-download API, the member SciDB page behind an explicit `--scidb` opt-in, and a real browser when no account is configured.

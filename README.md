@@ -32,7 +32,7 @@
 
 ![Info](https://img.shields.io/badge/-Info-informational?logo=info) ![WIP](https://img.shields.io/badge/-WIP-yellow?logo=rocket) ![Experimental](https://img.shields.io/badge/-Experimental-lightgrey?logo=flask)
 
-**getscipapers** is a Python package designed for searching and requesting scientific papers from multiple sources. This project is a **work in progress** and primarily intended for **personal use**. It is not a comprehensive solution for accessing scientific papers. Portions of the code were developed with assistance from [GitHub Copilot](https://github.com/features/copilot) and [ChatGPT Codex](https://openai.com/).
+**getscipapers** is a Python package designed for searching and requesting scientific papers from multiple sources. This project is a **work in progress** and primarily intended for **personal use**. It is not a comprehensive solution for accessing scientific papers. Portions of the code were developed with assistance from [GitHub Copilot](https://github.com/features/copilot), [ChatGPT Codex](https://openai.com/), and [Claude Code](https://claude.com/claude-code).
 
 
 ## Prerequisites
@@ -41,8 +41,8 @@
 
 * **(Optional)** ![🧊](https://img.shields.io/badge/IPFS-Kubo-green?logo=ipfs) Install [IPFS Kubo](https://docs.ipfs.tech/install/command-line/) to access the [Nexus Search](https://www.reddit.com/r/science_nexus) database:
   ```bash
-  wget https://dist.ipfs.tech/kubo/v0.35.0/kubo_v0.35.0_linux-amd64.tar.gz
-  tar -xvzf kubo_v0.35.0_linux-amd64.tar.gz
+  wget https://dist.ipfs.tech/kubo/v0.42.0/kubo_v0.42.0_linux-amd64.tar.gz
+  tar -xvzf kubo_v0.42.0_linux-amd64.tar.gz
   cd kubo
   sudo ./install.sh
   ```
@@ -106,6 +106,14 @@ To use the Nexus Search database, start the IPFS daemon (if this is your first t
 
 ```bash
 ipfs daemon
+```
+
+The daemon is expected at `http://127.0.0.1:8080`. Set
+`GETSCIPAPERS_IPFS_HTTP_BASE_URL` when the gateway runs elsewhere, such as in a
+separate container:
+
+```bash
+export GETSCIPAPERS_IPFS_HTTP_BASE_URL=http://ipfs:8080
 ```
 
 In another terminal, use the `getscipapers` command to search for and request scientific papers. For usage details, run:
@@ -286,6 +294,12 @@ docker run -d \
 ```
 
 This starts the IPFS daemon with persistent storage and required ports. Adjust folder paths as needed.
+Point getscipapers at it with `GETSCIPAPERS_IPFS_HTTP_BASE_URL`, since `127.0.0.1` inside the
+getscipapers container is that container rather than the daemon.
+
+A Docker Compose file that starts both services together lives on the [`docker`
+branch](https://github.com/hoanganhduc/getscipapers/tree/docker), and is documented in
+[Docker Compose Guide](https://hoanganhduc.github.io/getscipapers/docker_compose.html).
 
 
 ### Running getscipapers Commands
