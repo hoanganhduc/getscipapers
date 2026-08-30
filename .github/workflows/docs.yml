@@ -2,6 +2,8 @@ name: Build and Publish Docs
 on:
   workflow_dispatch:
   push:
+    branches:
+      - master
     paths:
       - "docs/**"
       # api_reference.rst is generated from the package, so a source-only
