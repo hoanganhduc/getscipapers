@@ -56,6 +56,14 @@
 
 * **(Optional)** ![👤](https://img.shields.io/badge/Accounts-Required-lightgrey?logo=accountcircle) Create accounts at [Sci-Net](https://sci-net.xyz), [AbleSci](https://ablesci.com), [Science Hub Mutual Aid](https://www.pidantuan.com/), [Z-Library](https://z-library.sk/) or [Facebook](https://www.facebook.com/) to request or download papers/books. For Facebook, join the relevant group after creating your account.
 
+* **(Optional)** ![🗝️](https://img.shields.io/badge/Anna's%20Archive-Membership-orange?logo=archiveofourown) A paid [Anna's Archive](https://annas-archive.org/donate) membership unlocks the fast, quota-free routes. Take the secret key from your account page and put it in `GETSCIPAPERS_ANNA_SECRET_KEY` or a credentials file rather than on the command line. Without a key the Anna's Archive route still works through a real browser; see [the CLI reference](https://hoanganhduc.github.io/getscipapers/cli_reference.html) for what a membership does and does not buy.
+
+* **(Optional)** ![🌐](https://img.shields.io/badge/Browser-Chromium-blue?logo=googlechrome) Install `chromium` and `chromedriver` for the modules that drive a browser. On a Linux host with no display, also install `xvfb`, since the Anna's Archive browser route cannot run headless:
+  ```bash
+  sudo apt install chromium-browser chromium-chromedriver xvfb
+  ```
+  Set `CHROMEDRIVER_PATH`, `CHROME_BINARY`, or `CHROMIUM_BINARY` if they live outside the usual locations.
+
 * ![🐍](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python) Install [Python](https://www.python.org) (version 3.10 or later).
 
 
@@ -145,6 +153,16 @@ getscipapers zlib --login --non-interactive
 
 # Search Z-Library and download selected books (interactive)
 getscipapers zlib --search "deep learning" --download
+
+# Download from Anna's Archive by DOI (uses a browser when no key is configured)
+getscipapers anna --doi 10.1038/nature12373
+
+# Download by md5, which skips DOI resolution and the browser entirely
+getscipapers anna --md5 a5efa9791b836507541d615ed3f069e9
+
+# Check whether the configured Anna's Archive key logs in
+export GETSCIPAPERS_ANNA_SECRET_KEY=your_secret_key
+getscipapers anna --user-info
 ```
 
 ### Graphical wrapper
@@ -346,9 +364,10 @@ modules.
 * This package is a **work in progress** and **may not always function as expected**.
 * The code is not yet fully clean or easy to follow.
 * Searching with `StcGeck` is slow and generally best avoided, except in specific scenarios (such as when the Nexus bot is maintained). If you do not wish to use `StcGeck`, do not start the IPFS Desktop App or run `ipfs daemon`. In this case, the script will return errors, but `StcGeck` will not be used.
-* Many features in the `ablesci`, `scinet`, `libgen`, `wosonhj`, and `facebook` modules depend on Selenium and may break if the target websites change.
+* Many features in the `ablesci`, `scinet`, `libgen`, `wosonhj`, `facebook`, and `anna` modules depend on Selenium and may break if the target websites change.
   * Some features in the `facebook` module may work locally but fail in GitHub Codespace or Docker containers (Docker not yet tested). Logging in from Codespace may trigger Facebook verification due to unfamiliar IP addresses. To resolve this, run the Facebook login for the first time with the `--no-headless` option and use your browser via noVNC to verify your login. Subsequent logins should work without issues. The noVNC access address will look like `https://<your-github-codespace-machine-name>-6080.app.github.dev`.
   * Uploading to `libgen` may occasionally fail; retrying usually resolves the issue.
 * Sci-Hub works as a download source, through a split the mirror list now reflects: resolving a DOI and serving the file are separate capabilities, and no single host does both. `sci-hub.vn` answers every path with the same advertisement page and so resolves nothing, yet serves `/storage/` files correctly; `sci-hub.ru` and `sci-hub.su` resolve DOIs behind an intermittent robot check; `sci-hub.box` serves files but refuses article pages with 403; `sci-hub.ee`, `.al`, `.mk`, and `.vg` resolve but hold no storage. The handler therefore takes the storage path from whichever mirror answers and fetches the bytes from the official host first, and it validates the PDF magic bytes, since an unknown storage bucket answers 200 with the advertisement page rather than an error. The corpus is frozen around 2021; for newer work the `sci-net.xyz` and `sci-net.ru` hosts resolve DOIs and serve files without an account, and succeed on papers no Sci-Hub mirror carries. Note also that mirror domains are frequently abandoned and re-registered by unrelated parties, so a domain that resolves is not necessarily still the service it names.
+* Anna's Archive answers every content path behind a DDoS-Guard challenge that no plain HTTP client can pass, so the `anna` module reaches the files another way: it reads the record JSON or the fast-download API with an account cookie, and otherwise launches Chromium and lets it solve the challenge, which takes 30 to 45 seconds. Headless Chromium is detected and fails, so the browser route needs a real display or `xvfb-run`. The routes addressed by md5 are the cheap ones, and a resolved DOI is cached, so the second fetch of the same DOI is fast whether or not an account is configured.
 * The `nexus` module may not work reliably when using a proxy. Issues such as `307 Temporary Redirect` errors may occur, and downloads may fail if the Nexus Search server or Telegram bot is unavailable.
 * The first time you log in to Telegram (for using Nexus Search bots), you may be required to enter a verification code and password.

@@ -36,3 +36,61 @@ Service Integrations
    :members:
    :undoc-members:
    :show-inheritance:
+
+.. automodule:: getscipapers_hoanganhduc.anna
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: getscipapers_hoanganhduc.scinet
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: getscipapers_hoanganhduc.ablesci
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: getscipapers_hoanganhduc.wosonhj
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: getscipapers_hoanganhduc.facebook
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Support Modules
+---------------
+
+.. automodule:: getscipapers_hoanganhduc.proxy_config
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: getscipapers_hoanganhduc.document_utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: getscipapers_hoanganhduc.selenium_utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: getscipapers_hoanganhduc.checkin
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: getscipapers_hoanganhduc.remove_metadata
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: getscipapers_hoanganhduc.upload
+   :members:
+   :undoc-members:
+   :show-inheritance:
