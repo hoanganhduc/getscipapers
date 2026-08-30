@@ -72,10 +72,20 @@ fi
 # Numbers and booleans need --json; strings are passed as-is.
 cfg() { docker exec "$CONTAINER" ipfs config "$@"; }
 
+# Provide.Strategy replaced Reprovider.Strategy in Kubo 0.38, and 0.43 refuses
+# to start at all when the removed Reprovider section is present. Ask the node
+# which schema it has rather than assuming a version: the Provide section is
+# absent before 0.38, and "Provide" does not match the older "Provider".
+if cfg Provide >/dev/null 2>&1; then
+	STRATEGY_KEY="Provide.Strategy"
+else
+	STRATEGY_KEY="Reprovider.Strategy"
+fi
+
 cfg Datastore.StorageMax "$STORAGE_MAX"
 cfg Datastore.GCPeriod 12h
-cfg Reprovider.Strategy pinned
-echo "set datastore cap, collection period, and pinned-only announcements"
+cfg "$STRATEGY_KEY" pinned
+echo "set the datastore cap, the collection period, and $STRATEGY_KEY=pinned"
 
 case "$PROFILE" in
 	fast)
@@ -89,9 +99,14 @@ case "$PROFILE" in
 		;;
 esac
 
-docker restart "$CONTAINER" >/dev/null
-echo "restarted $CONTAINER"
+# Read before restarting. While the daemon comes back the API is not yet
+# listening, and the CLI falls back to the repository, which the daemon holds
+# a lock on.
 echo
 echo "Current values:"
-docker exec "$CONTAINER" ipfs config Datastore.StorageMax
-docker exec "$CONTAINER" ipfs config Reprovider.Strategy
+cfg Datastore.StorageMax
+cfg Datastore.GCPeriod
+cfg "$STRATEGY_KEY"
+
+docker restart "$CONTAINER" >/dev/null
+echo "restarted $CONTAINER"
