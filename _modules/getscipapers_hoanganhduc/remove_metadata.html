@@ -1,0 +1,799 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>getscipapers_hoanganhduc.remove_metadata &mdash; getscipapers 0.1.6 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=6e0256f3"></script>
+      <script src="../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            getscipapers
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../cli_reference.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../project_documentation.html">Project Architecture and Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../project_documentation.html#getscipapers-project-documentation">getscipapers Project Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../docker_compose.html">Docker Compose Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../ipfs_optimization.html">IPFS Gateway Tuning</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">getscipapers</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">getscipapers_hoanganhduc.remove_metadata</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for getscipapers_hoanganhduc.remove_metadata</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Utilities for stripping pages and metadata from PDF files.</span>
+
+<span class="sd">These functions back the CLI commands that sanitize PDFs before distribution.</span>
+<span class="sd">They centralize parsing of page ranges and the details of working with</span>
+<span class="sd">PyMuPDF so other modules can call into them without worrying about low-level</span>
+<span class="sd">file handling.</span>
+<span class="sd">"""</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">glob</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">fitz</span>  <span class="c1"># PyMuPDF</span>
+
+<div class="viewcode-block" id="parse_page_range">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.remove_metadata.parse_page_range">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">parse_page_range</span><span class="p">(</span><span class="n">page_range_str</span><span class="p">,</span> <span class="n">num_pages</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Parse a page range string like "1-3,5,7-9" into a set of zero-based page indices.</span>
+<span class="sd">    """</span>
+    <span class="n">pages</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">part</span> <span class="ow">in</span> <span class="n">page_range_str</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">','</span><span class="p">):</span>
+        <span class="n">part</span> <span class="o">=</span> <span class="n">part</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="s1">'-'</span> <span class="ow">in</span> <span class="n">part</span><span class="p">:</span>
+            <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="n">part</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">'-'</span><span class="p">)</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">start</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="n">end</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">end</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="n">pages</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="nb">min</span><span class="p">(</span><span class="n">end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">num_pages</span><span class="p">)))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">part</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="n">num_pages</span><span class="p">:</span>
+                <span class="n">pages</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pages</span></div>
+
+
+<div class="viewcode-block" id="remove_metadata">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.remove_metadata.remove_metadata">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">remove_metadata</span><span class="p">(</span><span class="n">input_pdf</span><span class="p">,</span> <span class="n">output_pdf</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Reading input PDF: </span><span class="si">{</span><span class="n">input_pdf</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    
+    <span class="n">doc</span> <span class="o">=</span> <span class="n">fitz</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">input_pdf</span><span class="p">)</span>
+    
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Removing metadata..."</span><span class="p">)</span>
+    
+    <span class="c1"># Clear all metadata</span>
+    <span class="n">doc</span><span class="o">.</span><span class="n">set_metadata</span><span class="p">({})</span>
+    
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Writing output PDF: </span><span class="si">{</span><span class="n">output_pdf</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    
+    <span class="n">doc</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">output_pdf</span><span class="p">)</span>
+    <span class="n">doc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Done."</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="remove_repeated_images">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.remove_metadata.remove_repeated_images">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">remove_repeated_images</span><span class="p">(</span><span class="n">input_pdf</span><span class="p">,</span> <span class="n">output_pdf</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">page_range</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">min_pages_ratio</span><span class="o">=</span><span class="mf">0.9</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Remove images that appear on most or all pages (likely watermarks).</span>
+<span class="sd">    Args:</span>
+<span class="sd">        input_pdf: Path to input PDF.</span>
+<span class="sd">        output_pdf: Path to output PDF.</span>
+<span class="sd">        verbose: Print progress.</span>
+<span class="sd">        page_range: Optional page range string.</span>
+<span class="sd">        min_pages_ratio: Ratio of pages an image must appear on to be considered a watermark.</span>
+<span class="sd">    """</span>
+    <span class="n">doc</span> <span class="o">=</span> <span class="n">fitz</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">input_pdf</span><span class="p">)</span>
+    <span class="n">num_pages</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span>
+    <span class="n">pages_to_process</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">num_pages</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">page_range</span><span class="p">:</span>
+        <span class="n">pages_to_process</span> <span class="o">=</span> <span class="n">parse_page_range</span><span class="p">(</span><span class="n">page_range</span><span class="p">,</span> <span class="n">num_pages</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Processing only pages: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">([</span><span class="n">p</span><span class="o">+</span><span class="mi">1</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">pages_to_process</span><span class="p">])</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="c1"># Map image xref to set of page indices where it appears</span>
+    <span class="n">image_xref_pages</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">pages_to_process</span><span class="p">:</span>
+        <span class="n">page</span> <span class="o">=</span> <span class="n">doc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">images</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">get_images</span><span class="p">(</span><span class="n">full</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># If getting images fails for a page, skip it with a warning</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Warning: could not list images on page </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">continue</span>
+        <span class="k">for</span> <span class="n">img</span> <span class="ow">in</span> <span class="n">images</span><span class="p">:</span>
+            <span class="c1"># Ensure xref is an integer and skip invalid values</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">xref</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">img</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">image_xref_pages</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">xref</span><span class="p">,</span> <span class="nb">set</span><span class="p">())</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+
+    <span class="c1"># Find images that appear on enough pages</span>
+    <span class="n">threshold</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">pages_to_process</span><span class="p">)</span> <span class="o">*</span> <span class="n">min_pages_ratio</span><span class="p">))</span>
+    <span class="n">repeated_xrefs</span> <span class="o">=</span> <span class="p">{</span><span class="n">xref</span> <span class="k">for</span> <span class="n">xref</span><span class="p">,</span> <span class="n">pages</span> <span class="ow">in</span> <span class="n">image_xref_pages</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">pages</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">threshold</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Images considered as watermark (appear on &gt;= </span><span class="si">{</span><span class="n">threshold</span><span class="si">}</span><span class="s2"> pages): </span><span class="si">{</span><span class="n">repeated_xrefs</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="c1"># Actually remove the images by replacing them with white rectangles</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">pages_to_process</span><span class="p">:</span>
+        <span class="n">page</span> <span class="o">=</span> <span class="n">doc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">img_list</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">get_images</span><span class="p">(</span><span class="n">full</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Warning: could not list images on page </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2"> for redaction: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">continue</span>
+        <span class="k">for</span> <span class="n">img</span> <span class="ow">in</span> <span class="n">img_list</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">xref</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">img</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="n">xref</span> <span class="ow">in</span> <span class="n">repeated_xrefs</span><span class="p">:</span>
+                <span class="c1"># Find all rectangles for this image on the page</span>
+                <span class="n">img_rects</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="c1"># Check if xref exists in the document before calling image info</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">doc</span><span class="o">.</span><span class="n">xref_exists</span><span class="p">(</span><span class="n">xref</span><span class="p">):</span>
+                        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Warning: xref </span><span class="si">{</span><span class="n">xref</span><span class="si">}</span><span class="s2"> not found in document, skipping."</span><span class="p">)</span>
+                        <span class="k">continue</span>
+                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="c1"># If xref_exists itself fails, skip this xref</span>
+                    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Warning: error checking xref </span><span class="si">{</span><span class="n">xref</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+                    <span class="k">continue</span>
+
+                <span class="c1"># Try to get image placement info using available APIs, fall back to whole page</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">get_info</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">page</span><span class="p">,</span> <span class="s2">"get_image_info"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="n">get_info</span><span class="p">):</span>
+                        <span class="n">img_rects</span> <span class="o">=</span> <span class="p">[</span><span class="n">inst</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"bbox"</span><span class="p">,</span> <span class="n">page</span><span class="o">.</span><span class="n">rect</span><span class="p">)</span> <span class="k">for</span> <span class="n">inst</span> <span class="ow">in</span> <span class="n">get_info</span><span class="p">(</span><span class="n">xref</span><span class="p">)]</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="c1"># Older/newer PyMuPDF may not provide image bbox info; fall back</span>
+                        <span class="n">img_rects</span> <span class="o">=</span> <span class="p">[</span><span class="n">page</span><span class="o">.</span><span class="n">rect</span><span class="p">]</span>
+                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Warning: Could not get image info for xref </span><span class="si">{</span><span class="n">xref</span><span class="si">}</span><span class="s2"> on page </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+                    <span class="n">img_rects</span> <span class="o">=</span> <span class="p">[</span><span class="n">page</span><span class="o">.</span><span class="n">rect</span><span class="p">]</span>
+
+                <span class="k">for</span> <span class="n">rect</span> <span class="ow">in</span> <span class="n">img_rects</span><span class="p">:</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="c1"># Draw a white rectangle over the image; guard against drawing errors</span>
+                        <span class="n">page</span><span class="o">.</span><span class="n">draw_rect</span><span class="p">(</span><span class="n">rect</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">fill</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Warning: failed to draw rect on page </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2"> for xref </span><span class="si">{</span><span class="n">xref</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+                        <span class="c1"># continue to other rects/xrefs</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Removing metadata..."</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">doc</span><span class="o">.</span><span class="n">set_metadata</span><span class="p">({})</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Warning: failed to set metadata: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Writing output PDF: </span><span class="si">{</span><span class="n">output_pdf</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="c1"># Try a normal save first, then retry with garbage cleanup if it fails (helps with broken xref tables).</span>
+    <span class="c1"># If both fail, rebuild the PDF by copying pages into a new document and save that instead.</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">doc</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">output_pdf</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Warning: save failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">; retrying with garbage cleanup"</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">doc</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">output_pdf</span><span class="p">,</span> <span class="n">garbage</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e2</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Warning: garbage cleanup save failed: </span><span class="si">{</span><span class="n">e2</span><span class="si">}</span><span class="s2">; attempting to rebuild PDF by copying pages into a new document"</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">new_doc</span> <span class="o">=</span> <span class="n">fitz</span><span class="o">.</span><span class="n">open</span><span class="p">()</span>  <span class="c1"># create an empty document</span>
+                <span class="n">new_doc</span><span class="o">.</span><span class="n">insert_pdf</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span>  <span class="c1"># copy pages to rebuild xref table</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">new_doc</span><span class="o">.</span><span class="n">set_metadata</span><span class="p">({})</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="k">pass</span>
+                <span class="n">new_doc</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">output_pdf</span><span class="p">)</span>
+                <span class="n">new_doc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="s2">"Successfully rebuilt PDF and saved."</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e3</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Warning: failed to rebuild and save PDF: </span><span class="si">{</span><span class="n">e3</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+                <span class="n">doc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                <span class="k">raise</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">doc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Done."</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="remove_repeated_text">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.remove_metadata.remove_repeated_text">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">remove_repeated_text</span><span class="p">(</span><span class="n">input_pdf</span><span class="p">,</span> <span class="n">output_pdf</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">page_range</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">min_pages_ratio</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span> <span class="n">min_occurrences</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">min_length</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">position_tolerance</span><span class="o">=</span><span class="mi">5</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Remove repeated text fragments that contain private information about the account/institute used to download a paper.</span>
+<span class="sd">    Only removes fragments matching known private info patterns (not all repeated text).</span>
+<span class="sd">    """</span>
+    <span class="c1"># Patterns for private info (account/institute download info)</span>
+    <span class="n">private_patterns</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Authorized\s*licensed\s*use\s*limited\s*to:.*?Restrictions\s*apply\."</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span> <span class="o">|</span> <span class="n">re</span><span class="o">.</span><span class="n">DOTALL</span><span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s*on.*?from\s*IEEE\s*Xplore"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span> <span class="o">|</span> <span class="n">re</span><span class="o">.</span><span class="n">DOTALL</span><span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s*from\s*.+?\s*on\s*\w+\s*\d{1,2},\s*\d</span><span class="si">{4}</span><span class="s2">\s*at\s*\d</span><span class="si">{2}</span><span class="s2">:\d</span><span class="si">{2}</span><span class="s2">:\d</span><span class="si">{2}</span><span class="s2">\s*UTC"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s*from\s*.+?\s*on\s*\w+\s*\d{1,2},\s*\d</span><span class="si">{4}</span><span class="s2">"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s*from\s*.*"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Authorized\s*licensed\s*use\s*limited\s*to:.*?downloaded.*"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span> <span class="o">|</span> <span class="n">re</span><span class="o">.</span><span class="n">DOTALL</span><span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Licensed\s+to\s+.+?\.\s+Prepared\s+on\s+\w</span><span class="si">{3}</span><span class="s2">\s+\w</span><span class="si">{3}</span><span class="s2">\s+\d{1,2}\s+\d</span><span class="si">{2}</span><span class="s2">:\d</span><span class="si">{2}</span><span class="s2">:\d</span><span class="si">{2}</span><span class="s2">\s+\w+\s+\d</span><span class="si">{4}</span><span class="s2">for\s+download\s+from\s+IP\s+\d{1,3}(?:\.\d{1,3})</span><span class="si">{3}</span><span class="s2">\."</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Licensed\s+to\s+.+?\.\s+Prepared\s+on\s+\w</span><span class="si">{3}</span><span class="s2">\s+\w</span><span class="si">{3}</span><span class="s2">\s+\d{1,2}\s+\d</span><span class="si">{2}</span><span class="s2">:\d</span><span class="si">{2}</span><span class="s2">:\d</span><span class="si">{2}</span><span class="s2">\s+\w+\s+\d</span><span class="si">{4}</span><span class="s2">.*?download\s+from\s+IP\s+\d{1,3}(?:\.\d{1,3})</span><span class="si">{3}</span><span class="s2">\."</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s+via\s+[A-Z][A-Za-z\s\.'&amp;-]+\s+on\s+\w+\s+\d{1,2},?\s+\d</span><span class="si">{4}</span><span class="s2">\s+at\s+\d{1,2}:\d</span><span class="si">{2}</span><span class="s2">(?::\d</span><span class="si">{2}</span><span class="s2">)?\s*(?:\(UTC\))?\."</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s+via\s+[A-Z][A-Za-z\s\.'&amp;-]+\s+on\s+\w+.*"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s+by\s+\[\s*</span><span class="se">\"</span><span class="s2">?[^\]]+</span><span class="se">\"</span><span class="s2">?\s*\]\s+on\s+\[\s*[\d/]+\s*\]\."</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+            <span class="sa">r</span><span class="s2">"by\s+([A-Z][A-Za-z&amp;\-\s\.']+University|[A-Z][A-Za-z&amp;\-\s\.']+UNIVERSITY|[A-Z\s]+UNIVERSITY)\s+on\s+\d</span><span class="si">{2}</span><span class="s2">/\d</span><span class="si">{2}</span><span class="s2">/\d{2,4}\.\s*Re-use\s+and\s+distribution\s+is\s+strictly\s+not\s+permitted,?\s*except\s+for\s+Open\s+Access\s+articles\.?"</span><span class="p">,</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span>
+        <span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+            <span class="sa">r</span><span class="s2">"by\s+([A-Z][A-Za-z&amp;\-\s\.']+University|[A-Z][A-Za-z&amp;\-\s\.']+UNIVERSITY|[A-Z\s]+UNIVERSITY)\s+on\s+\d</span><span class="si">{2}</span><span class="s2">/\d</span><span class="si">{2}</span><span class="s2">/\d{2,4}\."</span><span class="p">,</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span>
+        <span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+            <span class="sa">r</span><span class="s2">"Downloaded\s+by\s+([A-Z][A-Za-z&amp;\-\s\.']+University|[A-Z][A-Za-z&amp;\-\s\.']+UNIVERSITY|[A-Z\s]+UNIVERSITY)[^\.]*\."</span><span class="p">,</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span>
+        <span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+            <span class="sa">r</span><span class="s2">"Downloaded\s+for\s+([A-Z][A-Za-z&amp;\-\s\.']+University|[A-Z][A-Za-z&amp;\-\s\.']+UNIVERSITY|[A-Z\s]+UNIVERSITY)[^\.]*\."</span><span class="p">,</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span>
+        <span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"via\s+[A-Z][A-Za-z\s\.'&amp;-]+\s+University\s+(?:Main\s+)?Library"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"via\s+[A-Z][A-Za-z\s\.'&amp;-]+\s+College\s+(?:Main\s+)?Library"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"via\s+[A-Z][A-Za-z\s\.'&amp;-]+\s+Libraries"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+    <span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Reading input PDF: </span><span class="si">{</span><span class="n">input_pdf</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="n">doc</span> <span class="o">=</span> <span class="n">fitz</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">input_pdf</span><span class="p">)</span>
+    <span class="n">num_pages</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span>
+    <span class="n">pages_to_process</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">num_pages</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">page_range</span><span class="p">:</span>
+        <span class="n">pages_to_process</span> <span class="o">=</span> <span class="n">parse_page_range</span><span class="p">(</span><span class="n">page_range</span><span class="p">,</span> <span class="n">num_pages</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Processing only pages: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">([</span><span class="n">p</span><span class="o">+</span><span class="mi">1</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">pages_to_process</span><span class="p">])</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="c1"># Track text fragments by content and position</span>
+    <span class="n">text_positions</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="c1"># Extract text with positions from each page</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">pages_to_process</span><span class="p">:</span>
+        <span class="n">page</span> <span class="o">=</span> <span class="n">doc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">page</span><span class="o">.</span><span class="n">get_text</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">'</span><span class="se">\n</span><span class="s1">'</span><span class="p">):</span>
+            <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">line</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">min_length</span><span class="p">:</span>
+                <span class="c1"># Only consider lines matching private info patterns</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">pat</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">line</span><span class="p">)</span> <span class="k">for</span> <span class="n">pat</span> <span class="ow">in</span> <span class="n">private_patterns</span><span class="p">):</span>
+                    <span class="k">continue</span>
+                <span class="n">rects</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">search_for</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">rects</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="k">for</span> <span class="n">rect</span> <span class="ow">in</span> <span class="n">rects</span><span class="p">:</span>
+                    <span class="n">position_key</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="nb">round</span><span class="p">(</span><span class="n">rect</span><span class="o">.</span><span class="n">x0</span> <span class="o">/</span> <span class="n">position_tolerance</span><span class="p">)</span> <span class="o">*</span> <span class="n">position_tolerance</span><span class="p">,</span>
+                        <span class="nb">round</span><span class="p">(</span><span class="n">rect</span><span class="o">.</span><span class="n">y0</span> <span class="o">/</span> <span class="n">position_tolerance</span><span class="p">)</span> <span class="o">*</span> <span class="n">position_tolerance</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">line</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">text_positions</span><span class="p">:</span>
+                        <span class="n">text_positions</span><span class="p">[</span><span class="n">line</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+                    <span class="k">if</span> <span class="n">position_key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">text_positions</span><span class="p">[</span><span class="n">line</span><span class="p">]:</span>
+                        <span class="n">text_positions</span><span class="p">[</span><span class="n">line</span><span class="p">][</span><span class="n">position_key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+                    <span class="n">text_positions</span><span class="p">[</span><span class="n">line</span><span class="p">][</span><span class="n">position_key</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+
+    <span class="c1"># Identify text that appears at the same position on multiple pages</span>
+    <span class="n">repeated_fragments</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">threshold_pages</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">min_occurrences</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">pages_to_process</span><span class="p">)</span> <span class="o">*</span> <span class="n">min_pages_ratio</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">text</span><span class="p">,</span> <span class="n">positions</span> <span class="ow">in</span> <span class="n">text_positions</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">for</span> <span class="n">pos</span><span class="p">,</span> <span class="n">pages</span> <span class="ow">in</span> <span class="n">positions</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">pages</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">threshold_pages</span><span class="p">:</span>
+                <span class="n">repeated_fragments</span><span class="p">[(</span><span class="n">text</span><span class="p">,</span> <span class="n">pos</span><span class="p">)]</span> <span class="o">=</span> <span class="n">pages</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Found </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">repeated_fragments</span><span class="p">)</span><span class="si">}</span><span class="s2"> private info text fragments appearing at the same position on at least </span><span class="si">{</span><span class="n">threshold_pages</span><span class="si">}</span><span class="s2"> pages"</span><span class="p">)</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">fragment</span><span class="p">,</span> <span class="n">pos</span><span class="p">),</span> <span class="n">pages</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">repeated_fragments</span><span class="o">.</span><span class="n">items</span><span class="p">())[:</span><span class="mi">5</span><span class="p">]:</span>
+            <span class="n">truncated</span> <span class="o">=</span> <span class="n">fragment</span><span class="p">[:</span><span class="mi">50</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="s1">'...'</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">fragment</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">50</span> <span class="k">else</span> <span class="s1">''</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"- '</span><span class="si">{</span><span class="n">truncated</span><span class="si">}</span><span class="s2">' at position </span><span class="si">{</span><span class="n">pos</span><span class="si">}</span><span class="s2"> appears on </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">pages</span><span class="p">)</span><span class="si">}</span><span class="s2"> pages"</span><span class="p">)</span>
+
+    <span class="c1"># Remove repeated text fragments</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">pages_to_process</span><span class="p">:</span>
+        <span class="n">page</span> <span class="o">=</span> <span class="n">doc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">redact_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">fragment</span><span class="p">,</span> <span class="n">pos</span><span class="p">),</span> <span class="n">pages</span> <span class="ow">in</span> <span class="n">repeated_fragments</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">pages</span><span class="p">:</span>
+                <span class="n">instances</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">search_for</span><span class="p">(</span><span class="n">fragment</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">inst</span> <span class="ow">in</span> <span class="n">instances</span><span class="p">:</span>
+                    <span class="n">instance_pos</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="nb">round</span><span class="p">(</span><span class="n">inst</span><span class="o">.</span><span class="n">x0</span> <span class="o">/</span> <span class="n">position_tolerance</span><span class="p">)</span> <span class="o">*</span> <span class="n">position_tolerance</span><span class="p">,</span>
+                        <span class="nb">round</span><span class="p">(</span><span class="n">inst</span><span class="o">.</span><span class="n">y0</span> <span class="o">/</span> <span class="n">position_tolerance</span><span class="p">)</span> <span class="o">*</span> <span class="n">position_tolerance</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">instance_pos</span> <span class="o">==</span> <span class="n">pos</span><span class="p">:</span>
+                        <span class="n">annot</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">add_redact_annot</span><span class="p">(</span><span class="n">inst</span><span class="p">)</span>
+                        <span class="n">annot</span><span class="o">.</span><span class="n">set_colors</span><span class="p">(</span><span class="n">stroke</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">fill</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+                        <span class="n">annot</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
+                        <span class="n">redact_count</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">redact_count</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">page</span><span class="o">.</span><span class="n">apply_redactions</span><span class="p">(</span><span class="n">images</span><span class="o">=</span><span class="n">fitz</span><span class="o">.</span><span class="n">PDF_REDACT_IMAGE_NONE</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Page </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">: Removed </span><span class="si">{</span><span class="n">redact_count</span><span class="si">}</span><span class="s2"> private info text instances"</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Removing metadata..."</span><span class="p">)</span>
+    <span class="n">doc</span><span class="o">.</span><span class="n">set_metadata</span><span class="p">({})</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Writing output PDF: </span><span class="si">{</span><span class="n">output_pdf</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="n">doc</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">output_pdf</span><span class="p">)</span>
+    <span class="n">doc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Done."</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="remove_watermark">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.remove_metadata.remove_watermark">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">remove_watermark</span><span class="p">(</span><span class="n">input_pdf</span><span class="p">,</span> <span class="n">output_pdf</span><span class="p">,</span> <span class="n">watermark_patterns</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">page_range</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">watermark_patterns</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">watermark_patterns</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="c1"># IEEE Xplore style watermarks</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Authorized\s*licensed\s*use\s*limited\s*to:.*?Restrictions\s*apply\."</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span> <span class="o">|</span> <span class="n">re</span><span class="o">.</span><span class="n">DOTALL</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s*on.*?from\s*IEEE\s*Xplore"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span> <span class="o">|</span> <span class="n">re</span><span class="o">.</span><span class="n">DOTALL</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s*from\s*.+?\s*on\s*\w+\s*\d{1,2},\s*\d</span><span class="si">{4}</span><span class="s2">\s*at\s*\d</span><span class="si">{2}</span><span class="s2">:\d</span><span class="si">{2}</span><span class="s2">:\d</span><span class="si">{2}</span><span class="s2">\s*UTC"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s*from\s*.+?\s*on\s*\w+\s*\d{1,2},\s*\d</span><span class="si">{4}</span><span class="s2">"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s*from\s*.*"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Authorized\s*licensed\s*use\s*limited\s*to:.*?downloaded.*"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span> <span class="o">|</span> <span class="n">re</span><span class="o">.</span><span class="n">DOTALL</span><span class="p">),</span>
+
+            <span class="c1"># Licensed to ... Prepared on ... for download from IP ...</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+            <span class="sa">r</span><span class="s2">"Licensed\s+to\s+.+?\.\s+Prepared\s+on\s+\w</span><span class="si">{3}</span><span class="s2">\s+\w</span><span class="si">{3}</span><span class="s2">\s+\d{1,2}\s+\d</span><span class="si">{2}</span><span class="s2">:\d</span><span class="si">{2}</span><span class="s2">:\d</span><span class="si">{2}</span><span class="s2">\s+\w+\s+\d</span><span class="si">{4}</span><span class="s2">for\s+download\s+from\s+IP\s+\d{1,3}(?:\.\d{1,3})</span><span class="si">{3}</span><span class="s2">\."</span><span class="p">,</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span>
+            <span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+            <span class="sa">r</span><span class="s2">"Licensed\s+to\s+.+?\.\s+Prepared\s+on\s+\w</span><span class="si">{3}</span><span class="s2">\s+\w</span><span class="si">{3}</span><span class="s2">\s+\d{1,2}\s+\d</span><span class="si">{2}</span><span class="s2">:\d</span><span class="si">{2}</span><span class="s2">:\d</span><span class="si">{2}</span><span class="s2">\s+\w+\s+\d</span><span class="si">{4}</span><span class="s2">.*?download\s+from\s+IP\s+\d{1,3}(?:\.\d{1,3})</span><span class="si">{3}</span><span class="s2">\."</span><span class="p">,</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span>
+            <span class="p">),</span>
+
+            <span class="c1"># Additional publisher watermarks</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s*from\s*ScienceDirect.*"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"©\s*\d</span><span class="si">{4}</span><span class="s2">\s*Elsevier\s*Ltd\."</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Provided\s*by\s*.+?\s*Library"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s*on\s*.+?\s*from\s*SpringerLink"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Copyright\s*ACM.*For\s*personal\s*use"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span> <span class="o">|</span> <span class="n">re</span><span class="o">.</span><span class="n">DOTALL</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"This\s*content\s*downloaded\s*from"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s*by\s*.+?\s*at\s*"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s*from\s*Cambridge\s*Core"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s*from\s*Wiley\s*Online\s*Library"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"For\s*Review\s*Only"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+
+            <span class="c1"># SIAM watermarks</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s*\d</span><span class="si">{2}</span><span class="s2">/\d</span><span class="si">{2}</span><span class="s2">/\d</span><span class="si">{2}</span><span class="s2">\s*to\s*\d+\.\d+\.\d+\.\d+.*Redistribution\s*subject\s*to\s*SIAM\s*license\s*or\s*copyright;\s*see\s*https://epubs\.siam\.org/terms-privacy"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Copyright.*by\s*SIAM\.\s*Unauthorized\s*reproduction\s*of\s*this\s*article\s*is\s*prohibited"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+
+            <span class="c1"># MR reference review watermark</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"\[\s*MR\d+.*?for\s*reviewing\s*purposes\s*only\s*\]"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"\[\s*Review\s+Copy\s+Only\s*\]"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+
+            <span class="c1"># University download watermarks (considering all possible displaying of university names)</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+            <span class="sa">r</span><span class="s2">"by\s+([A-Z][A-Za-z&amp;\-\s\.']+University|[A-Z][A-Za-z&amp;\-\s\.']+UNIVERSITY|[A-Z\s]+UNIVERSITY)\s+on\s+\d</span><span class="si">{2}</span><span class="s2">/\d</span><span class="si">{2}</span><span class="s2">/\d{2,4}\.\s*Re-use\s+and\s+distribution\s+is\s+strictly\s+not\s+permitted,?\s*except\s+for\s+Open\s+Access\s+articles\.?"</span><span class="p">,</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span>
+            <span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+            <span class="sa">r</span><span class="s2">"by\s+([A-Z][A-Za-z&amp;\-\s\.']+University|[A-Z][A-Za-z&amp;\-\s\.']+UNIVERSITY|[A-Z\s]+UNIVERSITY)\s+on\s+\d</span><span class="si">{2}</span><span class="s2">/\d</span><span class="si">{2}</span><span class="s2">/\d{2,4}\."</span><span class="p">,</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span>
+            <span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+            <span class="sa">r</span><span class="s2">"Downloaded\s+by\s+([A-Z][A-Za-z&amp;\-\s\.']+University|[A-Z][A-Za-z&amp;\-\s\.']+UNIVERSITY|[A-Z\s]+UNIVERSITY)[^\.]*\."</span><span class="p">,</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span>
+            <span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+            <span class="sa">r</span><span class="s2">"Downloaded\s+for\s+([A-Z][A-Za-z&amp;\-\s\.']+University|[A-Z][A-Za-z&amp;\-\s\.']+UNIVERSITY|[A-Z\s]+UNIVERSITY)[^\.]*\."</span><span class="p">,</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span>
+            <span class="p">),</span>
+
+            <span class="c1"># ACS publications sharing guidelines watermark</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"See\s+https://pubs\.acs\.org/sharingguidelines\s+for\s+options\s+on\s+how\s+to\s+legitimately\s+share\s+published\s+articles\."</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+
+            <span class="c1"># Chemistry Europe Online Library patterns</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"\d+,\s*ja,\s*Downloaded\s+from\s+https://chemistry-europe\.onlinelibrary.*"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s+from\s+https://chemistry-europe\.onlinelibrary.*"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="c1"># Standalone article identifier pattern (new)</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"\d+,\s*ja,"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="c1"># General pattern for article identifiers followed by download info</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"\d+,\s*[a-z]{1,4},\s*Downloaded\s+from\s+.*"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            
+            <span class="c1"># Downloaded via INSTITUTION patterns</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s+via\s+[A-Z][A-Za-z\s\.'&amp;-]+\s+on\s+\w+\s+\d{1,2},?\s+\d</span><span class="si">{4}</span><span class="s2">\s+at\s+\d{1,2}:\d</span><span class="si">{2}</span><span class="s2">(?::\d</span><span class="si">{2}</span><span class="s2">)?\s*(?:\(UTC\))?\."</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s+via\s+[A-Z][A-Za-z\s\.'&amp;-]+\s+on\s+\w+.*"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+
+            <span class="c1"># OUP Academic watermark (improved)</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+            <span class="sa">r</span><span class="s2">"Downloaded\s+from\s+https://academic\.oup\.com/.*?by\s+.*?user\s+on\s+\d{1,2}\s+\w+\s+\d</span><span class="si">{4}</span><span class="s2">"</span><span class="p">,</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span>
+            <span class="p">),</span>
+            <span class="c1"># More general OUP pattern to catch variations</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+            <span class="sa">r</span><span class="s2">"Downloaded\s+from\s+https://academic\.oup\.com/.*"</span><span class="p">,</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span>
+            <span class="p">),</span>
+            
+            <span class="c1"># Pattern for "Downloaded by [ "Institution"] on [Date]" format</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"Downloaded\s+by\s+\[\s*</span><span class="se">\"</span><span class="s2">?[^\]]+</span><span class="se">\"</span><span class="s2">?\s*\]\s+on\s+\[\s*[\d/]+\s*\]\."</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            
+            <span class="c1"># General University Library patterns</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"via\s+[A-Z][A-Za-z\s\.'&amp;-]+\s+University\s+(?:Main\s+)?Library"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"via\s+[A-Z][A-Za-z\s\.'&amp;-]+\s+College\s+(?:Main\s+)?Library"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+            <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">"via\s+[A-Z][A-Za-z\s\.'&amp;-]+\s+Libraries"</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">),</span>
+        <span class="p">]</span>
+    
+    <span class="c1"># Enhanced DOI pattern to match any DOI format (with or without prefix)</span>
+    <span class="n">doi_pattern</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">'(?:doi:?\s*|DOI\s+|https?://(?:dx\.)?doi\.org/)?10\.\d{4,9}/[-._;()/:a-zA-Z0-9]+'</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Reading input PDF: </span><span class="si">{</span><span class="n">input_pdf</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="c1"># First, remove repeated images (likely watermarks)</span>
+    <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">suffix</span><span class="o">=</span><span class="s1">'.pdf'</span><span class="p">,</span> <span class="n">delete</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="k">as</span> <span class="n">tmp_img_file</span><span class="p">:</span>
+        <span class="n">tmp_img_pdf</span> <span class="o">=</span> <span class="n">tmp_img_file</span><span class="o">.</span><span class="n">name</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Step 1: Removing repeated images (possible image watermarks)..."</span><span class="p">)</span>
+    <span class="n">remove_repeated_images</span><span class="p">(</span>
+        <span class="n">input_pdf</span><span class="p">,</span>
+        <span class="n">tmp_img_pdf</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span>
+        <span class="n">page_range</span><span class="o">=</span><span class="n">page_range</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Next, remove repeated text patterns (likely headers, footers)</span>
+    <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">suffix</span><span class="o">=</span><span class="s1">'.pdf'</span><span class="p">,</span> <span class="n">delete</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="k">as</span> <span class="n">tmp_text_file</span><span class="p">:</span>
+        <span class="n">tmp_text_pdf</span> <span class="o">=</span> <span class="n">tmp_text_file</span><span class="o">.</span><span class="n">name</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Step 2: Removing repeated text (possible header/footer watermarks)..."</span><span class="p">)</span>
+    <span class="n">remove_repeated_text</span><span class="p">(</span>
+        <span class="n">tmp_img_pdf</span><span class="p">,</span>
+        <span class="n">tmp_text_pdf</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span>
+        <span class="n">page_range</span><span class="o">=</span><span class="n">page_range</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Clean up the first temporary file</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">tmp_img_pdf</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Deleted temporary file: </span><span class="si">{</span><span class="n">tmp_img_pdf</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Could not delete temporary file </span><span class="si">{</span><span class="n">tmp_img_pdf</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="c1"># Use the new temporary file for the next steps</span>
+    <span class="n">tmp_img_pdf</span> <span class="o">=</span> <span class="n">tmp_text_pdf</span>
+
+    <span class="n">doc</span> <span class="o">=</span> <span class="n">fitz</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">tmp_img_pdf</span><span class="p">)</span>
+    <span class="n">num_pages</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span>
+    <span class="n">pages_to_process</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">num_pages</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">page_range</span><span class="p">:</span>
+        <span class="n">pages_to_process</span> <span class="o">=</span> <span class="n">parse_page_range</span><span class="p">(</span><span class="n">page_range</span><span class="p">,</span> <span class="n">num_pages</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Processing only pages: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">([</span><span class="n">p</span><span class="o">+</span><span class="mi">1</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">pages_to_process</span><span class="p">])</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="n">total_watermarks_found</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">total_watermarks_redacted</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_pages</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">pages_to_process</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">page</span> <span class="o">=</span> <span class="n">doc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Step 3: Processing page </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">num_pages</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+        <span class="c1"># Extract text</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">get_text</span><span class="p">()</span>
+
+        <span class="c1"># Search for watermark patterns</span>
+        <span class="k">for</span> <span class="n">pattern_idx</span><span class="p">,</span> <span class="n">pattern</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">watermark_patterns</span><span class="p">):</span>
+            <span class="n">matches</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">pattern</span><span class="o">.</span><span class="n">finditer</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">verbose</span> <span class="ow">and</span> <span class="n">matches</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  Pattern </span><span class="si">{</span><span class="n">pattern_idx</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">watermark_patterns</span><span class="p">)</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">pattern</span><span class="o">.</span><span class="n">pattern</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"    Found </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">matches</span><span class="p">)</span><span class="si">}</span><span class="s2"> matches"</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">match_idx</span><span class="p">,</span> <span class="n">match</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">matches</span><span class="p">):</span>
+                <span class="n">matched_text</span> <span class="o">=</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">()</span>
+                <span class="n">total_watermarks_found</span> <span class="o">+=</span> <span class="mi">1</span>
+
+                <span class="c1"># Skip if the text contains a DOI, unless it's from specific sources we want to remove</span>
+                <span class="k">if</span> <span class="n">doi_pattern</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">matched_text</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="s2">"academic.oup.com"</span> <span class="ow">in</span> <span class="n">matched_text</span> <span class="ow">or</span> 
+                                                            <span class="s2">"aacrjournals.org"</span> <span class="ow">in</span> <span class="n">matched_text</span> <span class="ow">or</span>
+                                                            <span class="s2">"onlinelibrary.wiley.com"</span> <span class="ow">in</span> <span class="n">matched_text</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"    Skipping watermark containing DOI: </span><span class="si">{</span><span class="n">matched_text</span><span class="p">[:</span><span class="mi">80</span><span class="p">]</span><span class="si">}{</span><span class="s1">'...'</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="n">matched_text</span><span class="p">)</span><span class="o">&gt;</span><span class="mi">80</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">''</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+                    <span class="k">continue</span>
+
+                <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"    Watermark match </span><span class="si">{</span><span class="n">match_idx</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">matched_text</span><span class="p">[:</span><span class="mi">80</span><span class="p">]</span><span class="si">}{</span><span class="s1">'...'</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="n">matched_text</span><span class="p">)</span><span class="o">&gt;</span><span class="mi">80</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">''</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+                <span class="c1"># Search for the text on the page</span>
+                <span class="n">text_instances</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">search_for</span><span class="p">(</span><span class="n">matched_text</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"      Found </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">text_instances</span><span class="p">)</span><span class="si">}</span><span class="s2"> instance(s) on page for redaction."</span><span class="p">)</span>
+
+                <span class="c1"># To avoid white boxes, use redaction with fill=None and keep_appearance=True,</span>
+                <span class="c1"># which tries to preserve the background as much as possible.</span>
+                <span class="k">for</span> <span class="n">inst_idx</span><span class="p">,</span> <span class="n">inst</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">text_instances</span><span class="p">):</span>
+                    <span class="n">annot</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">add_redact_annot</span><span class="p">(</span><span class="n">inst</span><span class="p">)</span>
+                    <span class="n">annot</span><span class="o">.</span><span class="n">set_colors</span><span class="p">(</span><span class="n">stroke</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">fill</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+                    <span class="n">annot</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
+                    <span class="n">total_watermarks_redacted</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"        Redacted instance </span><span class="si">{</span><span class="n">inst_idx</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">inst</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+                <span class="c1"># Apply all redactions on the page</span>
+                <span class="k">if</span> <span class="n">text_instances</span><span class="p">:</span>
+                    <span class="n">page</span><span class="o">.</span><span class="n">apply_redactions</span><span class="p">(</span><span class="n">images</span><span class="o">=</span><span class="n">fitz</span><span class="o">.</span><span class="n">PDF_REDACT_IMAGE_NONE</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"      Applied redactions for this match."</span><span class="p">)</span>
+
+    <span class="c1"># Remove metadata</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Step 4: Removing metadata..."</span><span class="p">)</span>
+    <span class="n">doc</span><span class="o">.</span><span class="n">set_metadata</span><span class="p">({})</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Step 5: Writing output PDF: </span><span class="si">{</span><span class="n">output_pdf</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Summary: </span><span class="si">{</span><span class="n">total_watermarks_found</span><span class="si">}</span><span class="s2"> watermark(s) found, </span><span class="si">{</span><span class="n">total_watermarks_redacted</span><span class="si">}</span><span class="s2"> instance(s) redacted."</span><span class="p">)</span>
+
+    <span class="n">doc</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">output_pdf</span><span class="p">)</span>
+    <span class="n">doc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="c1"># Clean up temporary file</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">tmp_img_pdf</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Deleted temporary file: </span><span class="si">{</span><span class="n">tmp_img_pdf</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Could not delete temporary file </span><span class="si">{</span><span class="n">tmp_img_pdf</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Done."</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="remove_watermark_inplace">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.remove_metadata.remove_watermark_inplace">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">remove_watermark_inplace</span><span class="p">(</span><span class="n">input_pdf</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">page_range</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Remove watermarks from a PDF file in-place.</span>
+<span class="sd">    """</span>
+    <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">suffix</span><span class="o">=</span><span class="s1">'.pdf'</span><span class="p">,</span> <span class="n">delete</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="k">as</span> <span class="n">tmp_file</span><span class="p">:</span>
+        <span class="n">temp_output</span> <span class="o">=</span> <span class="n">tmp_file</span><span class="o">.</span><span class="n">name</span>
+
+    <span class="n">remove_watermark</span><span class="p">(</span>
+        <span class="n">input_pdf</span><span class="p">,</span>
+        <span class="n">temp_output</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span>
+        <span class="n">page_range</span><span class="o">=</span><span class="n">page_range</span>
+    <span class="p">)</span>
+
+    <span class="n">shutil</span><span class="o">.</span><span class="n">move</span><span class="p">(</span><span class="n">temp_output</span><span class="p">,</span> <span class="n">input_pdf</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="collect_pdf_files">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.remove_metadata.collect_pdf_files">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">collect_pdf_files</span><span class="p">(</span><span class="n">input_arg</span><span class="p">):</span>
+    <span class="c1"># If it's a directory, recursively find all PDFs</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">input_arg</span><span class="p">):</span>
+        <span class="n">pdfs</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">root</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">files</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">walk</span><span class="p">(</span><span class="n">input_arg</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">'.pdf'</span><span class="p">):</span>
+                    <span class="n">pdfs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">f</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">pdfs</span>
+    <span class="c1"># If it's a file, just return it</span>
+    <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">input_arg</span><span class="p">)</span> <span class="ow">and</span> <span class="n">input_arg</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">'.pdf'</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">input_arg</span><span class="p">]</span>
+    <span class="c1"># If it's a list (comma or space separated), split and collect</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Try comma or space split</span>
+        <span class="n">parts</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="sa">r</span><span class="s1">'[,\s]+'</span><span class="p">,</span> <span class="n">input_arg</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+        <span class="n">pdfs</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">part</span> <span class="ow">in</span> <span class="n">parts</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">part</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">part</span><span class="p">):</span>
+                <span class="n">pdfs</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">collect_pdf_files</span><span class="p">(</span><span class="n">part</span><span class="p">))</span>
+            <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">part</span><span class="p">)</span> <span class="ow">and</span> <span class="n">part</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">'.pdf'</span><span class="p">):</span>
+                <span class="n">pdfs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">part</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">pdfs</span></div>
+
+
+<div class="viewcode-block" id="main">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.remove_metadata.main">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">parent_package</span> <span class="o">=</span> <span class="vm">__name__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'.'</span> <span class="ow">in</span> <span class="vm">__name__</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">parent_package</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">program_name</span> <span class="o">=</span> <span class="s1">'remove_metadata'</span>
+    <span class="k">elif</span> <span class="s1">'_'</span> <span class="ow">in</span> <span class="n">parent_package</span><span class="p">:</span>
+        <span class="n">parent_package</span> <span class="o">=</span> <span class="n">parent_package</span><span class="p">[:</span><span class="n">parent_package</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s1">'_'</span><span class="p">)]</span>
+        <span class="n">program_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">parent_package</span><span class="si">}</span><span class="s2"> remove_metadata"</span>
+
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
+        <span class="n">prog</span><span class="o">=</span><span class="n">program_name</span><span class="p">,</span>
+        <span class="n">formatter_class</span><span class="o">=</span><span class="n">argparse</span><span class="o">.</span><span class="n">RawDescriptionHelpFormatter</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">"Remove metadata and watermarks from PDF(s) while preserving clickable URLs and selectable text."</span><span class="p">,</span>
+        <span class="n">epilog</span><span class="o">=</span><span class="s2">"""</span>
+<span class="s2">Examples:</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> input.pdf</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> input1.pdf,input2.pdf</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> input1.pdf input2.pdf</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> folder_with_pdfs/</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> input.pdf --inplace</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> folder_with_pdfs/ -v -p "1-3,5,7-9"</span>
+<span class="s2">"""</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"input_pdf"</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Input PDF file, comma/space-separated list, or folder"</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"-i"</span><span class="p">,</span> <span class="s2">"--inplace"</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">"store_true"</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Overwrite the input PDF file(s)"</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"-v"</span><span class="p">,</span> <span class="s2">"--verbose"</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">"store_true"</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Print progress details"</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"-p"</span><span class="p">,</span> <span class="s2">"--watermark-pages"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">"Page range to remove watermarks, e.g. '1-3,5,7-9' (1-based)"</span>
+    <span class="p">)</span>
+    <span class="n">args</span><span class="p">,</span> <span class="n">extra</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_known_args</span><span class="p">()</span>
+
+    <span class="c1"># Support space-separated files as extra arguments</span>
+    <span class="n">input_args</span> <span class="o">=</span> <span class="p">[</span><span class="n">args</span><span class="o">.</span><span class="n">input_pdf</span><span class="p">]</span> <span class="o">+</span> <span class="n">extra</span>
+    <span class="n">pdf_files</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">input_args</span><span class="p">:</span>
+        <span class="n">pdf_files</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">collect_pdf_files</span><span class="p">(</span><span class="n">arg</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">pdf_files</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"No PDF files found to process."</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">for</span> <span class="n">pdf_path</span> <span class="ow">in</span> <span class="n">pdf_files</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Processing file: </span><span class="si">{</span><span class="n">pdf_path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">suffix</span><span class="o">=</span><span class="s1">'.pdf'</span><span class="p">,</span> <span class="n">delete</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="k">as</span> <span class="n">tmp_file</span><span class="p">:</span>
+                <span class="n">temp_output</span> <span class="o">=</span> <span class="n">tmp_file</span><span class="o">.</span><span class="n">name</span>
+
+            <span class="n">remove_watermark</span><span class="p">(</span>
+                <span class="n">pdf_path</span><span class="p">,</span>
+                <span class="n">temp_output</span><span class="p">,</span>
+                <span class="n">verbose</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span>
+                <span class="n">page_range</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">watermark_pages</span>
+            <span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">inplace</span><span class="p">:</span>
+                <span class="n">shutil</span><span class="o">.</span><span class="n">move</span><span class="p">(</span><span class="n">temp_output</span><span class="p">,</span> <span class="n">pdf_path</span><span class="p">)</span>
+                <span class="n">output_pdf</span> <span class="o">=</span> <span class="n">pdf_path</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">base</span><span class="p">,</span> <span class="n">ext</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">)</span>
+                <span class="n">output_pdf</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">base</span><span class="si">}</span><span class="s2">_no_metadata</span><span class="si">{</span><span class="n">ext</span><span class="si">}</span><span class="s2">"</span>
+                <span class="n">shutil</span><span class="o">.</span><span class="n">move</span><span class="p">(</span><span class="n">temp_output</span><span class="p">,</span> <span class="n">output_pdf</span><span class="p">)</span>
+
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Successfully processed PDF. Output saved to: </span><span class="si">{</span><span class="n">output_pdf</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s1">'temp_output'</span> <span class="ow">in</span> <span class="nb">locals</span><span class="p">():</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">temp_output</span><span class="p">)</span>
+                <span class="k">except</span><span class="p">:</span>
+                    <span class="k">pass</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Failed to process PDF </span><span class="si">{</span><span class="n">pdf_path</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2026, Duc A. Hoang.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

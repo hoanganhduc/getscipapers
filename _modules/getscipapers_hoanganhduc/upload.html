@@ -1,0 +1,500 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>getscipapers_hoanganhduc.upload &mdash; getscipapers 0.1.6 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=6e0256f3"></script>
+      <script src="../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            getscipapers
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../cli_reference.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../project_documentation.html">Project Architecture and Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../project_documentation.html#getscipapers-project-documentation">getscipapers Project Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../docker_compose.html">Docker Compose Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../ipfs_optimization.html">IPFS Gateway Tuning</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">getscipapers</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">getscipapers_hoanganhduc.upload</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for getscipapers_hoanganhduc.upload</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Helpers for uploading PDFs to third-party services.</span>
+
+<span class="sd">The upload routines are intentionally isolated from the rest of the request</span>
+<span class="sd">flow so they can be invoked independently via CLI. Network calls and command</span>
+<span class="sd">construction live here to keep other modules focused on discovery and download</span>
+<span class="sd">responsibilities.</span>
+<span class="sd">"""</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">getpapers</span><span class="p">,</span> <span class="n">libgen</span><span class="p">,</span> <span class="n">nexus</span><span class="p">,</span> <span class="n">scinet</span><span class="p">,</span> <span class="n">proxy_config</span>
+
+<span class="n">ICONS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">'info'</span><span class="p">:</span> <span class="s1">'ℹ️'</span><span class="p">,</span>
+    <span class="s1">'success'</span><span class="p">:</span> <span class="s1">'✅'</span><span class="p">,</span>
+    <span class="s1">'error'</span><span class="p">:</span> <span class="s1">'❌'</span><span class="p">,</span>
+    <span class="s1">'warning'</span><span class="p">:</span> <span class="s1">'⚠️'</span><span class="p">,</span>
+    <span class="s1">'upload'</span><span class="p">:</span> <span class="s1">'📤'</span><span class="p">,</span>
+    <span class="s1">'link'</span><span class="p">:</span> <span class="s1">'🔗'</span><span class="p">,</span>
+    <span class="s1">'check'</span><span class="p">:</span> <span class="s1">'🔍'</span><span class="p">,</span>
+    <span class="s1">'sync'</span><span class="p">:</span> <span class="s1">'🔄'</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="n">ACTIVE_PROXY</span> <span class="o">=</span> <span class="n">proxy_config</span><span class="o">.</span><span class="n">ProxySettings</span><span class="p">()</span>
+
+<div class="viewcode-block" id="get_files_from_args">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.upload.get_files_from_args">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_files_from_args</span><span class="p">(</span><span class="n">paths</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">file_types</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Collect files from given paths. If file_types is specified (list of extensions, e.g. ['pdf']),</span>
+<span class="sd">    only files with those extensions are included. Default is ['pdf'].</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">file_types</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">file_types</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'pdf'</span><span class="p">]</span>
+    <span class="n">file_types</span> <span class="o">=</span> <span class="p">[</span><span class="n">ft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)</span> <span class="k">for</span> <span class="n">ft</span> <span class="ow">in</span> <span class="n">file_types</span><span class="p">]</span>
+    <span class="n">files</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">:</span>
+        <span class="n">abs_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">abs_path</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'info'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Scanning directory: </span><span class="si">{</span><span class="n">abs_path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">abs_path</span><span class="p">):</span>
+                <span class="n">full_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">abs_path</span><span class="p">,</span> <span class="n">entry</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">full_path</span><span class="p">):</span>
+                    <span class="n">ext</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">entry</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">ext</span> <span class="ow">in</span> <span class="n">file_types</span><span class="p">:</span>
+                        <span class="n">files</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">full_path</span><span class="p">))</span>
+                    <span class="k">elif</span> <span class="n">verbose</span><span class="p">:</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'warning'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Skipping </span><span class="si">{</span><span class="n">entry</span><span class="si">}</span><span class="s2"> (not in allowed types: </span><span class="si">{</span><span class="n">file_types</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">abs_path</span><span class="p">):</span>
+            <span class="n">ext</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">abs_path</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">ext</span> <span class="ow">in</span> <span class="n">file_types</span><span class="p">:</span>
+                <span class="n">files</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">abs_path</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'warning'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Skipping </span><span class="si">{</span><span class="n">abs_path</span><span class="si">}</span><span class="s2"> (not in allowed types: </span><span class="si">{</span><span class="n">file_types</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'warning'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Warning: </span><span class="si">{</span><span class="n">abs_path</span><span class="si">}</span><span class="s2"> is not a valid file or directory, skipping."</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">files</span></div>
+
+
+<div class="viewcode-block" id="upload_to_tempsh">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.upload.upload_to_tempsh">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">upload_to_tempsh</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">file_path</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+        <span class="n">file_name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'upload'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Uploading </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> to temp.sh..."</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="s2">"rb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">files_param</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'file'</span><span class="p">:</span> <span class="p">(</span><span class="n">file_name</span><span class="p">,</span> <span class="n">f</span><span class="p">)}</span>
+            <span class="n">resp</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+                <span class="s2">"https://temp.sh/upload"</span><span class="p">,</span>
+                <span class="n">files</span><span class="o">=</span><span class="n">files_param</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'success'</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> uploaded to temp.sh: </span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'link'</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">resp</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Failed to upload </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> to temp.sh: </span><span class="si">{</span><span class="n">resp</span><span class="o">.</span><span class="n">text</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="upload_to_bashupload">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.upload.upload_to_bashupload">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">upload_to_bashupload</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">file_path</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+        <span class="n">file_name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'upload'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Uploading </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> to bashupload.com..."</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="s2">"rb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">files_param</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'file'</span><span class="p">:</span> <span class="p">(</span><span class="n">file_name</span><span class="p">,</span> <span class="n">f</span><span class="p">)}</span>
+            <span class="n">resp</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+                <span class="s2">"https://bashupload.com/"</span><span class="p">,</span>
+                <span class="n">files</span><span class="o">=</span><span class="n">files_param</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'success'</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> uploaded to bashupload.com: </span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'link'</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">resp</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Failed to upload </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> to bashupload.com: </span><span class="si">{</span><span class="n">resp</span><span class="o">.</span><span class="n">text</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="run_command">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.upload.run_command">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">run_command</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'info'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Executing: </span><span class="si">{</span><span class="s1">' '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">command</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="n">check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span> <span class="ow">and</span> <span class="n">result</span><span class="o">.</span><span class="n">stdout</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'info'</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">stdout</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">stdout</span>
+    <span class="k">except</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">CalledProcessError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Error executing command: </span><span class="si">{</span><span class="s1">' '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">command</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Error message: </span><span class="si">{</span><span class="n">e</span><span class="o">.</span><span class="n">stderr</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="upload_to_gdrive">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.upload.upload_to_gdrive">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">upload_to_gdrive</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">remote_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'info'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Note: This function requires rclone to be installed and configured with your Google account."</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'info'</span><span class="p">]</span><span class="si">}</span><span class="s2"> See https://rclone.org/drive/ for setup instructions."</span><span class="p">)</span>
+    <span class="c1"># Ensure 'getscipapers' folder exists in Google Drive root</span>
+    <span class="n">folder_name</span> <span class="o">=</span> <span class="s2">"getscipapers"</span>
+    <span class="n">folder_path</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"gdrive:</span><span class="si">{</span><span class="n">folder_name</span><span class="si">}</span><span class="s2">"</span>
+    <span class="n">run_command</span><span class="p">([</span><span class="s2">"rclone"</span><span class="p">,</span> <span class="s2">"mkdir"</span><span class="p">,</span> <span class="n">folder_path</span><span class="p">],</span> <span class="n">verbose</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">file_path</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'check'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Checking if </span><span class="si">{</span><span class="n">file_path</span><span class="si">}</span><span class="s2"> exists..."</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">file_path</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Error: </span><span class="si">{</span><span class="n">file_path</span><span class="si">}</span><span class="s2"> does not exist"</span><span class="p">)</span>
+            <span class="k">continue</span>
+        <span class="c1"># Always upload directly to getscipapers folder, no subfolders</span>
+        <span class="n">remote</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+        <span class="n">destination</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">folder_path</span><span class="si">}</span><span class="s2">"</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'sync'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Uploading </span><span class="si">{</span><span class="n">file_path</span><span class="si">}</span><span class="s2"> to Google Drive folder '</span><span class="si">{</span><span class="n">folder_name</span><span class="si">}</span><span class="s2">' as </span><span class="si">{</span><span class="n">remote</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+        <span class="n">run_command</span><span class="p">([</span><span class="s2">"rclone"</span><span class="p">,</span> <span class="s2">"copy"</span><span class="p">,</span> <span class="n">file_path</span><span class="p">,</span> <span class="n">destination</span><span class="p">,</span> <span class="s2">"--progress"</span><span class="p">],</span> <span class="n">verbose</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'success'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Upload to </span><span class="si">{</span><span class="n">destination</span><span class="si">}</span><span class="s2"> completed"</span><span class="p">)</span>
+        <span class="c1"># Share the link to the uploaded file, not the folder</span>
+        <span class="n">shareable_link</span> <span class="o">=</span> <span class="n">share_gdrive_item</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">folder_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">remote</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'success'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Upload complete!"</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'link'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Shareable link to file: </span><span class="si">{</span><span class="n">shareable_link</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="share_gdrive_item">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.upload.share_gdrive_item">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">share_gdrive_item</span><span class="p">(</span><span class="n">gdrive_path</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="n">gdrive_path</span> <span class="o">=</span> <span class="n">gdrive_path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">"gdrive:"</span><span class="p">,</span> <span class="s2">""</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'info'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Preparing to share: </span><span class="si">{</span><span class="n">gdrive_path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="n">command</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"rclone"</span><span class="p">,</span> <span class="s2">"link"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"gdrive:</span><span class="si">{</span><span class="n">gdrive_path</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'link'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Creating shareable link for </span><span class="si">{</span><span class="n">gdrive_path</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+    <span class="n">shareable_link</span> <span class="o">=</span> <span class="n">run_command</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">shareable_link</span></div>
+
+
+<div class="viewcode-block" id="upload_to_dropbox">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.upload.upload_to_dropbox">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">upload_to_dropbox</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">remote_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'info'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Note: This function requires rclone to be installed and configured with your Dropbox account."</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'info'</span><span class="p">]</span><span class="si">}</span><span class="s2"> See https://rclone.org/dropbox/ for setup instructions."</span><span class="p">)</span>
+    <span class="c1"># Ensure 'getscipapers' folder exists in Dropbox root</span>
+    <span class="n">folder_name</span> <span class="o">=</span> <span class="s2">"getscipapers"</span>
+    <span class="n">folder_path</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"dropbox:</span><span class="si">{</span><span class="n">folder_name</span><span class="si">}</span><span class="s2">"</span>
+    <span class="n">run_command</span><span class="p">([</span><span class="s2">"rclone"</span><span class="p">,</span> <span class="s2">"mkdir"</span><span class="p">,</span> <span class="n">folder_path</span><span class="p">],</span> <span class="n">verbose</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">file_path</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'check'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Checking if </span><span class="si">{</span><span class="n">file_path</span><span class="si">}</span><span class="s2"> exists..."</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">file_path</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Error: </span><span class="si">{</span><span class="n">file_path</span><span class="si">}</span><span class="s2"> does not exist"</span><span class="p">)</span>
+            <span class="k">continue</span>
+        <span class="c1"># Always upload directly to getscipapers folder, no subfolders</span>
+        <span class="n">remote</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+        <span class="n">destination</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">folder_path</span><span class="si">}</span><span class="s2">"</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'sync'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Uploading </span><span class="si">{</span><span class="n">file_path</span><span class="si">}</span><span class="s2"> to Dropbox folder '</span><span class="si">{</span><span class="n">folder_name</span><span class="si">}</span><span class="s2">' as </span><span class="si">{</span><span class="n">remote</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+        <span class="n">run_command</span><span class="p">([</span><span class="s2">"rclone"</span><span class="p">,</span> <span class="s2">"copy"</span><span class="p">,</span> <span class="n">file_path</span><span class="p">,</span> <span class="n">destination</span><span class="p">,</span> <span class="s2">"--progress"</span><span class="p">],</span> <span class="n">verbose</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'success'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Upload to </span><span class="si">{</span><span class="n">destination</span><span class="si">}</span><span class="s2"> completed"</span><span class="p">)</span>
+        <span class="n">shareable_link</span> <span class="o">=</span> <span class="n">share_dropbox_item</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">folder_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">remote</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'success'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Upload complete!"</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'link'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Shareable link: </span><span class="si">{</span><span class="n">shareable_link</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="share_dropbox_item">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.upload.share_dropbox_item">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">share_dropbox_item</span><span class="p">(</span><span class="n">dropbox_path</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="n">dropbox_path</span> <span class="o">=</span> <span class="n">dropbox_path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">"dropbox:"</span><span class="p">,</span> <span class="s2">""</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'info'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Preparing to share: </span><span class="si">{</span><span class="n">dropbox_path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="n">command</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"rclone"</span><span class="p">,</span> <span class="s2">"link"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"dropbox:</span><span class="si">{</span><span class="n">dropbox_path</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'link'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Creating shareable link for </span><span class="si">{</span><span class="n">dropbox_path</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
+    <span class="n">shareable_link</span> <span class="o">=</span> <span class="n">run_command</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="n">verbose</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">shareable_link</span></div>
+
+
+<div class="viewcode-block" id="upload_to_libgen">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.upload.upload_to_libgen">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">upload_to_libgen</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">file_path</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+        <span class="n">file_name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'upload'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Uploading </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> to LibGen..."</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">libgen</span><span class="o">.</span><span class="n">upload_and_register_to_libgen</span><span class="p">(</span><span class="n">filepath</span><span class="o">=</span><span class="n">file_path</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">result</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'success'</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> uploaded to LibGen: </span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'link'</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Failed to upload </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> to LibGen: No URL returned."</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Exception uploading </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> to LibGen: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="upload_to_nexus_aaron">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.upload.upload_to_nexus_aaron">[docs]</a>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">upload_to_nexus_aaron</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">file_path</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+        <span class="n">file_name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'upload'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Uploading </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> to nexus_aaron bot..."</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">nexus</span><span class="o">.</span><span class="n">simple_upload_to_nexus_aaron</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'info'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Result from nexus_aaron: </span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"ok"</span><span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'success'</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> uploaded to nexus_aaron: </span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'link'</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'url'</span><span class="p">,</span><span class="w"> </span><span class="s1">'No URL returned'</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Failed to upload </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> to nexus_aaron: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'error'</span><span class="p">,</span><span class="w"> </span><span class="s1">'Unknown error'</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Exception uploading </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> to nexus_aaron: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="upload_to_scinet">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.upload.upload_to_scinet">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">upload_to_scinet</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">file_path</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">file_path</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">'.pdf'</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'warning'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Skipping non-PDF file: </span><span class="si">{</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">continue</span>
+        <span class="n">file_name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'upload'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Uploading </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> to SciNet..."</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">scinet</span><span class="o">.</span><span class="n">upload_pdf_to_scinet_simple</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"success"</span><span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'success'</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> uploaded to SciNet: </span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'link'</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'url'</span><span class="p">,</span><span class="w"> </span><span class="s1">'No URL returned'</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Failed to upload </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> to SciNet: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'error'</span><span class="p">,</span><span class="w"> </span><span class="s1">'Unknown error'</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">result</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'success'</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> uploaded to SciNet (no URL returned)."</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Failed to upload </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> to SciNet: Unexpected result type (</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">result</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Exception uploading </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2"> to SciNet: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="main">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.upload.main">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">parent_package</span> <span class="o">=</span> <span class="vm">__name__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'.'</span> <span class="ow">in</span> <span class="vm">__name__</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">parent_package</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">program_name</span> <span class="o">=</span> <span class="s1">'upload'</span>
+    <span class="k">elif</span> <span class="s1">'_'</span> <span class="ow">in</span> <span class="n">parent_package</span><span class="p">:</span>
+        <span class="n">parent_package</span> <span class="o">=</span> <span class="n">parent_package</span><span class="p">[:</span><span class="n">parent_package</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s1">'_'</span><span class="p">)]</span>
+        <span class="n">program_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">parent_package</span><span class="si">}</span><span class="s2"> upload"</span>
+        
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
+        <span class="n">prog</span><span class="o">=</span><span class="n">program_name</span><span class="p">,</span> 
+        <span class="n">formatter_class</span><span class="o">=</span><span class="n">argparse</span><span class="o">.</span><span class="n">RawDescriptionHelpFormatter</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">"Upload files to temp.sh, bashupload.com, Google Drive, Dropbox, LibGen, Nexus, or SciNet"</span><span class="p">,</span>
+        <span class="n">epilog</span><span class="o">=</span><span class="s2">"""</span>
+<span class="s2">Examples:</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> myfile.txt --service temp.sh</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> "folder1,file2.pdf" --service bashupload.com</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> myfolder --service gdrive --remote-path backup/myfolder</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> file.txt --service dropbox --remote-path shared/file.txt -v</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> paper.pdf --service libgen</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> file.pdf --service nexus</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> paper.pdf --service scinet</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> file.pdf --service temp.sh,libgen</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> file.pdf --service temp.sh libgen</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> myfolder --file-type pdf docx --service gdrive</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> "folder1,file2.pdf" --service temp.sh,dropbox --file-type pdf</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> myfile.pdf --service gdrive --verbose</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> myfile.pdf --service scinet --file-type pdf</span>
+<span class="s2">  </span><span class="si">%(prog)s</span><span class="s2"> "folder1,file2.pdf" --service nexus,libgen,scinet</span>
+<span class="s2">"""</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"paths"</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">"Comma-separated list of files or directories to upload"</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"--file-type"</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">"+"</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">"Only include files with these extensions (e.g. pdf, txt, docx). Default: pdf"</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"--service"</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">"+"</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">"Choose one or more upload services (comma or space separated). Options: temp.sh, bashupload.com, gdrive, dropbox, libgen, nexus, scinet"</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"--remote-path"</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">"Destination path in Google Drive/Dropbox (only for gdrive/dropbox service)"</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"-v"</span><span class="p">,</span> <span class="s2">"--verbose"</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">"store_true"</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Print detailed progress information"</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"--proxy"</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">"?"</span><span class="p">,</span>
+        <span class="n">const</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">proxy_config</span><span class="o">.</span><span class="n">DEFAULT_PROXY_FILE</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s2">"Path to proxy configuration JSON file (default: </span><span class="si">{</span><span class="n">proxy_config</span><span class="o">.</span><span class="n">DEFAULT_PROXY_FILE</span><span class="si">}</span><span class="s2">)."</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"--no-proxy"</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">"store_true"</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">"Disable proxy usage for upload requests."</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"--auto-proxy"</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">"store_true"</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">"Automatically fetch a working proxy configuration when missing or invalid."</span>
+    <span class="p">)</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">global</span> <span class="n">ACTIVE_PROXY</span>
+    <span class="n">ACTIVE_PROXY</span> <span class="o">=</span> <span class="n">proxy_config</span><span class="o">.</span><span class="n">configure_from_cli</span><span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">proxy</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">no_proxy</span><span class="p">,</span> <span class="n">auto_fetch</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">auto_proxy</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">verbose</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Flatten and normalize service list (support comma or space separated)</span>
+    <span class="n">raw_services</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">service</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">services</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"temp.sh"</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'info'</span><span class="p">]</span><span class="si">}</span><span class="s2"> No service specified, defaulting to temp.sh"</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">args</span><span class="o">.</span><span class="n">service</span><span class="p">:</span>
+            <span class="n">raw_services</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">x</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">s</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">","</span><span class="p">)</span> <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">strip</span><span class="p">()])</span>
+        <span class="n">services</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">raw_services</span><span class="p">]</span>
+
+    <span class="n">valid_services</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"temp.sh"</span><span class="p">,</span> <span class="s2">"bashupload.com"</span><span class="p">,</span> <span class="s2">"gdrive"</span><span class="p">,</span> <span class="s2">"dropbox"</span><span class="p">,</span> <span class="s2">"libgen"</span><span class="p">,</span> <span class="s2">"nexus"</span><span class="p">,</span> <span class="s2">"scinet"</span><span class="p">}</span>
+    <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">services</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">s</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">valid_services</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Invalid service: </span><span class="si">{</span><span class="n">s</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">s</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">"gdrive"</span><span class="p">,</span> <span class="s2">"dropbox"</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">services</span><span class="p">)</span> <span class="ow">and</span> <span class="n">args</span><span class="o">.</span><span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'info'</span><span class="p">]</span><span class="si">}</span><span class="s2"> Note: Google Drive and Dropbox services require rclone to be installed and configured. See https://rclone.org/ for instructions."</span><span class="p">)</span>
+
+    <span class="n">input_paths</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">args</span><span class="o">.</span><span class="n">paths</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">","</span><span class="p">)</span> <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">strip</span><span class="p">()]</span>
+    <span class="n">files</span> <span class="o">=</span> <span class="n">get_files_from_args</span><span class="p">(</span><span class="n">input_paths</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">file_type</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">files</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ICONS</span><span class="p">[</span><span class="s1">'error'</span><span class="p">]</span><span class="si">}</span><span class="s2"> No valid files found to upload."</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">service</span> <span class="ow">in</span> <span class="n">services</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">service</span> <span class="o">==</span> <span class="s2">"temp.sh"</span><span class="p">:</span>
+            <span class="n">upload_to_tempsh</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">verbose</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">service</span> <span class="o">==</span> <span class="s2">"bashupload.com"</span><span class="p">:</span>
+            <span class="n">upload_to_bashupload</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">verbose</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">service</span> <span class="o">==</span> <span class="s2">"gdrive"</span><span class="p">:</span>
+            <span class="n">upload_to_gdrive</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">remote_path</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">verbose</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">service</span> <span class="o">==</span> <span class="s2">"dropbox"</span><span class="p">:</span>
+            <span class="n">upload_to_dropbox</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">remote_path</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">verbose</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">service</span> <span class="o">==</span> <span class="s2">"libgen"</span><span class="p">:</span>
+            <span class="n">upload_to_libgen</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">verbose</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">service</span> <span class="o">==</span> <span class="s2">"nexus"</span><span class="p">:</span>
+            <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">upload_to_nexus_aaron</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">verbose</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">service</span> <span class="o">==</span> <span class="s2">"scinet"</span><span class="p">:</span>
+            <span class="n">upload_to_scinet</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">verbose</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">service</span> <span class="o">==</span> <span class="s2">"scinet"</span><span class="p">:</span>
+            <span class="n">upload_to_scinet</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">verbose</span><span class="p">)</span></div>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2026, Duc A. Hoang.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

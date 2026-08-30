@@ -1,0 +1,1536 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>getscipapers_hoanganhduc.anna &mdash; getscipapers 0.1.6 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=6e0256f3"></script>
+      <script src="../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            getscipapers
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../cli_reference.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../project_documentation.html">Project Architecture and Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../project_documentation.html#getscipapers-project-documentation">getscipapers Project Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../docker_compose.html">Docker Compose Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../ipfs_optimization.html">IPFS Gateway Tuning</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">getscipapers</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">getscipapers_hoanganhduc.anna</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for getscipapers_hoanganhduc.anna</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Account-aware document retrieval from Anna's Archive.</span>
+
+<span class="sd">Anna's Archive deliberately triggers a DDoS-Guard recheck on every request to</span>
+<span class="sd">its ``/search``, ``/md5/``, ``/doi/``, ``/scidb/`` and ``/slow_download/``</span>
+<span class="sd">pages, so a plain HTTP client can never read them. This module reaches the same</span>
+<span class="sd">documents through the routes that are *not* challenge-gated, and falls back to</span>
+<span class="sd">a real browser when no account is configured:</span>
+
+<span class="sd">``R1``</span>
+<span class="sd">    ``/db/aarecord_elasticsearch/md5:&lt;md5&gt;.json`` read with a member cookie,</span>
+<span class="sd">    then one of the IPFS gateways it lists. Needs an md5, but consumes no</span>
+<span class="sd">    download quota, so it is tried first.</span>
+<span class="sd">``R2``</span>
+<span class="sd">    ``/dyn/api/fast_download.json`` keyed by the account secret. Needs an md5</span>
+<span class="sd">    and spends one of the daily fast downloads.</span>
+<span class="sd">``R4``</span>
+<span class="sd">    ``/scidb/&lt;doi&gt;`` fetched with the account cookie, which bypasses the</span>
+<span class="sd">    challenge for paid members. This is the only fast DOI-addressed route, but</span>
+<span class="sd">    Anna's Archive restricts the perk to "normal browser use", so it stays</span>
+<span class="sd">    behind an explicit opt-in.</span>
+<span class="sd">``R5``</span>
+<span class="sd">    Chromium with a software WebGL stack, left to solve the challenge on its</span>
+<span class="sd">    own. Needs no credentials and takes about 30-45 seconds.</span>
+
+<span class="sd">Routes ``R1`` and ``R2`` are addressed by md5 rather than by DOI, so a DOI has</span>
+<span class="sd">to be resolved first. Only ``R4``, ``R5``, an explicit ``--md5`` or the local</span>
+<span class="sd">md5 cache can do that; there is no working external oracle. A membership alone</span>
+<span class="sd">therefore does not make a cold DOI resolvable unless ``--scidb`` is armed.</span>
+
+<span class="sd">The login cookie, the "key routes are disabled" flag and the browser attempt</span>
+<span class="sd">counter are module globals, so they are shared by every download in a process.</span>
+<span class="sd">That is safe today because callers download one DOI at a time.</span>
+<span class="sd">"""</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">platform</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">signal</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">stat</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">urllib.request</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">getpass</span><span class="w"> </span><span class="kn">import</span> <span class="n">getpass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">urllib.parse</span><span class="w"> </span><span class="kn">import</span> <span class="n">unquote</span><span class="p">,</span> <span class="n">urlparse</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">proxy_config</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.document_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">save_document_if_valid</span>
+
+<span class="n">VERBOSE</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="n">ACTIVE_PROXY</span> <span class="o">=</span> <span class="n">proxy_config</span><span class="o">.</span><span class="n">ProxySettings</span><span class="p">()</span>
+<span class="n">PROXY_RETRY_STATUSES</span> <span class="o">=</span> <span class="p">{</span><span class="mi">403</span><span class="p">,</span> <span class="mi">407</span><span class="p">,</span> <span class="mi">408</span><span class="p">,</span> <span class="mi">429</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">502</span><span class="p">,</span> <span class="mi">503</span><span class="p">,</span> <span class="mi">504</span><span class="p">}</span>
+
+<span class="n">DOMAINS</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">"https://annas-archive.gl"</span><span class="p">,</span>
+    <span class="s2">"https://annas-archive.pk"</span><span class="p">,</span>
+    <span class="s2">"https://annas-archive.gd"</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># Cookie that /account/ sets on a successful login, and the environment</span>
+<span class="c1"># variable that supplies the secret key without touching disk.</span>
+<span class="n">ACCOUNT_COOKIE_NAME</span> <span class="o">=</span> <span class="s2">"aa_account_id2"</span>
+<span class="n">SECRET_KEY_ENV</span> <span class="o">=</span> <span class="s2">"GETSCIPAPERS_ANNA_SECRET_KEY"</span>
+
+<span class="c1"># Title of the DDoS-Guard interstitial. The solved record page still mentions</span>
+<span class="c1"># "ddos-guard" in its own scripts, so the challenge must never be detected by</span>
+<span class="c1"># searching the body for that string.</span>
+<span class="n">CHALLENGE_TITLE</span> <span class="o">=</span> <span class="s2">"DDoS-Guard"</span>
+
+<span class="n">REQUEST_TIMEOUT</span> <span class="o">=</span> <span class="mi">30</span>
+<span class="n">DOWNLOAD_TIMEOUT</span> <span class="o">=</span> <span class="mi">120</span>
+<span class="c1"># Observed solve times are 33-45s; the cap leaves room for a slow network.</span>
+<span class="n">BROWSER_TIMEOUT</span> <span class="o">=</span> <span class="mi">120</span>
+<span class="c1"># A --doi-file run must not be able to spend hours in Chromium.</span>
+<span class="n">MAX_BROWSER_ATTEMPTS</span> <span class="o">=</span> <span class="mi">3</span>
+
+<span class="n">DEFAULT_ROUTES</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"R1"</span><span class="p">,</span> <span class="s2">"R2"</span><span class="p">,</span> <span class="s2">"R4"</span><span class="p">,</span> <span class="s2">"R5"</span><span class="p">)</span>
+
+<span class="c1"># Software WebGL. A GPU-less host otherwise blocklists WebGL entirely and the</span>
+<span class="c1"># automatic check degrades to hCaptcha.</span>
+<span class="n">SWIFTSHADER_FLAGS</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">"--use-gl=angle"</span><span class="p">,</span>
+    <span class="s2">"--use-angle=swiftshader"</span><span class="p">,</span>
+    <span class="s2">"--enable-unsafe-swiftshader"</span><span class="p">,</span>
+    <span class="s2">"--ignore-gpu-blocklist"</span><span class="p">,</span>
+    <span class="s2">"--enable-gpu-rasterization"</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># Process-wide session state.</span>
+<span class="n">_SESSION_COOKIE</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="n">_KEY_ROUTES_DISABLED</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="n">_QUOTA_EXHAUSTED</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="n">_BROWSER_ATTEMPTS</span> <span class="o">=</span> <span class="mi">0</span>
+
+
+<div class="viewcode-block" id="debug_print">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.debug_print">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">debug_print</span><span class="p">(</span><span class="n">message</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Print debug message only if verbose mode is enabled"""</span>
+    <span class="k">if</span> <span class="n">VERBOSE</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Debug: </span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_redact</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Hide the account secret in anything that may be printed or logged."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">text</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">text</span>
+    <span class="k">return</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="sa">r</span><span class="s2">"(key=)[^&amp;\s]+"</span><span class="p">,</span> <span class="sa">r</span><span class="s2">"\1&lt;redacted&gt;"</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_requests_request</span><span class="p">(</span><span class="n">method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Run a requests call direct first, then retry with proxy if direct fails."""</span>
+
+    <span class="n">proxies</span> <span class="o">=</span> <span class="n">ACTIVE_PROXY</span><span class="o">.</span><span class="n">requests_proxies</span><span class="p">()</span>
+    <span class="n">direct_kwargs</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">direct_kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"proxies"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">requests</span><span class="o">.</span><span class="n">Session</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+            <span class="n">session</span><span class="o">.</span><span class="n">trust_env</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">request</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="o">**</span><span class="n">direct_kwargs</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">proxies</span> <span class="ow">and</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="ow">in</span> <span class="n">PROXY_RETRY_STATUSES</span><span class="p">:</span>
+                <span class="n">debug_print</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">"Direct </span><span class="si">{</span><span class="n">method</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span><span class="si">}</span><span class="s2"> request to </span><span class="si">{</span><span class="n">_redact</span><span class="p">(</span><span class="n">url</span><span class="p">)</span><span class="si">}</span><span class="s2"> returned "</span>
+                    <span class="sa">f</span><span class="s2">"HTTP </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2">; retrying with configured proxy."</span>
+                <span class="p">)</span>
+                <span class="n">response</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                <span class="n">proxy_kwargs</span> <span class="o">=</span> <span class="n">direct_kwargs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">proxy_kwargs</span><span class="p">[</span><span class="s2">"proxies"</span><span class="p">]</span> <span class="o">=</span> <span class="n">proxies</span>
+                <span class="k">return</span> <span class="n">session</span><span class="o">.</span><span class="n">request</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="o">**</span><span class="n">proxy_kwargs</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">response</span>
+    <span class="k">except</span> <span class="n">requests</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">RequestException</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">proxies</span><span class="p">:</span>
+            <span class="k">raise</span>
+        <span class="n">debug_print</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"Direct </span><span class="si">{</span><span class="n">method</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span><span class="si">}</span><span class="s2"> request to </span><span class="si">{</span><span class="n">_redact</span><span class="p">(</span><span class="n">url</span><span class="p">)</span><span class="si">}</span><span class="s2"> failed: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">; "</span>
+            <span class="s2">"retrying with configured proxy."</span>
+        <span class="p">)</span>
+        <span class="n">proxy_kwargs</span> <span class="o">=</span> <span class="n">direct_kwargs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">proxy_kwargs</span><span class="p">[</span><span class="s2">"proxies"</span><span class="p">]</span> <span class="o">=</span> <span class="n">proxies</span>
+        <span class="k">with</span> <span class="n">requests</span><span class="o">.</span><span class="n">Session</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+            <span class="n">session</span><span class="o">.</span><span class="n">trust_env</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="k">return</span> <span class="n">session</span><span class="o">.</span><span class="n">request</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="o">**</span><span class="n">proxy_kwargs</span><span class="p">)</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Paths</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<div class="viewcode-block" id="get_cache_directory">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.get_cache_directory">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_cache_directory</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">"""Get the appropriate cache directory for the current platform, using getscipapers/anna subfolder"""</span>
+    <span class="n">system</span> <span class="o">=</span> <span class="n">platform</span><span class="o">.</span><span class="n">system</span><span class="p">()</span>
+    <span class="n">subfolder</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s1">'getscipapers'</span><span class="p">,</span> <span class="s1">'anna'</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">system</span> <span class="o">==</span> <span class="s2">"Windows"</span><span class="p">:</span>
+        <span class="n">appdata</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'APPDATA'</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">appdata</span><span class="p">:</span>
+            <span class="n">cache_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">appdata</span><span class="p">,</span> <span class="n">subfolder</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">cache_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s1">'~'</span><span class="p">),</span> <span class="s1">'AppData'</span><span class="p">,</span> <span class="s1">'Roaming'</span><span class="p">,</span> <span class="n">subfolder</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">system</span> <span class="o">==</span> <span class="s2">"Darwin"</span><span class="p">:</span>
+        <span class="n">cache_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s1">'~'</span><span class="p">),</span> <span class="s1">'Library'</span><span class="p">,</span> <span class="s1">'Caches'</span><span class="p">,</span> <span class="n">subfolder</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">cache_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s1">'~'</span><span class="p">),</span> <span class="s1">'.config'</span><span class="p">,</span> <span class="n">subfolder</span><span class="p">)</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">cache_dir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cache_dir</span></div>
+
+
+
+<div class="viewcode-block" id="get_credentials_directory">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.get_credentials_directory">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_credentials_directory</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">"""Get the directory holding the saved account secret."""</span>
+    <span class="k">return</span> <span class="n">get_cache_directory</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="get_download_directory">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.get_download_directory">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_download_directory</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">"""Get the default download directory for the current platform, using getscipapers/anna subfolder"""</span>
+    <span class="n">system</span> <span class="o">=</span> <span class="n">platform</span><span class="o">.</span><span class="n">system</span><span class="p">()</span>
+    <span class="n">subfolder</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s1">'getscipapers'</span><span class="p">,</span> <span class="s1">'anna'</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">system</span> <span class="o">==</span> <span class="s2">"Windows"</span><span class="p">:</span>
+        <span class="n">userprofile</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'USERPROFILE'</span><span class="p">)</span>
+        <span class="n">base</span> <span class="o">=</span> <span class="n">userprofile</span> <span class="k">if</span> <span class="n">userprofile</span> <span class="k">else</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s1">'~'</span><span class="p">)</span>
+        <span class="n">download_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="s1">'Downloads'</span><span class="p">,</span> <span class="n">subfolder</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">download_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s1">'~'</span><span class="p">),</span> <span class="s1">'Downloads'</span><span class="p">,</span> <span class="n">subfolder</span><span class="p">)</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">download_dir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">download_dir</span></div>
+
+
+
+<div class="viewcode-block" id="default_credentials_file">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.default_credentials_file">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">default_credentials_file</span><span class="p">():</span>
+    <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">get_credentials_directory</span><span class="p">(),</span> <span class="s2">"credentials.json"</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="md5_cache_file">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.md5_cache_file">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">md5_cache_file</span><span class="p">():</span>
+    <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">get_cache_directory</span><span class="p">(),</span> <span class="s2">"md5_cache.json"</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Credentials</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<div class="viewcode-block" id="load_credentials_from_file">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.load_credentials_from_file">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_credentials_from_file</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Read the account secret from a JSON credentials file.</span>
+
+<span class="sd">    Expected format::</span>
+
+<span class="sd">        {"anna_secret_key": "your_secret_key"}</span>
+
+<span class="sd">    Returns the secret key, or None when the file is missing or unusable.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">filepath</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Credentials file not found: </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="s1">'r'</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">'utf-8'</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">credentials</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Invalid JSON in credentials file: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Error reading credentials file: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">secret_key</span> <span class="o">=</span> <span class="n">credentials</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'anna_secret_key'</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">secret_key</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="s2">"Invalid credentials file: missing anna_secret_key"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Loaded Anna's Archive secret key from </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="c1"># Mirror a non-default credentials file into the default location so later</span>
+    <span class="c1"># runs work without repeating --credentials.</span>
+    <span class="n">default_file</span> <span class="o">=</span> <span class="n">default_credentials_file</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span> <span class="o">!=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">default_file</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">_read_secret_key</span><span class="p">(</span><span class="n">default_file</span><span class="p">)</span> <span class="o">!=</span> <span class="n">secret_key</span><span class="p">:</span>
+            <span class="n">save_credentials_to_file</span><span class="p">(</span><span class="n">secret_key</span><span class="p">,</span> <span class="n">default_file</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">secret_key</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_read_secret_key</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Read the secret key from a file without mirroring it anywhere."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">filepath</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="s1">'r'</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">'utf-8'</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'anna_secret_key'</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+
+<div class="viewcode-block" id="save_credentials_to_file">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.save_credentials_to_file">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_credentials_to_file</span><span class="p">(</span><span class="n">secret_key</span><span class="p">,</span> <span class="n">filepath</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Write the account secret to a credentials file with owner-only permissions."""</span>
+    <span class="n">filepath</span> <span class="o">=</span> <span class="n">filepath</span> <span class="ow">or</span> <span class="n">default_credentials_file</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">filepath</span><span class="p">),</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="s1">'w'</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">'utf-8'</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">({</span><span class="s2">"anna_secret_key"</span><span class="p">:</span> <span class="n">secret_key</span><span class="p">},</span> <span class="n">f</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s1">'posix'</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">chmod</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="n">stat</span><span class="o">.</span><span class="n">S_IRUSR</span> <span class="o">|</span> <span class="n">stat</span><span class="o">.</span><span class="n">S_IWUSR</span><span class="p">)</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Credentials saved to </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Failed to save credentials to </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="resolve_secret_key">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.resolve_secret_key">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">resolve_secret_key</span><span class="p">(</span><span class="n">explicit</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">credentials_file</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">interactive</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Find the account secret, preferring the least persistent source.</span>
+
+<span class="sd">    The order is explicit argument, environment variable, ``--credentials``</span>
+<span class="sd">    file, default credentials file, and finally an interactive prompt. Callers</span>
+<span class="sd">    running a batch download pass ``interactive=False`` so a missing key can</span>
+<span class="sd">    never block on a prompt.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">explicit</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">explicit</span> <span class="o">==</span> <span class="s2">"-"</span><span class="p">:</span>
+            <span class="n">explicit</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">explicit</span><span class="p">:</span>
+            <span class="n">debug_print</span><span class="p">(</span><span class="s2">"Using Anna's Archive secret key from the command line"</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">explicit</span>
+
+    <span class="n">from_env</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">SECRET_KEY_ENV</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">from_env</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Using Anna's Archive secret key from $</span><span class="si">{</span><span class="n">SECRET_KEY_ENV</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">from_env</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">credentials_file</span><span class="p">:</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">load_credentials_from_file</span><span class="p">(</span><span class="n">credentials_file</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">key</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">key</span>
+
+    <span class="n">key</span> <span class="o">=</span> <span class="n">_read_secret_key</span><span class="p">(</span><span class="n">default_credentials_file</span><span class="p">())</span>
+    <span class="k">if</span> <span class="n">key</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="s2">"Using Anna's Archive secret key from the default credentials file"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">key</span>
+
+    <span class="k">if</span> <span class="n">interactive</span> <span class="ow">and</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="o">.</span><span class="n">isatty</span><span class="p">():</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">getpass</span><span class="p">(</span><span class="s2">"Anna's Archive secret key: "</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">key</span><span class="p">:</span>
+            <span class="n">save_credentials_to_file</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">key</span>
+
+    <span class="n">debug_print</span><span class="p">(</span><span class="s2">"No Anna's Archive secret key configured"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="kc">None</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Account session</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<div class="viewcode-block" id="login">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.login">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">login</span><span class="p">(</span><span class="n">secret_key</span><span class="p">,</span> <span class="n">domain</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Exchange the account secret for a session cookie.</span>
+
+<span class="sd">    Anna's Archive answers a bad key with HTTP 200 as well, so success is</span>
+<span class="sd">    decided by whether the account cookie came back, never by the status code.</span>
+<span class="sd">    """</span>
+    <span class="n">url</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2">/account/"</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">resp</span> <span class="o">=</span> <span class="n">_requests_request</span><span class="p">(</span>
+            <span class="s2">"post"</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s2">"key"</span><span class="p">:</span> <span class="n">secret_key</span><span class="p">},</span>
+            <span class="n">allow_redirects</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">REQUEST_TIMEOUT</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Login request to </span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2"> failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">cookie</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">cookies</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">ACCOUNT_COOKIE_NAME</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">cookie</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Login at </span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2"> did not return an account cookie (HTTP </span><span class="si">{</span><span class="n">resp</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">expiry</span> <span class="o">=</span> <span class="n">account_cookie_expiry</span><span class="p">(</span><span class="n">cookie</span><span class="p">)</span>
+    <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Logged in at </span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2">"</span> <span class="o">+</span> <span class="p">(</span><span class="sa">f</span><span class="s2">", cookie valid until </span><span class="si">{</span><span class="n">expiry</span><span class="si">}</span><span class="s2">"</span> <span class="k">if</span> <span class="n">expiry</span> <span class="k">else</span> <span class="s2">""</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">cookie</span></div>
+
+
+
+<div class="viewcode-block" id="account_cookie_expiry">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.account_cookie_expiry">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">account_cookie_expiry</span><span class="p">(</span><span class="n">cookie</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Return the expiry of an account cookie, or None when it cannot be read.</span>
+
+<span class="sd">    Anna's Archive strips the constant JWT header before setting the cookie, so</span>
+<span class="sd">    the value is ``payload.signature`` and the payload is the *first* segment.</span>
+<span class="sd">    The signature is never verified here; this only reports when a stored</span>
+<span class="sd">    cookie has gone stale.</span>
+<span class="sd">    """</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="n">cookie</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"."</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">padded</span> <span class="o">=</span> <span class="n">payload</span> <span class="o">+</span> <span class="s2">"="</span> <span class="o">*</span> <span class="p">(</span><span class="o">-</span><span class="nb">len</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span> <span class="o">%</span> <span class="mi">4</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">base64</span><span class="o">.</span><span class="n">urlsafe_b64decode</span><span class="p">(</span><span class="n">padded</span><span class="p">))</span>
+        <span class="n">exp</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"exp"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">exp</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">return</span> <span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">exp</span><span class="p">))</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="is_logged_in">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.is_logged_in">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_logged_in</span><span class="p">(</span><span class="n">cookie</span><span class="p">,</span> <span class="n">domain</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Check a session cookie against the ungated /dyn/up/ probe."""</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">resp</span> <span class="o">=</span> <span class="n">_requests_request</span><span class="p">(</span>
+            <span class="s2">"get"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2">/dyn/up/"</span><span class="p">,</span>
+            <span class="n">cookies</span><span class="o">=</span><span class="p">{</span><span class="n">ACCOUNT_COOKIE_NAME</span><span class="p">:</span> <span class="n">cookie</span><span class="p">},</span> <span class="n">timeout</span><span class="o">=</span><span class="n">REQUEST_TIMEOUT</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">resp</span><span class="o">.</span><span class="n">json</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"aa_logged_in"</span><span class="p">))</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Login probe at </span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2"> failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="select_active_domain">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.select_active_domain">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">select_active_domain</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">"""Pick a reachable mirror by probing /dyn/up/.</span>
+
+<span class="sd">    The homepage is challenge-gated, so probing it would make every mirror look</span>
+<span class="sd">    dead. ``/dyn/up/`` is not gated and answers with a small JSON body.</span>
+<span class="sd">    """</span>
+    <span class="k">for</span> <span class="n">domain</span> <span class="ow">in</span> <span class="n">DOMAINS</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">resp</span> <span class="o">=</span> <span class="n">_requests_request</span><span class="p">(</span><span class="s2">"get"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2">/dyn/up/"</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">REQUEST_TIMEOUT</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span><span class="p">:</span>
+                <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Using Anna's Archive domain: </span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">domain</span>
+            <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2"> answered HTTP </span><span class="si">{</span><span class="n">resp</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2"> on /dyn/up/"</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2"> unreachable: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="kc">None</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_session_cookie</span><span class="p">(</span><span class="n">secret_key</span><span class="p">,</span> <span class="n">domain</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Return the cached session cookie, logging in once per process."""</span>
+    <span class="k">global</span> <span class="n">_SESSION_COOKIE</span>
+    <span class="k">if</span> <span class="n">_SESSION_COOKIE</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_SESSION_COOKIE</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">secret_key</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">_SESSION_COOKIE</span> <span class="o">=</span> <span class="n">login</span><span class="p">(</span><span class="n">secret_key</span><span class="p">,</span> <span class="n">domain</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_SESSION_COOKIE</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># md5 cache</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<div class="viewcode-block" id="load_md5_cache">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.load_md5_cache">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_md5_cache</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">"""Load the DOI to md5 map, discarding it if it has been corrupted."""</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">md5_cache_file</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{}</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s1">'r'</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">'utf-8'</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"entries"</span><span class="p">),</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"unexpected cache layout"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">data</span><span class="p">[</span><span class="s2">"entries"</span><span class="p">]</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"md5 cache unreadable (</span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">); removing </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_save_md5_cache</span><span class="p">(</span><span class="n">entries</span><span class="p">):</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">md5_cache_file</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s1">'w'</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">'utf-8'</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">({</span><span class="s2">"version"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"entries"</span><span class="p">:</span> <span class="n">entries</span><span class="p">},</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Failed to write md5 cache </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+
+<div class="viewcode-block" id="lookup_md5">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.lookup_md5">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">lookup_md5</span><span class="p">(</span><span class="n">doi</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Return the md5 previously resolved for a DOI, if any."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">doi</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">entry</span> <span class="o">=</span> <span class="n">load_md5_cache</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">doi</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"md5"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="remember_md5">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.remember_md5">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">remember_md5</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="n">md5</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Record a DOI to md5 mapping so later downloads can skip resolution."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">doi</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">md5</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="n">entries</span> <span class="o">=</span> <span class="n">load_md5_cache</span><span class="p">()</span>
+    <span class="n">entries</span><span class="p">[</span><span class="n">doi</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"md5"</span><span class="p">:</span> <span class="n">md5</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="s2">"ts"</span><span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()}</span>
+    <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Cached md5 </span><span class="si">{</span><span class="n">md5</span><span class="si">}</span><span class="s2"> for DOI </span><span class="si">{</span><span class="n">doi</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_save_md5_cache</span><span class="p">(</span><span class="n">entries</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="forget_md5">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.forget_md5">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">forget_md5</span><span class="p">(</span><span class="n">doi</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Drop a cached mapping that the server no longer recognises."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">doi</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="n">entries</span> <span class="o">=</span> <span class="n">load_md5_cache</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">entries</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">doi</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Removed stale cached md5 for DOI </span><span class="si">{</span><span class="n">doi</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_save_md5_cache</span><span class="p">(</span><span class="n">entries</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># R1: the member-readable record, downloaded over IPFS</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<div class="viewcode-block" id="db_aarecord">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.db_aarecord">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">db_aarecord</span><span class="p">(</span><span class="n">md5</span><span class="p">,</span> <span class="n">cookie</span><span class="p">,</span> <span class="n">domain</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Fetch the Elasticsearch record for an md5 using a member cookie.</span>
+
+<span class="sd">    This page is not challenge-gated and is guarded only by a membership check,</span>
+<span class="sd">    so any paid tier can read it.</span>
+<span class="sd">    """</span>
+    <span class="n">url</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2">/db/aarecord_elasticsearch/md5:</span><span class="si">{</span><span class="n">md5</span><span class="si">}</span><span class="s2">.json"</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">resp</span> <span class="o">=</span> <span class="n">_requests_request</span><span class="p">(</span>
+            <span class="s2">"get"</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">cookies</span><span class="o">=</span><span class="p">{</span><span class="n">ACCOUNT_COOKIE_NAME</span><span class="p">:</span> <span class="n">cookie</span><span class="p">},</span> <span class="n">timeout</span><span class="o">=</span><span class="n">REQUEST_TIMEOUT</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Record lookup failed for </span><span class="si">{</span><span class="n">md5</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span> <span class="o">!=</span> <span class="mi">200</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Record lookup for </span><span class="si">{</span><span class="n">md5</span><span class="si">}</span><span class="s2"> returned HTTP </span><span class="si">{</span><span class="n">resp</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">record</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Record lookup for </span><span class="si">{</span><span class="n">md5</span><span class="si">}</span><span class="s2"> did not return JSON"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="n">record</span> <span class="o">=</span> <span class="n">record</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">record</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">record</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_normalize_url_entry</span><span class="p">(</span><span class="n">entry</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Pull a URL out of one of the several shapes Anna's Archive uses."""</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">entry</span> <span class="k">if</span> <span class="n">entry</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"http"</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"url"</span><span class="p">,</span> <span class="s2">"href"</span><span class="p">,</span> <span class="s2">"link"</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">value</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"http"</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">value</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+        <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">entry</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">value</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"http"</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">value</span>
+    <span class="k">return</span> <span class="kc">None</span>
+
+
+<div class="viewcode-block" id="record_download_urls">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.record_download_urls">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">record_download_urls</span><span class="p">(</span><span class="n">record</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""List the direct URLs a stripped record still carries.</span>
+
+<span class="sd">    ``strip_partner_urls_from_aarecord`` blanks only the partner URLs, so the</span>
+<span class="sd">    IPFS gateways and any plain mirrors survive for members.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[]</span>
+    <span class="n">source</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"additional"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="n">source</span> <span class="o">=</span> <span class="n">record</span>
+    <span class="n">urls</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"ipfs_urls"</span><span class="p">,</span> <span class="s2">"download_urls"</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">source</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]:</span>
+            <span class="n">url</span> <span class="o">=</span> <span class="n">_normalize_url_entry</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">url</span> <span class="ow">and</span> <span class="n">url</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">urls</span><span class="p">:</span>
+                <span class="n">urls</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">urls</span></div>
+
+
+
+<div class="viewcode-block" id="download_via_ipfs">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.download_via_ipfs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">download_via_ipfs</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">filepath</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Try each gateway the record lists until one serves a real document."""</span>
+    <span class="n">urls</span> <span class="o">=</span> <span class="n">record_download_urls</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">urls</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="s2">"Record carried no usable download URLs"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">for</span> <span class="n">url</span> <span class="ow">in</span> <span class="n">urls</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Trying record download URL: </span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">_download_to_file</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">filepath</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Downloaded from Anna's Archive record (no quota used): </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="kc">False</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># R2: the keyed fast-download API</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<div class="viewcode-block" id="fast_download_info">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.fast_download_info">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">fast_download_info</span><span class="p">(</span><span class="n">md5</span><span class="p">,</span> <span class="n">secret_key</span><span class="p">,</span> <span class="n">domain</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Ask the fast-download API for a direct URL.</span>
+
+<span class="sd">    Returns a dict with a ``status`` the caller can branch on. A HTTP 200 that</span>
+<span class="sd">    carries no ``download_url`` is a failure, so the status code alone is never</span>
+<span class="sd">    trusted.</span>
+<span class="sd">    """</span>
+    <span class="n">url</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2">/dyn/api/fast_download.json"</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">resp</span> <span class="o">=</span> <span class="n">_requests_request</span><span class="p">(</span>
+            <span class="s2">"get"</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">"md5"</span><span class="p">:</span> <span class="n">md5</span><span class="p">,</span> <span class="s2">"key"</span><span class="p">:</span> <span class="n">secret_key</span><span class="p">},</span> <span class="n">timeout</span><span class="o">=</span><span class="n">REQUEST_TIMEOUT</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Fast download request failed: </span><span class="si">{</span><span class="n">_redact</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"status"</span><span class="p">:</span> <span class="s2">"error"</span><span class="p">}</span>
+
+    <span class="n">code</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span>
+    <span class="k">if</span> <span class="n">code</span> <span class="o">==</span> <span class="mi">400</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"status"</span><span class="p">:</span> <span class="s2">"bad_md5"</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">code</span> <span class="o">==</span> <span class="mi">401</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"status"</span><span class="p">:</span> <span class="s2">"invalid_key"</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">code</span> <span class="o">==</span> <span class="mi">403</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"status"</span><span class="p">:</span> <span class="s2">"not_member"</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">code</span> <span class="o">==</span> <span class="mi">404</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"status"</span><span class="p">:</span> <span class="s2">"not_found"</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">code</span> <span class="o">==</span> <span class="mi">429</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"status"</span><span class="p">:</span> <span class="s2">"quota"</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">code</span> <span class="o">&gt;=</span> <span class="mi">500</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"status"</span><span class="p">:</span> <span class="s2">"server_error"</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">code</span> <span class="o">!=</span> <span class="mi">200</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Fast download returned unexpected HTTP </span><span class="si">{</span><span class="n">code</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"status"</span><span class="p">:</span> <span class="s2">"error"</span><span class="p">}</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="s2">"Fast download did not return JSON"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"status"</span><span class="p">:</span> <span class="s2">"error"</span><span class="p">}</span>
+
+    <span class="n">download_url</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"download_url"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">download_url</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="s2">"Fast download returned HTTP 200 without a download URL"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"status"</span><span class="p">:</span> <span class="s2">"error"</span><span class="p">}</span>
+
+    <span class="n">info</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"account_fast_download_info"</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"ok"</span><span class="p">,</span>
+        <span class="s2">"download_url"</span><span class="p">:</span> <span class="n">download_url</span><span class="p">,</span>
+        <span class="s2">"downloads_left"</span><span class="p">:</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"downloads_left"</span><span class="p">),</span>
+    <span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="download_by_md5">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.download_by_md5">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">download_by_md5</span><span class="p">(</span><span class="n">md5</span><span class="p">,</span> <span class="n">secret_key</span><span class="p">,</span> <span class="n">domain</span><span class="p">,</span> <span class="n">filepath</span><span class="p">,</span> <span class="n">doi</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Run route R2 for one md5 and report what happened.</span>
+
+<span class="sd">    Returns True on success. Failures update the process-wide flags so a batch</span>
+<span class="sd">    run stops re-trying a key that has already been rejected or exhausted.</span>
+<span class="sd">    """</span>
+    <span class="k">global</span> <span class="n">_KEY_ROUTES_DISABLED</span><span class="p">,</span> <span class="n">_QUOTA_EXHAUSTED</span>
+
+    <span class="n">info</span> <span class="o">=</span> <span class="n">fast_download_info</span><span class="p">(</span><span class="n">md5</span><span class="p">,</span> <span class="n">secret_key</span><span class="p">,</span> <span class="n">domain</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">info</span><span class="p">[</span><span class="s2">"status"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"server_error"</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="s2">"Fast download hit a server error; retrying once"</span><span class="p">)</span>
+        <span class="n">info</span> <span class="o">=</span> <span class="n">fast_download_info</span><span class="p">(</span><span class="n">md5</span><span class="p">,</span> <span class="n">secret_key</span><span class="p">,</span> <span class="n">domain</span><span class="p">)</span>
+
+    <span class="n">status</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"status"</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">status</span> <span class="o">==</span> <span class="s2">"ok"</span><span class="p">:</span>
+        <span class="n">left</span> <span class="o">=</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"downloads_left"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">left</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Anna's Archive fast downloads left today: </span><span class="si">{</span><span class="n">left</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">_download_to_file</span><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="s2">"download_url"</span><span class="p">],</span> <span class="n">filepath</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">status</span> <span class="o">==</span> <span class="s2">"invalid_key"</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"❌ Anna's Archive rejected the account secret key; key-based routes disabled."</span><span class="p">)</span>
+        <span class="n">_KEY_ROUTES_DISABLED</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="n">status</span> <span class="o">==</span> <span class="s2">"not_member"</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"❌ Anna's Archive reports no active membership; key-based routes disabled."</span><span class="p">)</span>
+        <span class="n">_KEY_ROUTES_DISABLED</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="n">status</span> <span class="o">==</span> <span class="s2">"quota"</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"❌ Anna's Archive daily fast-download quota is exhausted."</span><span class="p">)</span>
+        <span class="n">_QUOTA_EXHAUSTED</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="n">status</span> <span class="o">==</span> <span class="s2">"not_found"</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Anna's Archive does not know md5 </span><span class="si">{</span><span class="n">md5</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="n">forget_md5</span><span class="p">(</span><span class="n">doi</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">status</span> <span class="o">==</span> <span class="s2">"bad_md5"</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Anna's Archive rejected md5 </span><span class="si">{</span><span class="n">md5</span><span class="si">}</span><span class="s2"> as malformed"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="kc">False</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># R4: the member-bypassed SciDB page</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<span class="n">_MD5_HREF_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">'/md5/([a-fA-F0-9]</span><span class="si">{32}</span><span class="s1">)'</span><span class="p">)</span>
+<span class="n">_IFRAME_SRC_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">'&lt;iframe[^&gt;]+src=["</span><span class="se">\'</span><span class="s1">]([^"</span><span class="se">\'</span><span class="s1">]+)["</span><span class="se">\'</span><span class="s1">]'</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">I</span><span class="p">)</span>
+<span class="n">_ANCHOR_HREF_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">'&lt;a[^&gt;]+href=["</span><span class="se">\'</span><span class="s1">]([^"</span><span class="se">\'</span><span class="s1">]+)["</span><span class="se">\'</span><span class="s1">]'</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">I</span><span class="p">)</span>
+<span class="n">_PDFJS_FILE_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">'[?&amp;]file=([^"</span><span class="se">\'</span><span class="s1">&amp;]+)'</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_absolutize</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">domain</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">url</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"http"</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">url</span>
+    <span class="k">if</span> <span class="n">url</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"/"</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">domain</span> <span class="o">+</span> <span class="n">url</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s2">"</span>
+
+
+<div class="viewcode-block" id="parse_scidb_page">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.parse_scidb_page">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">parse_scidb_page</span><span class="p">(</span><span class="n">html</span><span class="p">,</span> <span class="n">domain</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Extract the md5 and a download URL from a SciDB page.</span>
+
+<span class="sd">    Only structural signals are used. Link text is localised, so matching on</span>
+<span class="sd">    the word "Download" fails for every non-English visitor, and for members</span>
+<span class="sd">    the page often renders straight into the PDF viewer with no anchor at all.</span>
+<span class="sd">    Returns None when neither piece of information is present.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">html</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">md5</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">match</span> <span class="o">=</span> <span class="n">_MD5_HREF_RE</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">html</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">match</span><span class="p">:</span>
+        <span class="n">md5</span> <span class="o">=</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+    <span class="n">url</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="c1"># The viewer iframe is the most reliable signal: it carries the real file</span>
+    <span class="c1"># URL in its file= parameter even when no download anchor is rendered.</span>
+    <span class="k">for</span> <span class="n">src</span> <span class="ow">in</span> <span class="n">_IFRAME_SRC_RE</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">html</span><span class="p">):</span>
+        <span class="n">file_match</span> <span class="o">=</span> <span class="n">_PDFJS_FILE_RE</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">src</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">file_match</span><span class="p">:</span>
+            <span class="n">candidate</span> <span class="o">=</span> <span class="n">unquote</span><span class="p">(</span><span class="n">file_match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">candidate</span><span class="p">:</span>
+                <span class="n">url</span> <span class="o">=</span> <span class="n">_absolutize</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">domain</span><span class="p">)</span>
+                <span class="k">break</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">url</span><span class="p">:</span>
+        <span class="n">hrefs</span> <span class="o">=</span> <span class="n">_ANCHOR_HREF_RE</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">html</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">href</span> <span class="ow">in</span> <span class="n">hrefs</span><span class="p">:</span>
+            <span class="n">lowered</span> <span class="o">=</span> <span class="n">href</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">md5</span> <span class="ow">and</span> <span class="n">md5</span> <span class="ow">in</span> <span class="n">lowered</span> <span class="ow">and</span> <span class="s2">".pdf"</span> <span class="ow">in</span> <span class="n">lowered</span><span class="p">:</span>
+                <span class="n">url</span> <span class="o">=</span> <span class="n">_absolutize</span><span class="p">(</span><span class="n">href</span><span class="p">,</span> <span class="n">domain</span><span class="p">)</span>
+                <span class="k">break</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">url</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">href</span> <span class="ow">in</span> <span class="n">hrefs</span><span class="p">:</span>
+                <span class="n">lowered</span> <span class="o">=</span> <span class="n">href</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+                <span class="k">if</span> <span class="s2">"/fast_download/"</span> <span class="ow">in</span> <span class="n">lowered</span> <span class="ow">or</span> <span class="s2">"/slow_download/"</span> <span class="ow">in</span> <span class="n">lowered</span><span class="p">:</span>
+                    <span class="n">url</span> <span class="o">=</span> <span class="n">_absolutize</span><span class="p">(</span><span class="n">href</span><span class="p">,</span> <span class="n">domain</span><span class="p">)</span>
+                    <span class="k">break</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">md5</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">url</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"md5"</span><span class="p">:</span> <span class="n">md5</span><span class="p">,</span> <span class="s2">"url"</span><span class="p">:</span> <span class="n">url</span><span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="scidb_lookup">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.scidb_lookup">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">scidb_lookup</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="n">cookie</span><span class="p">,</span> <span class="n">domain</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Read the SciDB page for a DOI using the member cookie.</span>
+
+<span class="sd">    Paid members skip the browser check on this page, which is what makes the</span>
+<span class="sd">    lookup possible at all without a browser.</span>
+<span class="sd">    """</span>
+    <span class="n">url</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2">/scidb/</span><span class="si">{</span><span class="n">doi</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">resp</span> <span class="o">=</span> <span class="n">_requests_request</span><span class="p">(</span>
+            <span class="s2">"get"</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">cookies</span><span class="o">=</span><span class="p">{</span><span class="n">ACCOUNT_COOKIE_NAME</span><span class="p">:</span> <span class="n">cookie</span><span class="p">},</span> <span class="n">timeout</span><span class="o">=</span><span class="n">REQUEST_TIMEOUT</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"SciDB lookup failed for </span><span class="si">{</span><span class="n">doi</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span> <span class="o">!=</span> <span class="mi">200</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"SciDB lookup for </span><span class="si">{</span><span class="n">doi</span><span class="si">}</span><span class="s2"> returned HTTP </span><span class="si">{</span><span class="n">resp</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">parse_scidb_page</span><span class="p">(</span><span class="n">resp</span><span class="o">.</span><span class="n">text</span><span class="p">,</span> <span class="n">domain</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># R5: let a real browser solve the challenge</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_browser_tools</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">"""Locate Chromium and chromedriver without importing Selenium eagerly."""</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">selenium_utils</span>
+    <span class="k">except</span> <span class="ne">ImportError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"Selenium is not installed: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">return</span> <span class="n">selenium_utils</span><span class="o">.</span><span class="n">_resolve_chrome_binary</span><span class="p">(),</span> <span class="n">selenium_utils</span><span class="o">.</span><span class="n">_resolve_chromedriver</span><span class="p">(),</span> <span class="kc">None</span>
+
+
+<div class="viewcode-block" id="browser_available">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.browser_available">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">browser_available</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">"""Report whether route R5 can run, and why not when it cannot.</span>
+
+<span class="sd">    A missing tool is a capability gap worth naming: the package-level importer</span>
+<span class="sd">    swallows ImportError, so an unexplained failure here would look like the</span>
+<span class="sd">    module had silently disappeared.</span>
+<span class="sd">    """</span>
+    <span class="n">chromium</span><span class="p">,</span> <span class="n">driver</span><span class="p">,</span> <span class="n">error</span> <span class="o">=</span> <span class="n">_resolve_browser_tools</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">error</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span><span class="p">,</span> <span class="n">error</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">chromium</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">"Chromium/Chrome not found (set CHROME_BINARY or CHROMIUM_BINARY)"</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">driver</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">"chromedriver not found (set CHROMEDRIVER_PATH)"</span>
+    <span class="k">if</span> <span class="n">platform</span><span class="o">.</span><span class="n">system</span><span class="p">()</span> <span class="o">==</span> <span class="s2">"Linux"</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"DISPLAY"</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="s2">"xvfb-run"</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">"no display available and xvfb-run not found (install xvfb)"</span>
+    <span class="k">return</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">""</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_solved</span><span class="p">(</span><span class="n">title</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Return True once a page title shows the challenge is behind us.</span>
+
+<span class="sd">    Detection is by title because the solved record page still contains the</span>
+<span class="sd">    string "ddos-guard" in its own scripts, so a substring search of the body</span>
+<span class="sd">    reports every successful fetch as blocked. Chromium also reports the raw</span>
+<span class="sd">    URL as the title while a page is still loading, and titles its own network</span>
+<span class="sd">    error page with the bare host, which a dead proxy would otherwise turn into</span>
+<span class="sd">    a false solve.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">title</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="n">title</span> <span class="o">=</span> <span class="n">title</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">title</span> <span class="ow">or</span> <span class="n">title</span> <span class="o">==</span> <span class="n">CHALLENGE_TITLE</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">title</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"http"</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="n">title</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="n">urlparse</span><span class="p">(</span><span class="n">d</span><span class="p">)</span><span class="o">.</span><span class="n">hostname</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">DOMAINS</span><span class="p">}</span>
+
+
+<span class="c1"># The DevTools endpoint is on loopback. Build an opener that never consults the</span>
+<span class="c1"># proxy environment, since ACTIVE_PROXY.apply_environment() sets http_proxy for</span>
+<span class="c1"># the ordinary HTTP clients and urlopen would otherwise send this request to the</span>
+<span class="c1"># proxy, where 127.0.0.1 means the proxy's own machine.</span>
+<span class="n">_LOOPBACK_OPENER</span> <span class="o">=</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">build_opener</span><span class="p">(</span><span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">ProxyHandler</span><span class="p">({}))</span>
+<span class="n">_LAST_CDP_ERROR</span> <span class="o">=</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_cdp_targets</span><span class="p">(</span><span class="n">port</span><span class="p">):</span>
+    <span class="k">global</span> <span class="n">_LAST_CDP_ERROR</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">_LOOPBACK_OPENER</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="sa">f</span><span class="s2">"http://127.0.0.1:</span><span class="si">{</span><span class="n">port</span><span class="si">}</span><span class="s2">/json"</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span> <span class="k">as</span> <span class="n">resp</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"DevTools target list unavailable on port </span><span class="si">{</span><span class="n">port</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span>
+        <span class="k">if</span> <span class="n">message</span> <span class="o">!=</span> <span class="n">_LAST_CDP_ERROR</span><span class="p">:</span>
+            <span class="n">debug_print</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+            <span class="n">_LAST_CDP_ERROR</span> <span class="o">=</span> <span class="n">message</span>
+        <span class="k">return</span> <span class="p">[]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_wait_for_solve</span><span class="p">(</span><span class="n">port</span><span class="p">,</span> <span class="n">deadline</span><span class="p">,</span> <span class="n">poll</span><span class="o">=</span><span class="mf">3.0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Poll the DevTools target list until the challenge page turns into content.</span>
+
+<span class="sd">    Returns the last title seen, whether or not it counts as solved, so that a</span>
+<span class="sd">    page which never loaded can be told apart from one that sat on the</span>
+<span class="sd">    interstitial for the whole budget. Callers must test the result with</span>
+<span class="sd">    ``_solved`` rather than against None.</span>
+<span class="sd">    """</span>
+    <span class="n">last</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">while</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">deadline</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">target</span> <span class="ow">in</span> <span class="n">_cdp_targets</span><span class="p">(</span><span class="n">port</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">target</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"type"</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">"page"</span> <span class="ow">or</span> <span class="s2">"annas-archive"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">target</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"url"</span><span class="p">,</span> <span class="s2">""</span><span class="p">):</span>
+                <span class="k">continue</span>
+            <span class="n">title</span> <span class="o">=</span> <span class="n">target</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"title"</span><span class="p">,</span> <span class="s2">""</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">title</span> <span class="o">!=</span> <span class="n">last</span><span class="p">:</span>
+                <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Browser page title: </span><span class="si">{</span><span class="n">title</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+                <span class="n">last</span> <span class="o">=</span> <span class="n">title</span>
+            <span class="k">if</span> <span class="n">_solved</span><span class="p">(</span><span class="n">title</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">title</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">poll</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">last</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_read_devtools_port</span><span class="p">(</span><span class="n">profile</span><span class="p">,</span> <span class="n">deadline</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Read back the port Chromium chose for --remote-debugging-port=0."""</span>
+    <span class="n">portfile</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">profile</span><span class="p">,</span> <span class="s2">"DevToolsActivePort"</span><span class="p">)</span>
+    <span class="k">while</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">deadline</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">portfile</span><span class="p">,</span> <span class="s2">"r"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">port</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">port</span><span class="p">:</span>
+                <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">port</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+            <span class="k">pass</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span>
+    <span class="k">return</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_launch_browser</span><span class="p">(</span><span class="n">chromium</span><span class="p">,</span> <span class="n">profile</span><span class="p">,</span> <span class="n">url</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Start Chromium plainly, never through chromedriver.</span>
+
+<span class="sd">    A chromedriver-launched browser is rejected by the challenge outright, and</span>
+<span class="sd">    headless is detected regardless of how the user agent is spoofed, so the</span>
+<span class="sd">    browser is started as an ordinary process on a real or virtual display and</span>
+<span class="sd">    only attached to afterwards.</span>
+<span class="sd">    """</span>
+    <span class="n">argv</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">platform</span><span class="o">.</span><span class="n">system</span><span class="p">()</span> <span class="o">==</span> <span class="s2">"Linux"</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"DISPLAY"</span><span class="p">):</span>
+        <span class="n">argv</span> <span class="o">+=</span> <span class="p">[</span><span class="s2">"xvfb-run"</span><span class="p">,</span> <span class="s2">"-a"</span><span class="p">,</span> <span class="s2">"--server-args=-screen 0 1920x1080x24"</span><span class="p">]</span>
+    <span class="n">argv</span> <span class="o">+=</span> <span class="p">[</span>
+        <span class="n">chromium</span><span class="p">,</span>
+        <span class="sa">f</span><span class="s2">"--user-data-dir=</span><span class="si">{</span><span class="n">profile</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
+        <span class="s2">"--remote-debugging-port=0"</span><span class="p">,</span>
+        <span class="s2">"--no-first-run"</span><span class="p">,</span>
+        <span class="s2">"--no-default-browser-check"</span><span class="p">,</span>
+        <span class="s2">"--disable-dev-shm-usage"</span><span class="p">,</span>
+        <span class="s2">"--password-store=basic"</span><span class="p">,</span>
+        <span class="s2">"--window-size=1920,1080"</span><span class="p">,</span>
+    <span class="p">]</span>
+    <span class="n">argv</span> <span class="o">+=</span> <span class="nb">list</span><span class="p">(</span><span class="n">SWIFTSHADER_FLAGS</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">_needs_no_sandbox</span><span class="p">():</span>
+        <span class="n">argv</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"--no-sandbox"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">ACTIVE_PROXY</span><span class="o">.</span><span class="n">enabled</span> <span class="ow">and</span> <span class="n">ACTIVE_PROXY</span><span class="o">.</span><span class="n">proxy_url</span><span class="p">:</span>
+        <span class="n">argv</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"--proxy-server=</span><span class="si">{</span><span class="n">ACTIVE_PROXY</span><span class="o">.</span><span class="n">proxy_url</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="n">argv</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+
+    <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Launching browser: </span><span class="si">{</span><span class="s1">' '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">(</span>
+        <span class="n">argv</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">DEVNULL</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">DEVNULL</span><span class="p">,</span>
+        <span class="n">start_new_session</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_needs_no_sandbox</span><span class="p">():</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s2">"/.dockerenv"</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">os</span><span class="p">,</span> <span class="s2">"geteuid"</span><span class="p">)</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">geteuid</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_wait_for_group_exit</span><span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="n">deadline</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Wait until every process in the group is gone.</span>
+
+<span class="sd">    ``proc.wait()`` only covers the xvfb-run wrapper. Chromium's own children</span>
+<span class="sd">    keep writing the profile directory while they shut down, so deleting it</span>
+<span class="sd">    before they exit leaves the directory behind, recreated after the delete.</span>
+<span class="sd">    """</span>
+    <span class="k">while</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">deadline</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">killpg</span><span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ProcessLookupError</span><span class="p">,</span> <span class="ne">PermissionError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.2</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">killpg</span><span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIGKILL</span><span class="p">)</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="ne">ProcessLookupError</span><span class="p">):</span>
+        <span class="k">pass</span>
+    <span class="k">return</span> <span class="kc">False</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_terminate_browser</span><span class="p">(</span><span class="n">proc</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Tear the browser down by process group.</span>
+
+<span class="sd">    xvfb-run wraps Chromium in a shell, so killing the tracked pid alone leaves</span>
+<span class="sd">    the browser and the X server running. Killing by name would take out a</span>
+<span class="sd">    browser the user is using themselves.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">proc</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">proc</span><span class="o">.</span><span class="n">poll</span><span class="p">()</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">os</span><span class="p">,</span> <span class="s2">"killpg"</span><span class="p">):</span>
+            <span class="n">group</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getpgid</span><span class="p">(</span><span class="n">proc</span><span class="o">.</span><span class="n">pid</span><span class="p">)</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">killpg</span><span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIGTERM</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">proc</span><span class="o">.</span><span class="n">wait</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">TimeoutExpired</span><span class="p">:</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">killpg</span><span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIGKILL</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">_wait_for_group_exit</span><span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">+</span> <span class="mi">10</span><span class="p">):</span>
+                <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Browser process group </span><span class="si">{</span><span class="n">group</span><span class="si">}</span><span class="s2"> outlived its teardown"</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">proc</span><span class="o">.</span><span class="n">terminate</span><span class="p">()</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">proc</span><span class="o">.</span><span class="n">wait</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">TimeoutExpired</span><span class="p">:</span>
+                <span class="n">proc</span><span class="o">.</span><span class="n">kill</span><span class="p">()</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="ne">ProcessLookupError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Browser teardown: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_attach_driver</span><span class="p">(</span><span class="n">port</span><span class="p">,</span> <span class="n">driver_path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Attach Selenium to the already-solved browser.</span>
+
+<span class="sd">    Selenium Manager cannot resolve a driver on every host even when a matching</span>
+<span class="sd">    chromedriver is installed, so the service path is always explicit.</span>
+<span class="sd">    """</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">selenium</span><span class="w"> </span><span class="kn">import</span> <span class="n">webdriver</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">selenium.webdriver.chrome.service</span><span class="w"> </span><span class="kn">import</span> <span class="n">Service</span>
+
+    <span class="n">options</span> <span class="o">=</span> <span class="n">webdriver</span><span class="o">.</span><span class="n">ChromeOptions</span><span class="p">()</span>
+    <span class="n">options</span><span class="o">.</span><span class="n">debugger_address</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"127.0.0.1:</span><span class="si">{</span><span class="n">port</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">return</span> <span class="n">webdriver</span><span class="o">.</span><span class="n">Chrome</span><span class="p">(</span><span class="n">options</span><span class="o">=</span><span class="n">options</span><span class="p">,</span> <span class="n">service</span><span class="o">=</span><span class="n">Service</span><span class="p">(</span><span class="n">executable_path</span><span class="o">=</span><span class="n">driver_path</span><span class="p">))</span>
+
+
+<div class="viewcode-block" id="download_via_browser">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.download_via_browser">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">download_via_browser</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="n">filepath</span><span class="p">,</span> <span class="n">domain</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">BROWSER_TIMEOUT</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Solve the challenge in a real browser, then download what it found.</span>
+
+<span class="sd">    Returns ``{"md5": str | None, "downloaded": bool}`` so the caller can cache</span>
+<span class="sd">    a resolved md5 even when the partner link itself failed, or None when the</span>
+<span class="sd">    browser could not be used at all. The payload is fetched with the ordinary</span>
+<span class="sd">    HTTP client using the browser's cookies rather than through the driver,</span>
+<span class="sd">    since a 50 MB PDF should not travel over the DevTools connection.</span>
+<span class="sd">    """</span>
+    <span class="k">global</span> <span class="n">_BROWSER_ATTEMPTS</span>
+
+    <span class="k">if</span> <span class="n">_BROWSER_ATTEMPTS</span> <span class="o">&gt;=</span> <span class="n">MAX_BROWSER_ATTEMPTS</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Browser route already attempted </span><span class="si">{</span><span class="n">_BROWSER_ATTEMPTS</span><span class="si">}</span><span class="s2"> times; skipping"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">available</span><span class="p">,</span> <span class="n">reason</span> <span class="o">=</span> <span class="n">browser_available</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">available</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"❌ Anna's Archive browser route unavailable: </span><span class="si">{</span><span class="n">reason</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">_BROWSER_ATTEMPTS</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="n">chromium</span><span class="p">,</span> <span class="n">driver_path</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">_resolve_browser_tools</span><span class="p">()</span>
+    <span class="n">url</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2">/scidb/</span><span class="si">{</span><span class="n">doi</span><span class="si">}</span><span class="s2">"</span>
+    <span class="n">deadline</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">+</span> <span class="n">timeout</span>
+
+    <span class="n">profile</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"anna_profile_"</span><span class="p">)</span>
+    <span class="n">proc</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">driver</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">parsed</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">cookies</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">user_agent</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"🌐 Solving the Anna's Archive browser check for </span><span class="si">{</span><span class="n">doi</span><span class="si">}</span><span class="s2"> (up to </span><span class="si">{</span><span class="n">timeout</span><span class="si">}</span><span class="s2">s)..."</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">proc</span> <span class="o">=</span> <span class="n">_launch_browser</span><span class="p">(</span><span class="n">chromium</span><span class="p">,</span> <span class="n">profile</span><span class="p">,</span> <span class="n">url</span><span class="p">)</span>
+        <span class="n">port</span> <span class="o">=</span> <span class="n">_read_devtools_port</span><span class="p">(</span><span class="n">profile</span><span class="p">,</span> <span class="n">deadline</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">port</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">debug_print</span><span class="p">(</span><span class="s2">"Browser never reported a DevTools port"</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Browser DevTools port: </span><span class="si">{</span><span class="n">port</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+        <span class="n">title</span> <span class="o">=</span> <span class="n">_wait_for_solve</span><span class="p">(</span><span class="n">port</span><span class="p">,</span> <span class="n">deadline</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">_solved</span><span class="p">(</span><span class="n">title</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">"❌ The Anna's Archive browser check was not solved in time."</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">title</span> <span class="o">==</span> <span class="n">CHALLENGE_TITLE</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span>
+                    <span class="s2">"   The page stayed on the DDoS-Guard check for the whole "</span>
+                    <span class="s2">"budget, which means this exit address is being held at the "</span>
+                    <span class="s2">"manual captcha. A longer timeout will not clear it; a "</span>
+                    <span class="s2">"different network path is needed."</span>
+                <span class="p">)</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Browser check solved, page title: </span><span class="si">{</span><span class="n">title</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+
+        <span class="n">driver</span> <span class="o">=</span> <span class="n">_attach_driver</span><span class="p">(</span><span class="n">port</span><span class="p">,</span> <span class="n">driver_path</span><span class="p">)</span>
+        <span class="n">parsed</span> <span class="o">=</span> <span class="n">parse_scidb_page</span><span class="p">(</span><span class="n">driver</span><span class="o">.</span><span class="n">page_source</span><span class="p">,</span> <span class="n">domain</span><span class="p">)</span>
+        <span class="n">cookies</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span><span class="p">[</span><span class="s2">"name"</span><span class="p">]:</span> <span class="n">c</span><span class="p">[</span><span class="s2">"value"</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">driver</span><span class="o">.</span><span class="n">get_cookies</span><span class="p">()}</span>
+        <span class="n">user_agent</span> <span class="o">=</span> <span class="n">driver</span><span class="o">.</span><span class="n">execute_script</span><span class="p">(</span><span class="s2">"return navigator.userAgent"</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Browser route failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">driver</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">driver</span><span class="o">.</span><span class="n">quit</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Driver quit: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="n">_terminate_browser</span><span class="p">(</span><span class="n">proc</span><span class="p">)</span>
+        <span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">profile</span><span class="p">,</span> <span class="n">ignore_errors</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">parsed</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Solved page carried no md5 or download link for </span><span class="si">{</span><span class="n">doi</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">parsed</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"url"</span><span class="p">):</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Solved page carried md5 </span><span class="si">{</span><span class="n">parsed</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'md5'</span><span class="p">)</span><span class="si">}</span><span class="s2"> but no download link"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"md5"</span><span class="p">:</span> <span class="n">parsed</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"md5"</span><span class="p">),</span> <span class="s2">"downloaded"</span><span class="p">:</span> <span class="kc">False</span><span class="p">}</span>
+
+    <span class="n">headers</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"Referer"</span><span class="p">:</span> <span class="n">url</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">user_agent</span><span class="p">:</span>
+        <span class="n">headers</span><span class="p">[</span><span class="s2">"User-Agent"</span><span class="p">]</span> <span class="o">=</span> <span class="n">user_agent</span>
+    <span class="n">downloaded</span> <span class="o">=</span> <span class="n">_download_to_file</span><span class="p">(</span><span class="n">parsed</span><span class="p">[</span><span class="s2">"url"</span><span class="p">],</span> <span class="n">filepath</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">headers</span><span class="p">,</span> <span class="n">cookies</span><span class="o">=</span><span class="n">cookies</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">downloaded</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Downloaded PDF from Anna's Archive: </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"md5"</span><span class="p">:</span> <span class="n">parsed</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"md5"</span><span class="p">),</span> <span class="s2">"downloaded"</span><span class="p">:</span> <span class="n">downloaded</span><span class="p">}</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Shared download helper</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_download_to_file</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">filepath</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cookies</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Fetch a URL and keep it only when the body is really a document."""</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">resp</span> <span class="o">=</span> <span class="n">_requests_request</span><span class="p">(</span>
+            <span class="s2">"get"</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">headers</span><span class="p">,</span> <span class="n">cookies</span><span class="o">=</span><span class="n">cookies</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DOWNLOAD_TIMEOUT</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Download from </span><span class="si">{</span><span class="n">_redact</span><span class="p">(</span><span class="n">url</span><span class="p">)</span><span class="si">}</span><span class="s2"> failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span> <span class="o">!=</span> <span class="mi">200</span><span class="p">:</span>
+        <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Download from </span><span class="si">{</span><span class="n">_redact</span><span class="p">(</span><span class="n">url</span><span class="p">)</span><span class="si">}</span><span class="s2"> returned HTTP </span><span class="si">{</span><span class="n">resp</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">filepath</span><span class="p">)),</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">save_document_if_valid</span><span class="p">(</span><span class="n">resp</span><span class="o">.</span><span class="n">content</span><span class="p">,</span> <span class="n">filepath</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Discarded non-document content from </span><span class="si">{</span><span class="n">_redact</span><span class="p">(</span><span class="n">url</span><span class="p">)</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">resp</span><span class="o">.</span><span class="n">content</span><span class="p">)</span><span class="si">}</span><span class="s2"> bytes)"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="kc">False</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Orchestration</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<div class="viewcode-block" id="download_paper">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.download_paper">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">download_paper</span><span class="p">(</span>
+    <span class="n">doi</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">md5</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">download_folder</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">filename</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">secret_key</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">allow_scidb</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">allow_browser</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">routes</span><span class="o">=</span><span class="n">DEFAULT_ROUTES</span><span class="p">,</span>
+    <span class="n">interactive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Download one document, trying the enabled routes in cost order.</span>
+
+<span class="sd">    ``routes`` selects which of R1, R2, R4 and R5 may run, so a caller that</span>
+<span class="sd">    interleaves its own route between them can invoke this twice. Returns the</span>
+<span class="sd">    path of the downloaded file, or None.</span>
+<span class="sd">    """</span>
+    <span class="k">global</span> <span class="n">VERBOSE</span>
+    <span class="n">old_verbose</span> <span class="o">=</span> <span class="n">VERBOSE</span>
+    <span class="n">VERBOSE</span> <span class="o">=</span> <span class="n">VERBOSE</span> <span class="ow">or</span> <span class="n">verbose</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_download_paper</span><span class="p">(</span>
+            <span class="n">doi</span><span class="p">,</span> <span class="n">md5</span><span class="p">,</span> <span class="n">download_folder</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">secret_key</span><span class="p">,</span>
+            <span class="n">allow_scidb</span><span class="p">,</span> <span class="n">allow_browser</span><span class="p">,</span> <span class="n">routes</span><span class="p">,</span> <span class="n">interactive</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">VERBOSE</span> <span class="o">=</span> <span class="n">old_verbose</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_download_paper</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="n">md5</span><span class="p">,</span> <span class="n">download_folder</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">secret_key</span><span class="p">,</span>
+                    <span class="n">allow_scidb</span><span class="p">,</span> <span class="n">allow_browser</span><span class="p">,</span> <span class="n">routes</span><span class="p">,</span> <span class="n">interactive</span><span class="p">):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">doi</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">md5</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"❌ Anna's Archive needs either a DOI or an md5."</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">download_folder</span> <span class="o">=</span> <span class="n">download_folder</span> <span class="ow">or</span> <span class="n">get_download_directory</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">filename</span><span class="p">:</span>
+        <span class="n">stem</span> <span class="o">=</span> <span class="n">doi</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">'/'</span><span class="p">,</span> <span class="s1">'_'</span><span class="p">)</span> <span class="k">if</span> <span class="n">doi</span> <span class="k">else</span> <span class="n">md5</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">stem</span><span class="si">}</span><span class="s2">_anna.pdf"</span>
+    <span class="n">filepath</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">download_folder</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">md5</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">doi</span><span class="p">:</span>
+        <span class="n">md5</span> <span class="o">=</span> <span class="n">lookup_md5</span><span class="p">(</span><span class="n">doi</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">md5</span><span class="p">:</span>
+            <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Using cached md5 </span><span class="si">{</span><span class="n">md5</span><span class="si">}</span><span class="s2"> for DOI </span><span class="si">{</span><span class="n">doi</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">secret_key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">secret_key</span> <span class="o">=</span> <span class="n">resolve_secret_key</span><span class="p">(</span><span class="n">interactive</span><span class="o">=</span><span class="n">interactive</span><span class="p">)</span>
+
+    <span class="n">domain</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_domain</span><span class="p">():</span>
+        <span class="k">nonlocal</span> <span class="n">domain</span>
+        <span class="k">if</span> <span class="n">domain</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">domain</span> <span class="o">=</span> <span class="n">select_active_domain</span><span class="p">()</span> <span class="ow">or</span> <span class="n">DOMAINS</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">domain</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_key_routes_enabled</span><span class="p">():</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">secret_key</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_KEY_ROUTES_DISABLED</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_try_md5_routes</span><span class="p">(</span><span class="n">current_md5</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Run R1 then R2 for a known md5, cheapest first."""</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">current_md5</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="s2">"R1"</span> <span class="ow">in</span> <span class="n">routes</span> <span class="ow">and</span> <span class="n">_key_routes_enabled</span><span class="p">():</span>
+            <span class="n">cookie</span> <span class="o">=</span> <span class="n">_session_cookie</span><span class="p">(</span><span class="n">secret_key</span><span class="p">,</span> <span class="n">_domain</span><span class="p">())</span>
+            <span class="k">if</span> <span class="n">cookie</span><span class="p">:</span>
+                <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"R1: reading the record for md5 </span><span class="si">{</span><span class="n">current_md5</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+                <span class="n">record</span> <span class="o">=</span> <span class="n">db_aarecord</span><span class="p">(</span><span class="n">current_md5</span><span class="p">,</span> <span class="n">cookie</span><span class="p">,</span> <span class="n">_domain</span><span class="p">())</span>
+                <span class="k">if</span> <span class="n">record</span> <span class="ow">and</span> <span class="n">download_via_ipfs</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">filepath</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="kc">True</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">debug_print</span><span class="p">(</span><span class="s2">"R1 skipped: could not obtain an account session"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s2">"R2"</span> <span class="ow">in</span> <span class="n">routes</span> <span class="ow">and</span> <span class="n">_key_routes_enabled</span><span class="p">()</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_QUOTA_EXHAUSTED</span><span class="p">:</span>
+            <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"R2: requesting a fast download for md5 </span><span class="si">{</span><span class="n">current_md5</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">download_by_md5</span><span class="p">(</span><span class="n">current_md5</span><span class="p">,</span> <span class="n">secret_key</span><span class="p">,</span> <span class="n">_domain</span><span class="p">(),</span> <span class="n">filepath</span><span class="p">,</span> <span class="n">doi</span><span class="o">=</span><span class="n">doi</span><span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Downloaded PDF from Anna's Archive: </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+                <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">elif</span> <span class="s2">"R2"</span> <span class="ow">in</span> <span class="n">routes</span> <span class="ow">and</span> <span class="n">_QUOTA_EXHAUSTED</span><span class="p">:</span>
+            <span class="n">debug_print</span><span class="p">(</span><span class="s2">"R2 skipped: daily fast-download quota already exhausted"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">if</span> <span class="n">_try_md5_routes</span><span class="p">(</span><span class="n">md5</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">filepath</span>
+
+    <span class="k">if</span> <span class="s2">"R4"</span> <span class="ow">in</span> <span class="n">routes</span> <span class="ow">and</span> <span class="n">doi</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">allow_scidb</span><span class="p">:</span>
+            <span class="n">debug_print</span><span class="p">(</span><span class="s2">"R4 skipped: --scidb was not given"</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="n">_key_routes_enabled</span><span class="p">():</span>
+            <span class="n">debug_print</span><span class="p">(</span><span class="s2">"R4 skipped: no usable account secret key"</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">cookie</span> <span class="o">=</span> <span class="n">_session_cookie</span><span class="p">(</span><span class="n">secret_key</span><span class="p">,</span> <span class="n">_domain</span><span class="p">())</span>
+            <span class="k">if</span> <span class="n">cookie</span><span class="p">:</span>
+                <span class="n">debug_print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"R4: resolving DOI </span><span class="si">{</span><span class="n">doi</span><span class="si">}</span><span class="s2"> through the SciDB page"</span><span class="p">)</span>
+                <span class="n">parsed</span> <span class="o">=</span> <span class="n">scidb_lookup</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="n">cookie</span><span class="p">,</span> <span class="n">_domain</span><span class="p">())</span>
+                <span class="k">if</span> <span class="n">parsed</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">parsed</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"md5"</span><span class="p">):</span>
+                        <span class="n">md5</span> <span class="o">=</span> <span class="n">parsed</span><span class="p">[</span><span class="s2">"md5"</span><span class="p">]</span>
+                        <span class="n">remember_md5</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="n">md5</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">parsed</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"url"</span><span class="p">)</span> <span class="ow">and</span> <span class="n">_download_to_file</span><span class="p">(</span><span class="n">parsed</span><span class="p">[</span><span class="s2">"url"</span><span class="p">],</span> <span class="n">filepath</span><span class="p">):</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Downloaded PDF from Anna's Archive: </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+                        <span class="k">return</span> <span class="n">filepath</span>
+                    <span class="c1"># The partner link expires quickly; a fresh md5 may still</span>
+                    <span class="c1"># be usable through the cheaper routes.</span>
+                    <span class="k">if</span> <span class="n">_try_md5_routes</span><span class="p">(</span><span class="n">md5</span><span class="p">):</span>
+                        <span class="k">return</span> <span class="n">filepath</span>
+
+    <span class="k">if</span> <span class="s2">"R5"</span> <span class="ow">in</span> <span class="n">routes</span> <span class="ow">and</span> <span class="n">doi</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">allow_browser</span><span class="p">:</span>
+            <span class="n">debug_print</span><span class="p">(</span><span class="s2">"R5 skipped: the browser route is disabled"</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">download_via_browser</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="n">filepath</span><span class="p">,</span> <span class="n">_domain</span><span class="p">())</span>
+            <span class="k">if</span> <span class="n">result</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"md5"</span><span class="p">):</span>
+                    <span class="n">md5</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s2">"md5"</span><span class="p">]</span>
+                    <span class="n">remember_md5</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="n">md5</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"downloaded"</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="n">filepath</span>
+                <span class="c1"># The browser resolved the DOI even though the partner link</span>
+                <span class="c1"># failed, so the cheaper md5 routes are worth another try.</span>
+                <span class="k">if</span> <span class="n">_try_md5_routes</span><span class="p">(</span><span class="n">md5</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="n">filepath</span>
+
+    <span class="k">return</span> <span class="kc">None</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># CLI</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<div class="viewcode-block" id="print_default_paths">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.print_default_paths">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">print_default_paths</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Cache directory:       </span><span class="si">{</span><span class="n">get_cache_directory</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Credentials file:      </span><span class="si">{</span><span class="n">default_credentials_file</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"md5 cache file:        </span><span class="si">{</span><span class="n">md5_cache_file</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Download directory:    </span><span class="si">{</span><span class="n">get_download_directory</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Secret key variable:   $</span><span class="si">{</span><span class="n">SECRET_KEY_ENV</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Mirrors:               </span><span class="si">{</span><span class="s1">', '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">DOMAINS</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="print_user_info">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.print_user_info">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">print_user_info</span><span class="p">(</span><span class="n">secret_key</span><span class="p">):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">secret_key</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Anna's Archive account: not configured"</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Set $</span><span class="si">{</span><span class="n">SECRET_KEY_ENV</span><span class="si">}</span><span class="s2"> or run with --key to configure one."</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="n">domain</span> <span class="o">=</span> <span class="n">select_active_domain</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">domain</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"❌ No Anna's Archive mirror is reachable."</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="n">cookie</span> <span class="o">=</span> <span class="n">login</span><span class="p">(</span><span class="n">secret_key</span><span class="p">,</span> <span class="n">domain</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">cookie</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"❌ Login failed: the secret key was rejected."</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="n">expiry</span> <span class="o">=</span> <span class="n">account_cookie_expiry</span><span class="p">(</span><span class="n">cookie</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Anna's Archive account: logged in at </span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">expiry</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Session cookie expires: </span><span class="si">{</span><span class="n">expiry</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Server reports logged in: </span><span class="si">{</span><span class="n">is_logged_in</span><span class="p">(</span><span class="n">cookie</span><span class="p">,</span><span class="w"> </span><span class="n">domain</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="main">
+<a class="viewcode-back" href="../../api_reference.html#getscipapers_hoanganhduc.anna.main">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">VERBOSE</span><span class="p">,</span> <span class="n">ACTIVE_PROXY</span>
+
+    <span class="n">parent_package</span> <span class="o">=</span> <span class="vm">__name__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'.'</span> <span class="ow">in</span> <span class="vm">__name__</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">parent_package</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">program_name</span> <span class="o">=</span> <span class="s1">'anna'</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="s1">'_'</span> <span class="ow">in</span> <span class="n">parent_package</span><span class="p">:</span>
+            <span class="n">parent_package</span> <span class="o">=</span> <span class="n">parent_package</span><span class="p">[:</span><span class="n">parent_package</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s1">'_'</span><span class="p">)]</span>
+        <span class="n">program_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">parent_package</span><span class="si">}</span><span class="s2"> anna"</span>
+
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
+        <span class="n">prog</span><span class="o">=</span><span class="n">program_name</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">"Download documents from Anna's Archive by DOI or md5"</span><span class="p">,</span>
+        <span class="n">epilog</span><span class="o">=</span><span class="s1">'Example usage:</span><span class="se">\n</span><span class="s1">'</span>
+               <span class="s1">'  </span><span class="si">%(prog)s</span><span class="s1"> --user-info</span><span class="se">\n</span><span class="s1">'</span>
+               <span class="s1">'  </span><span class="si">%(prog)s</span><span class="s1"> --doi "10.1038/nature12373"</span><span class="se">\n</span><span class="s1">'</span>
+               <span class="s1">'  </span><span class="si">%(prog)s</span><span class="s1"> --md5 a5efa9791b836507541d615ed3f069e9</span><span class="se">\n</span><span class="s1">'</span>
+               <span class="s1">'  </span><span class="si">%(prog)s</span><span class="s1"> --doi "10.1038/nature12373" --scidb'</span><span class="p">,</span>
+        <span class="n">formatter_class</span><span class="o">=</span><span class="n">argparse</span><span class="o">.</span><span class="n">RawDescriptionHelpFormatter</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--doi'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">'DOI of the document to download'</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--md5'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Anna's Archive md5 of the document to download"</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--download-folder'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">'Folder to save the document into'</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'-u'</span><span class="p">,</span> <span class="s1">'--user-info'</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s1">'store_true'</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">'Print account status'</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s1">'-c'</span><span class="p">,</span> <span class="s1">'--credentials'</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="s1">'FILE'</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">'Path to JSON file containing the account secret (format: {"anna_secret_key": "..."})'</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s1">'--key'</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="s1">'SECRET'</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">"Account secret key, or - to read it from standard input. Prefer "</span>
+             <span class="sa">f</span><span class="s2">"$</span><span class="si">{</span><span class="n">SECRET_KEY_ENV</span><span class="si">}</span><span class="s2"> or a credentials file: a key given on the "</span>
+             <span class="s2">"command line is visible to every user on the machine."</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s1">'--scidb'</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s1">'store_true'</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">"Resolve a cold DOI through the member SciDB page. Anna's Archive "</span>
+             <span class="s2">"qualifies this membership perk with </span><span class="se">\"</span><span class="s2">Only for normal browser use. "</span>
+             <span class="s2">"For scripts please use our metadata torrents.</span><span class="se">\"</span><span class="s2">, so it is off by "</span>
+             <span class="s2">"default; enabling it risks the account."</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s1">'--no-browser'</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s1">'store_true'</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">'Do not fall back to solving the browser check in Chromium'</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--md5-cache-clear'</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s1">'store_true'</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">'Delete the cached DOI to md5 mappings'</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'-C'</span><span class="p">,</span> <span class="s1">'--clear-cache'</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s1">'store_true'</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">'Clear cache before running'</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'-P'</span><span class="p">,</span> <span class="s1">'--print-default'</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s1">'store_true'</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">'Print default paths and settings'</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--verbose'</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s1">'store_true'</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">'Enable verbose debug output'</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--proxy'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s1">'Path to proxy configuration JSON file (default: </span><span class="si">{</span><span class="n">proxy_config</span><span class="o">.</span><span class="n">DEFAULT_PROXY_FILE</span><span class="si">}</span><span class="s1">)'</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--no-proxy'</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s1">'store_true'</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">'Disable proxy usage even if a proxy configuration is present'</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--auto-proxy'</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s1">'store_true'</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">'Automatically fetch a working proxy configuration when missing or invalid'</span><span class="p">)</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="n">VERBOSE</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">verbose</span>
+    <span class="n">ACTIVE_PROXY</span> <span class="o">=</span> <span class="n">proxy_config</span><span class="o">.</span><span class="n">configure_from_cli</span><span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">proxy</span><span class="p">,</span> <span class="n">no_proxy</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">no_proxy</span><span class="p">,</span> <span class="n">auto_fetch</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">auto_proxy</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">VERBOSE</span>
+    <span class="p">)</span>
+    <span class="n">proxy_config</span><span class="o">.</span><span class="n">ProxySettings</span><span class="p">(</span><span class="n">enabled</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">apply_environment</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">print_default</span><span class="p">:</span>
+        <span class="n">print_default_paths</span><span class="p">()</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">clear_cache</span><span class="p">:</span>
+        <span class="n">cache_dir</span> <span class="o">=</span> <span class="n">get_cache_directory</span><span class="p">()</span>
+        <span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">cache_dir</span><span class="p">,</span> <span class="n">ignore_errors</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Cleared cache directory: </span><span class="si">{</span><span class="n">cache_dir</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">md5_cache_clear</span><span class="p">:</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">md5_cache_file</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Cleared md5 cache: </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"No md5 cache to clear at </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="n">interactive</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="o">.</span><span class="n">isatty</span><span class="p">()</span>
+    <span class="n">secret_key</span> <span class="o">=</span> <span class="n">resolve_secret_key</span><span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">key</span><span class="p">,</span> <span class="n">credentials_file</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">credentials</span><span class="p">,</span> <span class="n">interactive</span><span class="o">=</span><span class="kc">False</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">user_info</span><span class="p">:</span>
+        <span class="n">print_user_info</span><span class="p">(</span><span class="n">secret_key</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">doi</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">md5</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">clear_cache</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">md5_cache_clear</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">credentials</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">key</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">"one of --doi or --md5 is required"</span><span class="p">)</span>
+
+    <span class="n">result</span> <span class="o">=</span> <span class="n">download_paper</span><span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">doi</span><span class="p">,</span>
+        <span class="n">md5</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">md5</span><span class="p">,</span>
+        <span class="n">download_folder</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">download_folder</span><span class="p">,</span>
+        <span class="n">secret_key</span><span class="o">=</span><span class="n">secret_key</span><span class="p">,</span>
+        <span class="n">allow_scidb</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">scidb</span><span class="p">,</span>
+        <span class="n">allow_browser</span><span class="o">=</span><span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">no_browser</span><span class="p">,</span>
+        <span class="n">interactive</span><span class="o">=</span><span class="n">interactive</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="o">=</span><span class="n">VERBOSE</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">result</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"✅ Saved to </span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"❌ Could not download the requested document from Anna's Archive."</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span></div>
+
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2026, Duc A. Hoang.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

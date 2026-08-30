@@ -1,0 +1,201 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configuration &mdash; getscipapers 0.1.6 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=6e0256f3"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="CLI Reference" href="cli_reference.html" />
+    <link rel="prev" title="Usage Guide" href="usage.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            getscipapers
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Configuration</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#credential-sources">Credential Sources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#cache-and-download-directories">Cache and Download Directories</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#token-management">Token Management</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#proxy-configuration">Proxy Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#ipfs-gateway">IPFS Gateway</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="cli_reference.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="project_documentation.html">Project Architecture and Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="project_documentation.html#getscipapers-project-documentation">getscipapers Project Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="docker_compose.html">Docker Compose Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ipfs_optimization.html">IPFS Gateway Tuning</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">getscipapers</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Configuration</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/configuration.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="configuration">
+<h1>Configuration<a class="headerlink" href="#configuration" title="Link to this heading"></a></h1>
+<p>Credentials and cache locations are centralized in
+<code class="docutils literal notranslate"><span class="pre">getscipapers_hoanganhduc.configuration</span></code>. Key points:</p>
+<section id="credential-sources">
+<h2>Credential Sources<a class="headerlink" href="#credential-sources" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Environment variables <code class="docutils literal notranslate"><span class="pre">GETSCIPAPERS_EMAIL</span></code>,
+<code class="docutils literal notranslate"><span class="pre">GETSCIPAPERS_ELSEVIER_API_KEY</span></code>, <code class="docutils literal notranslate"><span class="pre">GETSCIPAPERS_WILEY_TDM_TOKEN</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">GETSCIPAPERS_IEEE_API_KEY</span></code> can be provided to avoid interactive prompts.
+They override whatever the credentials file holds.</p></li>
+<li><p>JSON files at <code class="docutils literal notranslate"><span class="pre">~/.config/getscipapers/getpapers/config.json</span></code> (Linux/macOS)
+or <code class="docutils literal notranslate"><span class="pre">%LOCALAPPDATA%\getscipapers\getpapers\config.json</span></code> (Windows) are
+loaded when present. Point at a different file with <code class="docutils literal notranslate"><span class="pre">--credentials</span></code>.</p></li>
+<li><p>Z-Library stores credentials in <code class="docutils literal notranslate"><span class="pre">~/.config/getscipapers/zlib/zlib_config.json</span></code>
+(Linux/macOS) or the matching <code class="docutils literal notranslate"><span class="pre">zlib</span></code> folder under <code class="docutils literal notranslate"><span class="pre">%LOCALAPPDATA%</span></code>
+(Windows).</p></li>
+<li><p>Anna’s Archive stores its account secret in
+<code class="docutils literal notranslate"><span class="pre">~/.config/getscipapers/anna/credentials.json</span></code> under the key
+<code class="docutils literal notranslate"><span class="pre">anna_secret_key</span></code>, or reads it from <code class="docutils literal notranslate"><span class="pre">GETSCIPAPERS_ANNA_SECRET_KEY</span></code>.</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">--non-interactive</span></code> flag forces the CLI to abort if credentials are
+missing instead of prompting for input.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">sample_credentials.json</span></code> in the repository root lists every key the bundled
+modules read.</p>
+</section>
+<section id="cache-and-download-directories">
+<h2>Cache and Download Directories<a class="headerlink" href="#cache-and-download-directories" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>The Unpaywall cache sits beside the configuration file; the paths are exposed
+as <code class="docutils literal notranslate"><span class="pre">configuration.UNPYWALL_CACHE_DIR</span></code> and
+<code class="docutils literal notranslate"><span class="pre">configuration.UNPYWALL_CACHE_FILE</span></code>.</p></li>
+<li><p>Download targets default to <code class="docutils literal notranslate"><span class="pre">~/Downloads/getscipapers</span></code>, reported by
+<code class="docutils literal notranslate"><span class="pre">configuration.get_default_download_folder()</span></code>, and can be overridden with
+the <code class="docutils literal notranslate"><span class="pre">--download-folder</span></code> flag in <code class="docutils literal notranslate"><span class="pre">getpapers</span></code>.</p></li>
+<li><p>Every module prints the locations it will use when given <code class="docutils literal notranslate"><span class="pre">--print-default</span></code>.</p></li>
+</ul>
+</section>
+<section id="token-management">
+<h2>Token Management<a class="headerlink" href="#token-management" title="Link to this heading"></a></h2>
+<p>API keys for Elsevier and Wiley can be set via environment variables or saved to
+credentials files. The refresh helpers in <code class="docutils literal notranslate"><span class="pre">configuration</span></code> ensure these tokens
+are reloaded each time a request is made rather than captured at import time.
+An IEEE key is stored alongside them for future use, but no download path reads
+it yet.</p>
+</section>
+<section id="proxy-configuration">
+<h2>Proxy Configuration<a class="headerlink" href="#proxy-configuration" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">getpapers</span></code>, <code class="docutils literal notranslate"><span class="pre">anna</span></code>, and the service modules share the helpers in
+<code class="docutils literal notranslate"><span class="pre">getscipapers_hoanganhduc.proxy_config</span></code>:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">--proxy</span> <span class="pre">&lt;file&gt;</span></code> points at a JSON file holding either one proxy object or a
+list of them, in the shape of <code class="docutils literal notranslate"><span class="pre">sample_proxy_config.json</span></code>. The default
+location is <code class="docutils literal notranslate"><span class="pre">~/.config/getscipapers/getpapers/proxy.json</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--no-proxy</span></code> forces direct connections even when a configuration is present.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--auto-proxy</span></code> discovers a working public proxy when none is configured or
+the configured one no longer answers. An auto-discovered entry is stamped with
+its discovery time and treated as stale after an hour
+(<code class="docutils literal notranslate"><span class="pre">AUTO_PROXY_MAX_AGE_SECONDS</span></code>), so a dead free proxy is replaced rather than
+trusted indefinitely.</p></li>
+</ul>
+<p>Requests are attempted directly first. The proxy is used only as a retry, when
+the direct attempt raises or returns one of <code class="docutils literal notranslate"><span class="pre">PROXY_RETRY_STATUSES</span></code>
+(403, 407, 408, 429, 500, 502, 503, 504).</p>
+</section>
+<section id="ipfs-gateway">
+<h2>IPFS Gateway<a class="headerlink" href="#ipfs-gateway" title="Link to this heading"></a></h2>
+<p>The Nexus/STC search step reads its index over an IPFS gateway. It defaults to
+<code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8080</span></code>, a Kubo daemon on the same host, and reads
+<code class="docutils literal notranslate"><span class="pre">GETSCIPAPERS_IPFS_HTTP_BASE_URL</span></code> when that address is wrong.</p>
+<p>Set it whenever the gateway is not local. In a container stack the gateway runs
+as its own service, so <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> inside the application container is the
+application itself rather than the gateway:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">GETSCIPAPERS_IPFS_HTTP_BASE_URL</span><span class="o">=</span><span class="n">http</span><span class="p">:</span><span class="o">//</span><span class="n">ipfs</span><span class="p">:</span><span class="mi">8080</span>
+</pre></div>
+</div>
+<p>The variable is read each time a search starts, and an empty value falls back to
+the default. It is not a credential, so it is read only from the environment and
+never stored in the credentials file.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="usage.html" class="btn btn-neutral float-left" title="Usage Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="cli_reference.html" class="btn btn-neutral float-right" title="CLI Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2026, Duc A. Hoang.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

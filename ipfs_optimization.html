@@ -1,0 +1,264 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IPFS Gateway Tuning &mdash; getscipapers 0.1.6 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=6e0256f3"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Docker Compose Guide" href="docker_compose.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            getscipapers
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli_reference.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="project_documentation.html">Project Architecture and Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="project_documentation.html#getscipapers-project-documentation">getscipapers Project Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="docker_compose.html">Docker Compose Guide</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">IPFS Gateway Tuning</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#applying-settings">Applying settings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#disk">Disk</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#content-providing">Content providing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#lookup-latency">Lookup latency</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#constrained-hosts">Constrained hosts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#checking-the-node">Checking the node</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#recovering-from-a-bad-configuration">Recovering from a bad configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">getscipapers</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">IPFS Gateway Tuning</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/ipfs_optimization.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="ipfs-gateway-tuning">
+<h1>IPFS Gateway Tuning<a class="headerlink" href="#ipfs-gateway-tuning" title="Link to this heading"></a></h1>
+<p><code class="docutils literal notranslate"><span class="pre">getscipapers</span></code> uses IPFS in one direction only: it reads the Nexus/STC index
+through a gateway. It pins nothing and serves nothing of its own. Kubo’s
+defaults assume a node that both fetches and publishes, so a few settings are
+worth revisiting for a read-only node.</p>
+<p>Everything here is optional. The stack in <a class="reference internal" href="docker_compose.html"><span class="doc">Docker Compose Guide</span></a> works without
+it.</p>
+<section id="applying-settings">
+<h2>Applying settings<a class="headerlink" href="#applying-settings" title="Link to this heading"></a></h2>
+<p>Kubo reads its configuration from the repository, not from the environment. The
+one exception is <code class="docutils literal notranslate"><span class="pre">IPFS_PROFILE</span></code>, which the image applies on first
+initialization. Everything else is set with <code class="docutils literal notranslate"><span class="pre">ipfs</span> <span class="pre">config</span></code> and takes effect
+after a restart:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>ipfs<span class="w"> </span>ipfs<span class="w"> </span>config<span class="w"> </span>--json<span class="w"> </span>&lt;Key&gt;<span class="w"> </span>&lt;value&gt;
+docker<span class="w"> </span>compose<span class="w"> </span>restart<span class="w"> </span>ipfs
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">ipfs</span> <span class="pre">config</span> <span class="pre">show</span></code> prints the current repository configuration, and
+<code class="docutils literal notranslate"><span class="pre">ipfs</span> <span class="pre">config</span> <span class="pre">profile</span> <span class="pre">apply</span> <span class="pre">&lt;name&gt;</span></code> applies a named profile to an existing
+repository. Profiles are not idempotent in both directions – <code class="docutils literal notranslate"><span class="pre">ipfs</span> <span class="pre">config</span>
+<span class="pre">profile</span> <span class="pre">apply</span></code> stores a backup of the previous configuration and names it in
+its output.</p>
+</section>
+<section id="disk">
+<h2>Disk<a class="headerlink" href="#disk" title="Link to this heading"></a></h2>
+<p>The datastore grows without limit as content is fetched. <code class="docutils literal notranslate"><span class="pre">Datastore.StorageMax</span></code>
+caps it, but the cap only binds when garbage collection runs, and the published
+image starts the daemon without <code class="docutils literal notranslate"><span class="pre">--enable-gc</span></code>.</p>
+<p>Enable periodic collection and set a cap that suits the host:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>ipfs<span class="w"> </span>ipfs<span class="w"> </span>config<span class="w"> </span>Datastore.StorageMax<span class="w"> </span>20GB
+docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>ipfs<span class="w"> </span>ipfs<span class="w"> </span>config<span class="w"> </span>Datastore.GCPeriod<span class="w"> </span>12h
+</pre></div>
+</div>
+<p>Then add <code class="docutils literal notranslate"><span class="pre">--enable-gc</span></code> to the daemon by overriding the command in
+<code class="docutils literal notranslate"><span class="pre">docker-compose.yml</span></code>:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">services</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">ipfs</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"daemon"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"--migrate=true"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"--enable-gc"</span><span class="p p-Indicator">]</span>
+</pre></div>
+</div>
+<p>A one-off collection is available at any time, and reports what it removed:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">compose</span> <span class="n">exec</span> <span class="n">ipfs</span> <span class="n">ipfs</span> <span class="n">repo</span> <span class="n">gc</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">ipfs</span> <span class="pre">repo</span> <span class="pre">stat</span></code> shows the current size against the cap. Collection discards
+unpinned blocks, so an index chunk that is dropped is simply fetched again on
+the next search.</p>
+</section>
+<section id="content-providing">
+<h2>Content providing<a class="headerlink" href="#content-providing" title="Link to this heading"></a></h2>
+<p>By default a Kubo node announces every block it holds to the DHT, which for a
+node that only reads is work with no consumer. Restricting announcements to
+pinned content removes most of it:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>ipfs<span class="w"> </span>ipfs<span class="w"> </span>config<span class="w"> </span>Provide.Strategy<span class="w"> </span>pinned
+</pre></div>
+</div>
+<p>If the node pins nothing, this reduces announcement traffic to nearly zero. The
+cost is that other peers cannot fetch the blocks this node happens to hold; for
+a private client that is not a service anyone depends on.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Older guides set <code class="docutils literal notranslate"><span class="pre">Reprovider.Strategy</span></code> instead. <code class="docutils literal notranslate"><span class="pre">Provide.Strategy</span></code>
+replaced it in Kubo 0.38, and 0.43 removed the <code class="docutils literal notranslate"><span class="pre">Reprovider</span></code> section
+outright: a node whose configuration still carries it <strong>refuses to start</strong>,
+reporting <code class="docutils literal notranslate"><span class="pre">deprecated</span> <span class="pre">configuration</span> <span class="pre">detected</span></code>.</p>
+<p>Recovering needs a one-off container, because the daemon is down and
+<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span> <span class="pre">exec</span></code> has nothing to attach to:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">compose</span> <span class="n">stop</span> <span class="n">ipfs</span>
+<span class="n">docker</span> <span class="n">compose</span> <span class="n">run</span> <span class="o">--</span><span class="n">rm</span> <span class="n">ipfs</span> <span class="n">config</span> <span class="o">--</span><span class="n">json</span> <span class="n">Reprovider</span> <span class="n">null</span>
+<span class="n">docker</span> <span class="n">compose</span> <span class="n">run</span> <span class="o">--</span><span class="n">rm</span> <span class="n">ipfs</span> <span class="n">config</span> <span class="n">Provide</span><span class="o">.</span><span class="n">Strategy</span> <span class="n">pinned</span>
+<span class="n">docker</span> <span class="n">compose</span> <span class="n">start</span> <span class="n">ipfs</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span> <span class="pre">run</span></code> starts a second container on the same volume, so it
+edits the same repository the daemon will read on the next start.</p>
+<p>The bundled <code class="docutils literal notranslate"><span class="pre">scripts/optimize-ipfs.sh</span></code> picks the key by asking the node
+which schema it has, so it is safe on either side of the change.</p>
+</div>
+</section>
+<section id="lookup-latency">
+<h2>Lookup latency<a class="headerlink" href="#lookup-latency" title="Link to this heading"></a></h2>
+<p>The accelerated DHT client keeps a fuller routing table, so content lookups
+resolve in fewer hops:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>ipfs<span class="w"> </span>ipfs<span class="w"> </span>config<span class="w"> </span>--json<span class="w"> </span>Routing.AcceleratedDHTClient<span class="w"> </span><span class="nb">true</span>
+</pre></div>
+</div>
+<p>It buys latency with memory and bandwidth – the node sweeps the DHT
+periodically to maintain the table, and start-up takes longer before the first
+lookup succeeds. It suits a long-running node on a machine with memory to spare,
+not a laptop that starts the stack for one search.</p>
+</section>
+<section id="constrained-hosts">
+<h2>Constrained hosts<a class="headerlink" href="#constrained-hosts" title="Link to this heading"></a></h2>
+<p>On a small machine, cap the connection manager instead:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>ipfs<span class="w"> </span>ipfs<span class="w"> </span>config<span class="w"> </span>--json<span class="w"> </span>Swarm.ConnMgr.HighWater<span class="w"> </span><span class="m">40</span>
+docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>ipfs<span class="w"> </span>ipfs<span class="w"> </span>config<span class="w"> </span>--json<span class="w"> </span>Swarm.ConnMgr.LowWater<span class="w"> </span><span class="m">20</span>
+</pre></div>
+</div>
+<p>Kubo’s own <code class="docutils literal notranslate"><span class="pre">lowpower</span></code> profile sets the same two limits in one step:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">compose</span> <span class="n">exec</span> <span class="n">ipfs</span> <span class="n">ipfs</span> <span class="n">config</span> <span class="n">profile</span> <span class="n">apply</span> <span class="n">lowpower</span>
+</pre></div>
+</div>
+<p>On Kubo 0.43 it also turns off the relay service and sets <code class="docutils literal notranslate"><span class="pre">Routing.Type</span></code> to
+<code class="docutils literal notranslate"><span class="pre">autoclient</span></code>, which is why it must not be combined with the accelerated DHT
+client above – the profile is asking for a smaller routing table and the client
+for a fuller one. Older descriptions of the profile mention that it disables
+reproviding as well; it no longer does, so set <code class="docutils literal notranslate"><span class="pre">Provide.Strategy</span></code> separately.</p>
+<p>Fewer peers means fewer places to find a block, so searches may take longer to
+resolve.</p>
+</section>
+<section id="checking-the-node">
+<h2>Checking the node<a class="headerlink" href="#checking-the-node" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>ipfs<span class="w"> </span>ipfs<span class="w"> </span>id<span class="w">                 </span><span class="c1"># identity and listen addresses</span>
+docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>ipfs<span class="w"> </span>ipfs<span class="w"> </span>swarm<span class="w"> </span>peers<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l<span class="w">  </span><span class="c1"># peer count</span>
+docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>ipfs<span class="w"> </span>ipfs<span class="w"> </span>repo<span class="w"> </span>stat<span class="w">          </span><span class="c1"># datastore size</span>
+docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>ipfs<span class="w"> </span>ipfs<span class="w"> </span>stats<span class="w"> </span>bw<span class="w">           </span><span class="c1"># bandwidth totals</span>
+</pre></div>
+</div>
+<p>A healthy node holds a few dozen peers or more. A node stuck at zero peers is
+usually blocked outbound on port <code class="docutils literal notranslate"><span class="pre">4001</span></code>, or is behind a NAT that has not been
+traversed; the gateway will appear to hang rather than fail.</p>
+</section>
+<section id="recovering-from-a-bad-configuration">
+<h2>Recovering from a bad configuration<a class="headerlink" href="#recovering-from-a-bad-configuration" title="Link to this heading"></a></h2>
+<p>Settings live in the named volume, so a bad edit survives <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span>
+<span class="pre">down</span></code>. Restore the defaults by re-applying a profile, or discard the repository
+entirely and let the next start rebuild it:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span>down<span class="w"> </span>-v
+docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+</pre></div>
+</div>
+<p>Rebuilding costs only re-fetch time; nothing <code class="docutils literal notranslate"><span class="pre">getscipapers</span></code> needs is stored
+only on this node.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/ipfs/kubo/blob/master/docs/config.md">Kubo configuration reference</a></p></li>
+<li><p><a class="reference external" href="https://github.com/ipfs/kubo/blob/master/docs/config.md#profiles">Kubo configuration profiles</a></p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="docker_compose.html" class="btn btn-neutral float-left" title="Docker Compose Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2026, Duc A. Hoang.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

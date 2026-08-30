@@ -1,0 +1,293 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Docker Compose Guide &mdash; getscipapers 0.1.6 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=6e0256f3"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="IPFS Gateway Tuning" href="ipfs_optimization.html" />
+    <link rel="prev" title="Project Architecture and Workflows" href="project_documentation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            getscipapers
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli_reference.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="project_documentation.html">Project Architecture and Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="project_documentation.html#getscipapers-project-documentation">getscipapers Project Documentation</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Docker Compose Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#quick-start">Quick Start</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#prepare-the-configuration-directory">1. Prepare the configuration directory</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#start-the-services">2. Start the services</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#run-commands">3. Run commands</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#stop-the-services">4. Stop the services</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#what-the-stack-defines">What the stack defines</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#ipfs-service">IPFS service</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#getscipapers-service">getscipapers service</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#backing-up-the-datastore">Backing up the datastore</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#security-notes">Security notes</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="ipfs_optimization.html">IPFS Gateway Tuning</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">getscipapers</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Docker Compose Guide</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/docker_compose.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="docker-compose-guide">
+<h1>Docker Compose Guide<a class="headerlink" href="#docker-compose-guide" title="Link to this heading"></a></h1>
+<p><code class="docutils literal notranslate"><span class="pre">getscipapers</span></code> reads the Nexus/STC index over an IPFS gateway. Running the two
+as a Compose stack keeps the gateway beside the application, so neither has to
+be installed on the host.</p>
+<p>The stack is defined on the <code class="docutils literal notranslate"><span class="pre">docker</span></code> branch, alongside the <code class="docutils literal notranslate"><span class="pre">Dockerfile</span></code> that
+produces the published image:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">git</span> <span class="n">clone</span> <span class="o">-</span><span class="n">b</span> <span class="n">docker</span> <span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">hoanganhduc</span><span class="o">/</span><span class="n">getscipapers</span><span class="o">.</span><span class="n">git</span> <span class="n">getscipapers</span><span class="o">-</span><span class="n">docker</span>
+<span class="n">cd</span> <span class="n">getscipapers</span><span class="o">-</span><span class="n">docker</span>
+</pre></div>
+</div>
+<section id="prerequisites">
+<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference external" href="https://docs.docker.com/get-docker/">Docker</a> with the
+<a class="reference external" href="https://docs.docker.com/compose/install/">Compose plugin</a>.</p></li>
+<li><p>Free disk for the IPFS datastore. Kubo caps it at 10 GB, but only enforces
+the cap when garbage collection is enabled, which it is not by default –
+see <a class="reference internal" href="ipfs_optimization.html"><span class="doc">IPFS Gateway Tuning</span></a>.</p></li>
+</ul>
+</section>
+<section id="quick-start">
+<h2>Quick Start<a class="headerlink" href="#quick-start" title="Link to this heading"></a></h2>
+<section id="prepare-the-configuration-directory">
+<h3>1. Prepare the configuration directory<a class="headerlink" href="#prepare-the-configuration-directory" title="Link to this heading"></a></h3>
+<p>The stack mounts a host directory at the location the CLI reads its
+configuration from, so credentials survive container restarts:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>mkdir<span class="w"> </span>-p<span class="w"> </span>config/getpapers<span class="w"> </span>downloads
+cp<span class="w"> </span>sample_credentials.json<span class="w"> </span>config/getpapers/config.json
+chmod<span class="w"> </span><span class="m">600</span><span class="w"> </span>config/getpapers/config.json
+</pre></div>
+</div>
+<p>Edit <code class="docutils literal notranslate"><span class="pre">config/getpapers/config.json</span></code> and fill in the keys the services you use
+require. <code class="docutils literal notranslate"><span class="pre">sample_credentials.json</span></code> lists every key the bundled modules read;
+leaving a key empty is fine. See <a class="reference internal" href="configuration.html"><span class="doc">Configuration</span></a> for what each one does.</p>
+<p>The file name matters. <code class="docutils literal notranslate"><span class="pre">getpapers</span></code> reads
+<code class="docutils literal notranslate"><span class="pre">~/.config/getscipapers/getpapers/config.json</span></code>, which the mount below places
+inside the container.</p>
+</section>
+<section id="start-the-services">
+<h3>2. Start the services<a class="headerlink" href="#start-the-services" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+</pre></div>
+</div>
+<p>The first start downloads the IPFS repository and takes a few minutes to find
+peers. <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span> <span class="pre">logs</span> <span class="pre">-f</span> <span class="pre">ipfs</span></code> shows progress; the gateway is ready once
+the daemon prints its listening addresses.</p>
+</section>
+<section id="run-commands">
+<h3>3. Run commands<a class="headerlink" href="#run-commands" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>getscipapers<span class="w"> </span>getscipapers<span class="w"> </span>--list
+
+docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>getscipapers<span class="w"> </span>getscipapers<span class="w"> </span>getpapers<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--search<span class="w"> </span><span class="s2">"machine learning"</span><span class="w"> </span>--limit<span class="w"> </span><span class="m">5</span>
+
+docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>getscipapers<span class="w"> </span>getscipapers<span class="w"> </span>getpapers<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--doi<span class="w"> </span><span class="m">10</span>.1371/journal.pone.0245581
+</pre></div>
+</div>
+<p>Downloads land in <code class="docutils literal notranslate"><span class="pre">./downloads</span></code> on the host.</p>
+</section>
+<section id="stop-the-services">
+<h3>4. Stop the services<a class="headerlink" href="#stop-the-services" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span>down<span class="w">          </span><span class="c1"># keeps the IPFS datastore</span>
+docker<span class="w"> </span>compose<span class="w"> </span>down<span class="w"> </span>-v<span class="w">       </span><span class="c1"># also discards it</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="what-the-stack-defines">
+<h2>What the stack defines<a class="headerlink" href="#what-the-stack-defines" title="Link to this heading"></a></h2>
+<section id="ipfs-service">
+<h3>IPFS service<a class="headerlink" href="#ipfs-service" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Image <code class="docutils literal notranslate"><span class="pre">ipfs/kubo:latest</span></code>, with the datastore in a named volume so it
+survives <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span> <span class="pre">down</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">IPFS_PROFILE=server</span></code> suppresses local-network peer discovery, which is the
+right default on a hosted machine and harmless on a laptop.</p></li>
+<li><p>Port <code class="docutils literal notranslate"><span class="pre">4001</span></code> is published on all interfaces, because peer connectivity
+depends on it. The gateway (<code class="docutils literal notranslate"><span class="pre">8080</span></code>) and the API (<code class="docutils literal notranslate"><span class="pre">5001</span></code>) are bound to
+<code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> — the API port grants full control of the node and must not be
+reachable from outside the host.</p></li>
+<li><p>Kubo does not read datastore or reprovider settings from the environment.
+Anything beyond the profile is applied with <code class="docutils literal notranslate"><span class="pre">ipfs</span> <span class="pre">config</span></code>; see
+<a class="reference internal" href="ipfs_optimization.html"><span class="doc">IPFS Gateway Tuning</span></a>.</p></li>
+<li><p>A healthcheck runs <code class="docutils literal notranslate"><span class="pre">ipfs</span> <span class="pre">id</span></code>, so <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span> <span class="pre">ps</span></code> reports when the
+daemon is ready rather than merely started.</p></li>
+</ul>
+</section>
+<section id="getscipapers-service">
+<h3>getscipapers service<a class="headerlink" href="#getscipapers-service" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Image <code class="docutils literal notranslate"><span class="pre">ghcr.io/hoanganhduc/getscipapers:latest</span></code>, rebuilt from the <code class="docutils literal notranslate"><span class="pre">docker</span></code>
+branch.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GETSCIPAPERS_IPFS_HTTP_BASE_URL=http://ipfs:8080</span></code> points the Nexus/STC
+search at the gateway service. Without it the search falls back to
+<code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8080</span></code>, which inside the container is the container itself.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">./config</span></code> is mounted at <code class="docutils literal notranslate"><span class="pre">/home/vscode/.config/getscipapers</span></code> and
+<code class="docutils literal notranslate"><span class="pre">./downloads</span></code> at <code class="docutils literal notranslate"><span class="pre">/home/vscode/Downloads/getscipapers</span></code>. The image runs as
+the <code class="docutils literal notranslate"><span class="pre">vscode</span></code> user, so both paths are under that home directory.</p></li>
+<li><p>The container idles under <code class="docutils literal notranslate"><span class="pre">tail</span> <span class="pre">-f</span> <span class="pre">/dev/null</span></code>; work is done through
+<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span> <span class="pre">exec</span></code>.</p></li>
+<li><p>The published image is built for <code class="docutils literal notranslate"><span class="pre">linux/amd64</span></code>. Running it on an arm64
+host, such as Apple Silicon or an ARM server, needs binfmt emulation;
+without it the container restarts with exit status 255.</p></li>
+</ul>
+<p>Both services share a bridge network, which is what lets the application resolve
+<code class="docutils literal notranslate"><span class="pre">ipfs</span></code> as a hostname.</p>
+</section>
+</section>
+<section id="troubleshooting">
+<h2>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading"></a></h2>
+<p><strong>Nexus/STC search reports no results and the gateway looks idle.</strong>
+Confirm the application can reach the gateway:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>getscipapers<span class="w"> </span>curl<span class="w"> </span>-sS<span class="w"> </span>-o<span class="w"> </span>/dev/null<span class="w"> </span>-w<span class="w"> </span><span class="s1">'%{http_code}\n'</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>http://ipfs:8080/ipfs/bafkqaaa
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">bafkqaaa</span></code> is the empty file, encoded in the address itself, so a healthy
+gateway answers <code class="docutils literal notranslate"><span class="pre">200</span></code> without going to the network. A connection error means
+the services are not on the same network; a hang usually means the daemon is
+still starting. Note that the gateway does not serve <code class="docutils literal notranslate"><span class="pre">/api/v0</span></code> – that is the
+API on port <code class="docutils literal notranslate"><span class="pre">5001</span></code>.</p>
+<p><strong>Credentials prompt on every command.</strong>
+The configuration is not where the CLI looks. Check the path inside the
+container:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>getscipapers<span class="w"> </span>ls<span class="w"> </span>-l<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>/home/vscode/.config/getscipapers/getpapers/config.json
+</pre></div>
+</div>
+<p><strong>Permission denied writing downloads.</strong>
+The host directory must be writable by UID 1000, which is the <code class="docutils literal notranslate"><span class="pre">vscode</span></code> user in
+the image:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>chown<span class="w"> </span>-R<span class="w"> </span><span class="m">1000</span>:1000<span class="w"> </span>downloads<span class="w"> </span>config
+</pre></div>
+</div>
+<p><strong>Datastore keeps growing.</strong>
+The cap is a Kubo setting rather than a Compose one. <a class="reference internal" href="ipfs_optimization.html"><span class="doc">IPFS Gateway Tuning</span></a>
+covers raising, lowering, and reclaiming it.</p>
+</section>
+<section id="backing-up-the-datastore">
+<h2>Backing up the datastore<a class="headerlink" href="#backing-up-the-datastore" title="Link to this heading"></a></h2>
+<p>The datastore is a named volume, so it is not in the project directory:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span>getscipapers-docker_ipfs_data:/data<span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">"</span>:/backup<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>alpine<span class="w"> </span>tar<span class="w"> </span>czf<span class="w"> </span>/backup/ipfs-data.tar.gz<span class="w"> </span>-C<span class="w"> </span>/data<span class="w"> </span>.
+</pre></div>
+</div>
+<p>The volume name is prefixed with the project directory name; <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">volume</span>
+<span class="pre">ls</span></code> shows the actual one.</p>
+</section>
+<section id="security-notes">
+<h2>Security notes<a class="headerlink" href="#security-notes" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Keep <code class="docutils literal notranslate"><span class="pre">config/getpapers/config.json</span></code> at mode <code class="docutils literal notranslate"><span class="pre">600</span></code>. It holds API keys in
+plain text, and the CLI warns when it is readable by others.</p></li>
+<li><p>Add <code class="docutils literal notranslate"><span class="pre">config/</span></code> and <code class="docutils literal notranslate"><span class="pre">downloads/</span></code> to any ignore file before committing work
+in a clone of the <code class="docutils literal notranslate"><span class="pre">docker</span></code> branch.</p></li>
+<li><p>Leave the Kubo API bound to <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>. Anything that reaches port <code class="docutils literal notranslate"><span class="pre">5001</span></code>
+can reconfigure the node and read everything it stores.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="project_documentation.html" class="btn btn-neutral float-left" title="Project Architecture and Workflows" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="ipfs_optimization.html" class="btn btn-neutral float-right" title="IPFS Gateway Tuning" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2026, Duc A. Hoang.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

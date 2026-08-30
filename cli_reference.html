@@ -1,0 +1,329 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CLI Reference &mdash; getscipapers 0.1.6 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=6e0256f3"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="API Reference" href="api_reference.html" />
+    <link rel="prev" title="Configuration" href="configuration.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            getscipapers
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">CLI Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#getpapers">getpapers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#anna">anna</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#request">request</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#checkin">checkin</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#other-modules">Other Modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#zlib">zlib</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="project_documentation.html">Project Architecture and Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="project_documentation.html#getscipapers-project-documentation">getscipapers Project Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="docker_compose.html">Docker Compose Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ipfs_optimization.html">IPFS Gateway Tuning</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">getscipapers</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">CLI Reference</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/cli_reference.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="cli-reference">
+<h1>CLI Reference<a class="headerlink" href="#cli-reference" title="Link to this heading"></a></h1>
+<p><code class="docutils literal notranslate"><span class="pre">getscipapers</span></code> acts as a dispatcher for module-based subcommands. The most
+commonly used modules are summarized below.</p>
+<section id="getpapers">
+<h2>getpapers<a class="headerlink" href="#getpapers" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>getscipapers<span class="w"> </span>getpapers<span class="w"> </span>--doi<span class="w"> </span>&lt;doi&gt;<span class="w"> </span>--download-folder<span class="w"> </span>&lt;path&gt;
+</pre></div>
+</div>
+<p>Searches for papers using Crossref and Unpaywall, then downloads from the
+selected sources. Key options:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">--doi</span></code>, <code class="docutils literal notranslate"><span class="pre">--doi-file</span></code>, or <code class="docutils literal notranslate"><span class="pre">--search</span></code>: choose between a direct DOI
+lookup, a file of DOIs, and a keyword search.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--db</span></code>: which source to download from, one of <code class="docutils literal notranslate"><span class="pre">all</span></code>, <code class="docutils literal notranslate"><span class="pre">nexus</span></code>,
+<code class="docutils literal notranslate"><span class="pre">scihub</span></code>, <code class="docutils literal notranslate"><span class="pre">anna</span></code>, <code class="docutils literal notranslate"><span class="pre">unpaywall</span></code>, <code class="docutils literal notranslate"><span class="pre">libgen</span></code>. Repeat the flag to target
+several; defaults to <code class="docutils literal notranslate"><span class="pre">all</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--download-folder</span></code>: where to save the PDFs.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--credentials</span></code>: load a JSON credentials file instead of the default one.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--non-interactive</span></code>: fail fast if credentials are missing.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--anna-md5</span></code>: hand Anna’s Archive a known md5 so it can skip DOI
+resolution entirely. Otherwise the md5 cache and then LibGen are consulted
+before any Anna’s Archive route runs.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--anna-scidb</span></code> / <code class="docutils literal notranslate"><span class="pre">--no-anna-browser</span></code>: arm or disable the Anna’s Archive
+routes described below.</p></li>
+</ul>
+<p>The contact address several APIs require comes from the credentials file or
+<code class="docutils literal notranslate"><span class="pre">GETSCIPAPERS_EMAIL</span></code>; there is no <code class="docutils literal notranslate"><span class="pre">--email</span></code> flag.</p>
+<p><code class="docutils literal notranslate"><span class="pre">--db</span> <span class="pre">libgen</span></code> finds files more reliably than it delivers them. A DOI resolves
+to a catalog entry and an md5, and small transfers complete byte-exact:
+downloads of 82 kB, 407 kB and 922 kB each arrived at their full declared
+length.</p>
+<p>A 48 MB file did not. Every attempt broke mid-stream after a few megabytes
+had arrived, at a point that moved between runs, and once every mirror had
+failed the run printed <code class="docutils literal notranslate"><span class="pre">PDF</span> <span class="pre">file</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available</span> <span class="pre">on</span> <span class="pre">LibGen</span></code>. The server
+reported the right <code class="docutils literal notranslate"><span class="pre">Content-Length</span></code> each time, so the catalog entry and the
+link were sound and only the byte transfer broke. Exactly one large file was
+tested, so where the behaviour changes, and why, is not known.</p>
+</section>
+<section id="anna">
+<h2>anna<a class="headerlink" href="#anna" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>getscipapers<span class="w"> </span>anna<span class="w"> </span>--doi<span class="w"> </span><span class="m">10</span>.1038/nature12373
+</pre></div>
+</div>
+<p>Downloads a document from Anna’s Archive. Anna’s Archive puts a DDoS-Guard
+challenge in front of every content path, so the module reaches the same files
+through the routes that are not challenge-gated, and falls back to a real
+browser when no account is configured:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 8.0%" />
+<col style="width: 34.0%" />
+<col style="width: 22.0%" />
+<col style="width: 18.0%" />
+<col style="width: 18.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Route</p></th>
+<th class="head"><p>How it fetches</p></th>
+<th class="head"><p>Requires</p></th>
+<th class="head"><p>Quota</p></th>
+<th class="head"><p>Latency</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>R1</p></td>
+<td><p>the record JSON, then an IPFS gateway</p></td>
+<td><p>md5 and a paid account</p></td>
+<td><p>none</p></td>
+<td><p>~2s</p></td>
+</tr>
+<tr class="row-odd"><td><p>R2</p></td>
+<td><p>the fast-download API</p></td>
+<td><p>md5 and a paid account</p></td>
+<td><p>25-50 per day</p></td>
+<td><p>~1s</p></td>
+</tr>
+<tr class="row-even"><td><p>R4</p></td>
+<td><p>the SciDB page with the account cookie</p></td>
+<td><p>a DOI and a tier-2 account</p></td>
+<td><p>none</p></td>
+<td><p>~1s</p></td>
+</tr>
+<tr class="row-odd"><td><p>R5</p></td>
+<td><p>Chromium solving the challenge</p></td>
+<td><p>nothing</p></td>
+<td><p>none</p></td>
+<td><p>~40s when it solves</p></td>
+</tr>
+</tbody>
+</table>
+<p>R1 and R2 are addressed by md5, not by DOI, so a DOI must be resolved first.
+The <code class="docutils literal notranslate"><span class="pre">anna</span></code> command resolves one from <code class="docutils literal notranslate"><span class="pre">--md5</span></code>, from the local md5 cache, or
+through R4 and R5. Under <code class="docutils literal notranslate"><span class="pre">getpapers</span> <span class="pre">--db</span> <span class="pre">anna</span></code> there is one more resolver:
+LibGen indexes the same files, so it is asked for the md5 before any Anna’s
+Archive route runs, and a hit puts a cold DOI straight onto the quota-free R1.
+A paid membership on its own does not make a cold DOI resolvable:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 46.0%" />
+<col style="width: 12.0%" />
+<col style="width: 42.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Situation</p></th>
+<th class="head"><p>Works?</p></th>
+<th class="head"><p>Route taken</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--md5</span> <span class="pre">&lt;hex&gt;</span></code> supplied</p></td>
+<td><p>yes</p></td>
+<td><p>R1, then R2</p></td>
+</tr>
+<tr class="row-odd"><td><p>the DOI is already in the md5 cache</p></td>
+<td><p>yes</p></td>
+<td><p>R1</p></td>
+</tr>
+<tr class="row-even"><td><p>cold DOI, <code class="docutils literal notranslate"><span class="pre">--scidb</span></code> armed</p></td>
+<td><p>yes</p></td>
+<td><p>R4</p></td>
+</tr>
+<tr class="row-odd"><td><p>cold DOI resolved by LibGen (<code class="docutils literal notranslate"><span class="pre">getpapers</span></code> only)</p></td>
+<td><p>yes</p></td>
+<td><p>R1</p></td>
+</tr>
+<tr class="row-even"><td><p>cold DOI, <code class="docutils literal notranslate"><span class="pre">--scidb</span></code> not given</p></td>
+<td><p>not reliably</p></td>
+<td><p>R5, which never needed the key</p></td>
+</tr>
+</tbody>
+</table>
+<p>Because R4 and R5 both write the md5 cache, a second fetch of the same DOI
+drops to the quota-free R1.</p>
+<p>Key options:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">--doi</span></code> / <code class="docutils literal notranslate"><span class="pre">--md5</span></code>: what to fetch. An md5 skips DOI resolution.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--key</span></code>: the account secret, or <code class="docutils literal notranslate"><span class="pre">-</span></code> to read it from standard input.
+Prefer <code class="docutils literal notranslate"><span class="pre">GETSCIPAPERS_ANNA_SECRET_KEY</span></code> or a credentials file: a key given on
+the command line is visible to every user on the machine.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--credentials</span></code>: a JSON file holding <code class="docutils literal notranslate"><span class="pre">{&quot;anna_secret_key&quot;:</span> <span class="pre">&quot;...&quot;}</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--scidb</span></code>: enable R4. Anna’s Archive qualifies the no-browser-checks perk
+with “Only for normal browser use. For scripts please use our metadata
+torrents.”, so it is off by default and enabling it risks the account.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--no-browser</span></code>: disable R5, for hosts with no display.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--user-info</span></code>: report whether the configured key logs in.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--md5-cache-clear</span></code> / <code class="docutils literal notranslate"><span class="pre">--clear-cache</span></code>: drop the cached DOI-to-md5 map or
+the whole cache directory.</p></li>
+</ul>
+<p>R5 launches Chromium itself rather than through chromedriver, since a
+chromedriver-launched browser fails the challenge. It needs <code class="docutils literal notranslate"><span class="pre">chromium</span></code> and
+<code class="docutils literal notranslate"><span class="pre">chromedriver</span></code>, plus <code class="docutils literal notranslate"><span class="pre">xvfb-run</span></code> on a Linux host with no display; headless
+Chromium cannot pass the challenge and is never used.</p>
+<p>Whether R5 solves at all also depends on the address the request leaves from.
+DDoS-Guard can hold that address, and on a held address the page title stays at
+<code class="docutils literal notranslate"><span class="pre">DDoS-Guard</span></code> for the whole 120-second budget and the run ends without a file.
+The module adds a line naming that case after the timeout message, so a held
+address is distinguishable from a slow one.</p>
+<p>That line reports the address as held at a manual captcha, and says a longer
+timeout will not clear the hold and that a different network path is needed. A
+different path has not been seen to clear it here: three runs on this host, one
+of them through a proxy, each spent the full budget on the check. The same route
+on the same host solved in about 42 seconds when the module was built.</p>
+</section>
+<section id="request">
+<h2>request<a class="headerlink" href="#request" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>getscipapers<span class="w"> </span>request<span class="w"> </span>--doi<span class="w"> </span><span class="m">10</span>.1000/xyz123<span class="w"> </span>--service<span class="w"> </span>nexus
+</pre></div>
+</div>
+<p>Coordinates community requests through Nexus, AbleSci, SciNet, Wosonhj, or
+Facebook when immediate downloads are not available. <code class="docutils literal notranslate"><span class="pre">--doi</span></code> accepts a single
+DOI, a delimited list, a text file, or a blob of text to scan; <code class="docutils literal notranslate"><span class="pre">--service</span></code>
+accepts one name, several names, or <code class="docutils literal notranslate"><span class="pre">all</span></code>.</p>
+</section>
+<section id="checkin">
+<h2>checkin<a class="headerlink" href="#checkin" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>getscipapers<span class="w"> </span>checkin<span class="w"> </span>ablesci
+</pre></div>
+</div>
+<p>Runs daily check-in flows that grant credits on supported services. The
+services are positional arguments, so <code class="docutils literal notranslate"><span class="pre">getscipapers</span> <span class="pre">checkin</span> <span class="pre">ablesci</span> <span class="pre">wosonhj</span></code>
+and <code class="docutils literal notranslate"><span class="pre">getscipapers</span> <span class="pre">checkin</span> <span class="pre">all</span></code> are both valid.</p>
+</section>
+<section id="other-modules">
+<h2>Other Modules<a class="headerlink" href="#other-modules" title="Link to this heading"></a></h2>
+<p>Specialized helpers such as <code class="docutils literal notranslate"><span class="pre">remove_metadata</span></code> and <code class="docutils literal notranslate"><span class="pre">upload</span></code> can be invoked in
+the same pattern. Run <code class="docutils literal notranslate"><span class="pre">getscipapers</span> <span class="pre">&lt;module&gt;</span> <span class="pre">--help</span></code> to view module-specific
+options.</p>
+</section>
+<section id="zlib">
+<h2>zlib<a class="headerlink" href="#zlib" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>getscipapers<span class="w"> </span>zlib<span class="w"> </span>--search<span class="w"> </span><span class="s2">"deep learning"</span>
+</pre></div>
+</div>
+<p>Searches Z-Library for books and optionally downloads them. Key options:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">--login</span></code>: log in using saved credentials (prompts if missing unless <code class="docutils literal notranslate"><span class="pre">--non-interactive</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--credentials</span></code>: load a JSON credentials file and save it to the default location.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--clear-credentials</span></code>: delete saved Z-Library credentials.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--non-interactive</span></code>: do not prompt for credentials; fail fast if missing.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--search</span></code> / <code class="docutils literal notranslate"><span class="pre">--download</span></code>: search and optionally download selected books.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--search-limit</span></code>: cap the number of search results.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--popular</span></code> / <code class="docutils literal notranslate"><span class="pre">--recent</span></code>: browse popular or recently added titles, with
+<code class="docutils literal notranslate"><span class="pre">--popular-language</span></code> to restrict the popular list.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--user-info</span></code>: print the account status and remaining download quota.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="configuration.html" class="btn btn-neutral float-left" title="Configuration" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="api_reference.html" class="btn btn-neutral float-right" title="API Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2026, Duc A. Hoang.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
