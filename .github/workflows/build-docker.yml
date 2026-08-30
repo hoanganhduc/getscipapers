@@ -2,6 +2,7 @@ name: Deploy Images to GHCR
 
 env:
   DOTNET_VERSION: '6.0.x'
+  IMAGE: ghcr.io/hoanganhduc/getscipapers
 
 on:
   push:
@@ -10,8 +11,19 @@ on:
   workflow_dispatch:
 
 jobs:
+      # One native runner per architecture. Emulating arm64 through QEMU also
+      # works, but this image runs a full apt install, builds wheels, and runs
+      # 'python -m build', and the emulated build takes hours.
       push-store-image:
-        runs-on: ubuntu-latest
+        strategy:
+          fail-fast: false
+          matrix:
+            include:
+              - platform: linux/amd64
+                runner: ubuntu-24.04
+              - platform: linux/arm64
+                runner: ubuntu-24.04-arm
+        runs-on: ${{ matrix.runner }}
         permissions:
           contents: read
           packages: write
@@ -29,7 +41,65 @@ jobs:
               username: ${{ github.actor }}
               password: ${{ secrets.GITHUB_TOKEN }}
 
+          - name: 'Set up Buildx'
+            uses: docker/setup-buildx-action@v3
+
+          # Push this architecture by digest only. The tag is attached later,
+          # once both architectures are in the registry, so that :latest never
+          # points at a half-published manifest.
           - name: 'Build Inventory Image'
+            id: build
+            uses: docker/build-push-action@v6
+            with:
+              context: .
+              platforms: ${{ matrix.platform }}
+              outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+          - name: 'Export digest'
             run: |
-              docker build . --tag ghcr.io/hoanganhduc/getscipapers:latest
-              docker push ghcr.io/hoanganhduc/getscipapers:latest
+              mkdir -p /tmp/digests
+              digest='${{ steps.build.outputs.digest }}'
+              touch "/tmp/digests/${digest#sha256:}"
+
+          - name: 'Upload digest'
+            uses: actions/upload-artifact@v4
+            with:
+              name: digest-${{ strategy.job-index }}
+              path: /tmp/digests/*
+              if-no-files-found: error
+              retention-days: 1
+
+      # Combine the per-architecture digests into one manifest list, so that
+      # pulling :latest on either architecture gets the right image.
+      merge-manifest:
+        runs-on: ubuntu-24.04
+        needs: push-store-image
+        permissions:
+          contents: read
+          packages: write
+        steps:
+          - name: 'Download digests'
+            uses: actions/download-artifact@v4
+            with:
+              path: /tmp/digests
+              pattern: digest-*
+              merge-multiple: true
+
+          - name: 'Login to GitHub Container Registry'
+            uses: docker/login-action@v3
+            with:
+              registry: ghcr.io
+              username: ${{ github.actor }}
+              password: ${{ secrets.GITHUB_TOKEN }}
+
+          - name: 'Set up Buildx'
+            uses: docker/setup-buildx-action@v3
+
+          - name: 'Create manifest list and push'
+            working-directory: /tmp/digests
+            run: |
+              docker buildx imagetools create --tag "$IMAGE:latest" \
+                $(printf "$IMAGE@sha256:%s " *)
+
+          - name: 'Inspect image'
+            run: docker buildx imagetools inspect "$IMAGE:latest"

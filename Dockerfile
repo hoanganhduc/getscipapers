@@ -1,5 +1,7 @@
 # FROM python:3.11-slim
-FROM mcr.microsoft.com/devcontainers/base:ubuntu
+# Pinned: the floating :ubuntu tag now resolves to 26.04, which dropped the
+# python3.12 packages installed below, so the build fails on every architecture.
+FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
 
 # Metadata for the image
 LABEL org.opencontainers.image.title="GetSciPapers" \
@@ -46,20 +48,36 @@ RUN apt-get update && \
 	  libqpdf-dev && \
 	rm -rf /var/lib/apt/lists/*
 
+# Google Chrome and Chrome for Testing publish linux/amd64 builds only, and
+# Ubuntu has no working chromium package on arm64 -- chromium-browser there is
+# a snap stub that cannot run in a container. Other architectures therefore get
+# an image without a browser; everything except the Selenium-driven paths
+# (Z-Library login, the browser download route) works the same.
+# TARGETARCH is supplied by buildx.
+ARG TARGETARCH
+
 # Install Google Chrome
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-	echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list && \
-	apt-get update && \
-	apt-get install -y --no-install-recommends google-chrome-stable && \
-	rm -rf /var/lib/apt/lists/*
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+		wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+		echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list && \
+		apt-get update && \
+		apt-get install -y --no-install-recommends google-chrome-stable && \
+		rm -rf /var/lib/apt/lists/*; \
+	else \
+		echo "Skipping Google Chrome: no build for ${TARGETARCH:-this architecture}"; \
+	fi
 
 # Install latest ChromeDriver
-RUN LATEST_CHROMEDRIVER_VERSION=$(curl -sS https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json | python3 -c "import sys, json; print(json.load(sys.stdin)['channels']['Stable']['version'])") && \
-	wget -q "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/${LATEST_CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip" && \
-	unzip chromedriver-linux64.zip && \
-	mv chromedriver-linux64/chromedriver /usr/local/bin/ && \
-	chmod +x /usr/local/bin/chromedriver && \
-	rm -rf chromedriver-linux64 chromedriver-linux64.zip
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+		LATEST_CHROMEDRIVER_VERSION=$(curl -sS https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json | python3 -c "import sys, json; print(json.load(sys.stdin)['channels']['Stable']['version'])") && \
+		wget -q "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/${LATEST_CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip" && \
+		unzip chromedriver-linux64.zip && \
+		mv chromedriver-linux64/chromedriver /usr/local/bin/ && \
+		chmod +x /usr/local/bin/chromedriver && \
+		rm -rf chromedriver-linux64 chromedriver-linux64.zip; \
+	else \
+		echo "Skipping ChromeDriver: no build for ${TARGETARCH:-this architecture}"; \
+	fi
 
 # # Create a non-root user and group
 # RUN adduser --system --group --home /home/vscode --uid 1000 vscode && \
