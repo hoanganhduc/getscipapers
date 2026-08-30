@@ -1,7 +1,6 @@
 name: Deploy Images to GHCR
 
 env:
-  DOTNET_VERSION: '6.0.x'
   IMAGE: ghcr.io/hoanganhduc/getscipapers
 
 on:
