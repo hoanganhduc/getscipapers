@@ -41,19 +41,43 @@ LIBGEN_MIRRORS = [
     "libgen.gl",
 ]
 
+# Every mirror answers a request that carries no browser User-Agent with
+# nginx's default page under HTTP 200, so the whole module reads as a dead site
+# until one is sent. A bare "Mozilla/5.0" is not enough; that earns a 500.
+LIBGEN_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/151.0.0.0 Safari/537.36"
+    )
+}
+
+# The marker that tells that placeholder apart from a real LibGen response.
+NGINX_PLACEHOLDER_MARKER = "Welcome to nginx"
+
 ACTIVE_PROXY = proxy_config.ProxySettings()
+
+
+def serves_libgen(response) -> bool:
+    """Return True when a mirror answered with LibGen rather than a placeholder.
+
+    Status alone cannot decide this: the placeholder arrives as HTTP 200, so a
+    mirror picked on the status code would look healthy while serving nothing.
+    """
+
+    return response.status_code == 200 and NGINX_PLACEHOLDER_MARKER not in response.text
+
 
 def select_active_libgen_domain(mirrors=LIBGEN_MIRRORS, timeout=3):
     """
-    Returns the first LibGen domain that responds to a simple GET request.
-    Falls back to the default if none respond.
+    Returns the first LibGen domain that serves the catalog rather than a
+    placeholder page. Falls back to the default if none respond.
     """
     test_path = "/json.php"
     for domain in mirrors:
         url = f"https://{domain}{test_path}"
         try:
-            resp = requests.get(url, timeout=timeout)
-            if resp.status_code == 200:
+            resp = requests.get(url, headers=LIBGEN_HEADERS, timeout=timeout)
+            if serves_libgen(resp):
                 return domain
         except Exception:
             continue
@@ -126,7 +150,7 @@ def search_libgen_by_doi(doi, limit=10):
         "limit1": 0,
         "limit2": limit
     }
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, headers=LIBGEN_HEADERS)
     if response.status_code != 200:
         return {}
 
@@ -146,7 +170,7 @@ def search_libgen_by_doi(doi, limit=10):
     def fetch_crossref(doi):
         api_url = f"https://api.crossref.org/works/{quote_plus(doi)}"
         try:
-            resp = requests.get(api_url, timeout=10)
+            resp = requests.get(api_url, headers=LIBGEN_HEADERS, timeout=10)
             if resp.status_code == 200:
                 obj = resp.json()
                 if "message" in obj:
@@ -196,7 +220,7 @@ def search_libgen_by_doi(doi, limit=10):
     for libgen_id, entry in data.items():
         edition_url = f"https://{LIBGEN_DOMAIN}/edition.php?id={libgen_id}"
         try:
-            resp = requests.get(edition_url, timeout=10)
+            resp = requests.get(edition_url, headers=LIBGEN_HEADERS, timeout=10)
             if resp.status_code == 200:
                 soup = BeautifulSoup(resp.text, "html.parser")
                 extra = {}
@@ -575,7 +599,7 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
                 ads_url = f"https://{LIBGEN_DOMAIN}{download_url}"
                 if verbose:
                     print(f"Following ads.php URL: {ads_url}")
-                ads_resp = requests.get(ads_url, timeout=DOWNLOAD_TIMEOUT)
+                ads_resp = requests.get(ads_url, headers=LIBGEN_HEADERS, timeout=DOWNLOAD_TIMEOUT)
                 if ads_resp.status_code == 200:
                     soup = BeautifulSoup(ads_resp.text, "html.parser")
                     # Find the first <a> tag whose href contains "get.php?md5="
@@ -604,7 +628,7 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
                     failures.append((label, f"ads.php status {ads_resp.status_code}"))
                     continue
 
-            with requests.get(download_url, stream=True, timeout=DOWNLOAD_TIMEOUT) as r:
+            with requests.get(download_url, headers=LIBGEN_HEADERS, stream=True, timeout=DOWNLOAD_TIMEOUT) as r:
                 r.raise_for_status()
                 with open(out_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):
@@ -681,7 +705,7 @@ def search_libgen_by_query(
             url += f"&order=year&ordermode={'desc' if order_desc else 'asc'}"
         if verbose:
             print(f"[DEBUG] Fetching URL: {url}")
-        response = requests.get(url, allow_redirects=True)
+        response = requests.get(url, headers=LIBGEN_HEADERS, allow_redirects=True)
         if response.status_code != 200:
             if verbose:
                 print(f"[DEBUG] Failed to fetch page {page}, status code: {response.status_code}")
@@ -811,7 +835,7 @@ def search_libgen_by_query(
     def fetch_crossref(doi):
         api_url = f"https://api.crossref.org/works/{quote_plus(doi)}"
         try:
-            resp = requests.get(api_url, timeout=10)
+            resp = requests.get(api_url, headers=LIBGEN_HEADERS, timeout=10)
             if resp.status_code == 200:
                 obj = resp.json()
                 if "message" in obj:
@@ -1014,7 +1038,7 @@ def interactive_libgen_download(query, limit=10, preferred_exts=None, dest_folde
         if download_url.startswith("/ads.php?md5="):
             ads_url = f"https://{LIBGEN_DOMAIN}{download_url}"
             try:
-                ads_resp = requests.get(ads_url, timeout=DOWNLOAD_TIMEOUT)
+                ads_resp = requests.get(ads_url, headers=LIBGEN_HEADERS, timeout=DOWNLOAD_TIMEOUT)
                 if ads_resp.status_code == 200:
                     soup = BeautifulSoup(ads_resp.text, "html.parser")
                     for a in soup.find_all("a", href=True):
@@ -1078,7 +1102,7 @@ def interactive_libgen_download(query, limit=10, preferred_exts=None, dest_folde
                     print(f"Saving to: {out_path}")
 
                 try:
-                    with requests.get(resolved_url, stream=True, timeout=DOWNLOAD_TIMEOUT) as r:
+                    with requests.get(resolved_url, headers=LIBGEN_HEADERS, stream=True, timeout=DOWNLOAD_TIMEOUT) as r:
                         r.raise_for_status()
                         with open(out_path, "wb") as f:
                             for chunk in r.iter_content(chunk_size=8192):
@@ -1137,7 +1161,7 @@ def fetch_libgen_edition_info(libgen_id, verbose=False):
     edition_url = f"https://{LIBGEN_DOMAIN}/edition.php?id={libgen_id}"
     info = {}
     try:
-        resp = requests.get(edition_url, timeout=10)
+        resp = requests.get(edition_url, headers=LIBGEN_HEADERS, timeout=10)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.text, "html.parser")
             # Fetch cover and links from left column
@@ -1236,7 +1260,7 @@ def is_file_on_libgen(md5sum, verbose=False):
     """
     check_url = f"https://{LIBGEN_DOMAIN}/json.php?object=f&md5={md5sum}"
     try:
-        resp = requests.get(check_url, timeout=10)
+        resp = requests.get(check_url, headers=LIBGEN_HEADERS, timeout=10)
         if resp.status_code == 200:
             data = resp.json()
             if isinstance(data, dict) and data:
