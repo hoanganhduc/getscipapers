@@ -35,7 +35,8 @@ create_credentials_json() {
     "zlib_email": "${ZLIB_EMAIL}",
     "zlib_password": "${ZLIB_PASSWORD}",
     "wosonhj_username": "${WOSONHJ_USERNAME}",
-    "wosonhj_password": "${WOSONHJ_PASSWORD}"
+    "wosonhj_password": "${WOSONHJ_PASSWORD}",
+    "anna_secret_key": "${ANNA_SECRET_KEY}"
 }
 EOF
     chmod 600 "$OUTPUT_FILE"
@@ -117,7 +118,7 @@ fi
 
 # Handle --apply-credentials option
 if [ $# -eq 2 ] && [ "$1" = "--apply-credentials" ]; then
-    MODULES="getpapers ablesci scinet nexus facebook zlib wosonhj"
+    MODULES="getpapers ablesci scinet nexus facebook zlib wosonhj anna"
     apply_credentials "$2"
     exit 0
 fi

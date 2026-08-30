@@ -42,6 +42,7 @@ from . import nexus  # Import Nexus bot functions from .nexus module
 from . import libgen  # Import LibGen functions from .libgen module
 from . import configuration
 from . import proxy_config
+from . import anna  # Import Anna's Archive account routes from .anna module
 from .document_utils import looks_like_pdf
 
 DEFAULT_LIMIT = configuration.DEFAULT_LIMIT
@@ -49,6 +50,8 @@ DEFAULT_LIMIT = configuration.DEFAULT_LIMIT
 VERBOSE = False  # Global verbose flag
 ACTIVE_PROXY = proxy_config.ProxySettings()
 PROXY_RETRY_STATUSES = {403, 407, 408, 429, 500, 502, 503, 504}
+# Route options for Anna's Archive, set from the CLI flags in main().
+ANNA_ROUTE_OPTIONS: Dict[str, object] = {"scidb": False, "browser": True, "md5": None}
 
 
 def vprint(*args, **kwargs):
@@ -2930,6 +2933,59 @@ async def download_from_anna_archive(doi: str, download_folder: str = DEFAULT_DO
             print(f"Error accessing Anna's Archive for DOI {doi} at {domain}: {e}")
     return False
 
+async def download_from_anna_archive_all_routes(
+    doi: str,
+    download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
+    *,
+    md5: str | None = None,
+    allow_scidb: bool | None = None,
+    allow_browser: bool | None = None,
+) -> bool:
+    """Try every Anna's Archive route for a DOI, cheapest first.
+
+    The account-backed routes live in the anna module and are synchronous, so
+    they run in a worker thread. The anonymous scrape above keeps its place
+    between them: it needs no credentials and costs nothing to attempt, but it
+    is blocked by the browser check, so the account routes are tried after it.
+    """
+    if allow_scidb is None:
+        allow_scidb = bool(ANNA_ROUTE_OPTIONS.get("scidb"))
+    if allow_browser is None:
+        allow_browser = bool(ANNA_ROUTE_OPTIONS.get("browser", True))
+    if md5 is None:
+        md5 = ANNA_ROUTE_OPTIONS.get("md5")
+
+    safe_doi = doi.replace('/', '_')
+    filename = f"{safe_doi}_anna.pdf"
+
+    def run(routes):
+        anna.VERBOSE = VERBOSE
+        anna.ACTIVE_PROXY = ACTIVE_PROXY
+        return anna.download_paper(
+            doi,
+            md5=md5,
+            download_folder=download_folder,
+            filename=filename,
+            allow_scidb=allow_scidb,
+            allow_browser=allow_browser,
+            routes=routes,
+        )
+
+    # R1/R2 address a document by md5, so they only run when one is already
+    # known from --anna-md5 or from a previous resolution.
+    if await asyncio.to_thread(run, ("R1", "R2")):
+        return True
+
+    if await download_from_anna_archive(doi, download_folder):
+        return True
+
+    # R4 and R5 resolve the DOI itself. The browser route owns its own deadline
+    # and tears its subprocess down, so this await is never cancelled from here.
+    if await asyncio.to_thread(run, ("R4", "R5")):
+        return True
+
+    return False
+
 async def download_by_doi(
     doi: str,
     download_folder: str = DEFAULT_DOWNLOAD_FOLDER,
@@ -3021,7 +3077,7 @@ async def download_by_doi(
     if "anna" in selected_dbs:
         tried = True
         print(f"📚 Trying Anna's Archive for DOI: {doi}...")
-        if await download_from_anna_archive(doi, download_folder):
+        if await download_from_anna_archive_all_routes(doi, download_folder):
             print(f"\n📥 Download Summary:")
             print(f"✅ Successfully downloaded: 1 PDF")
             print(f"  ✓ {doi} [{oa_status_text}] {oa_icon}")
@@ -3275,6 +3331,30 @@ async def main(argv: list[str] | None = None):
         ),
     )
     argparser.add_argument(
+        "--anna-scidb",
+        action="store_true",
+        help=(
+            "Let Anna's Archive resolve a cold DOI through the member SciDB page. "
+            "Anna's Archive qualifies this membership perk with \"Only for normal "
+            "browser use. For scripts please use our metadata torrents.\", so it is "
+            "off by default and enabling it risks the account. Without it, a cold "
+            "DOI falls back to the browser check, which needs no account at all."
+        ),
+    )
+    argparser.add_argument(
+        "--no-anna-browser",
+        action="store_true",
+        help="Do not fall back to solving the Anna's Archive browser check in Chromium.",
+    )
+    argparser.add_argument(
+        "--anna-md5",
+        type=str,
+        help=(
+            "Anna's Archive md5 of the requested document. Skips DOI resolution and "
+            "enables the quota-free record route for members."
+        ),
+    )
+    argparser.add_argument(
         "--no-download",
         action="store_true",
         help="Only show metadata, do not download PDFs"
@@ -3350,6 +3430,14 @@ async def main(argv: list[str] | None = None):
     # Set global verbose flag
     global VERBOSE
     VERBOSE = args.verbose
+
+    # Route options for Anna's Archive, read by download_from_anna_archive_all_routes
+    global ANNA_ROUTE_OPTIONS
+    ANNA_ROUTE_OPTIONS = {
+        "scidb": args.anna_scidb,
+        "browser": not args.no_anna_browser,
+        "md5": args.anna_md5,
+    }
 
     # Configure proxy usage for all network clients
     global ACTIVE_PROXY
