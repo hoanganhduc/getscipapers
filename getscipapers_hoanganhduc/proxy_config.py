@@ -26,6 +26,8 @@ from . import configuration
 
 DEFAULT_PROXY_FILE = configuration.GETPAPERS_CONFIG_FILE.parent / "proxy.json"
 PROXY_LIST_SUFFIX = "_list.json"
+# Free proxies are short lived, so a discovered one is only trusted for an hour.
+AUTO_PROXY_MAX_AGE_SECONDS = 3600
 
 # Countries that block or restrict Telegram access
 BLOCKED_COUNTRIES = {
@@ -196,7 +198,12 @@ def auto_discover_proxy(
 
     config_path = Path(config_path).expanduser()
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"type": best.get("type", "https"), "addr": best["addr"], "port": best["port"]}
+    payload = {
+        "type": best.get("type", "https"),
+        "addr": best["addr"],
+        "port": best["port"],
+        "discovered": time.time(),
+    }
     config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     if save_list:
@@ -247,6 +254,23 @@ def _load_entry_from_payload(payload: object) -> Dict[str, object]:
     raise ProxyConfigError("Unsupported proxy configuration format; expected dict or list of dicts.")
 
 
+def _entry_is_stale(
+    entry: Dict[str, object],
+    *,
+    max_age: float = AUTO_PROXY_MAX_AGE_SECONDS,
+) -> bool:
+    """Return True for an auto-discovered proxy that has outlived ``max_age``.
+
+    Only :func:`auto_discover_proxy` stamps an entry with ``discovered``, so a
+    proxy file the user wrote themselves is never treated as stale.
+    """
+
+    discovered = entry.get("discovered")
+    if not isinstance(discovered, (int, float)):
+        return False
+    return (time.time() - float(discovered)) > max_age
+
+
 def load_proxy_settings(
     config_file: str | Path | None = None,
     *,
@@ -294,6 +318,19 @@ def load_proxy_settings(
         if auto_fetch:
             return auto_discover_proxy(config_path=config_path, verbose=verbose)
         raise ProxyConfigError(f"Failed to parse proxy configuration {config_path}: {exc}") from exc
+
+    if _entry_is_stale(entry):
+        if auto_fetch:
+            if verbose:
+                print(f"♻️ Discarding expired proxy from {config_path}: {proxy_url}")
+            return auto_discover_proxy(config_path=config_path, verbose=verbose)
+        settings = _disabled_settings(config_path)
+        if verbose:
+            print(
+                f"⚠️ Ignoring expired proxy from {config_path}: {proxy_url}. "
+                "Re-run with --auto-proxy to discover a working one."
+            )
+        return settings
 
     settings = ProxySettings(enabled=True, proxy_url=proxy_url, source=str(config_path))
     settings.apply_environment()
