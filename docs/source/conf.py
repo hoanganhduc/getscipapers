@@ -14,7 +14,7 @@ author = "Duc A. Hoang"
 current_year = datetime.now().year
 current_date = datetime.now().strftime("%Y-%m-%d")
 copyright = f"2023-{current_year}, {author}"
-release = "0.1.5"
+release = "0.1.6"
 version = release
 
 extensions = [
