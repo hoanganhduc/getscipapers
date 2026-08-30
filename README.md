@@ -17,6 +17,8 @@ docker run -it --rm -v $(pwd):/workspace ghcr.io/hoanganhduc/getscipapers:latest
 
 This mounts your current directory to `/workspace` inside the container, so you can easily access your files.
 
+The image is published for `linux/amd64` and `linux/arm64`, so `docker pull` picks the right one automatically. One difference between them: Google Chrome and ChromeDriver ship for `amd64` only, and Ubuntu's `arm64` chromium package is a snap stub that cannot run in a container, so the `arm64` image has no browser. Everything works the same there except the Selenium-driven paths—Z-Library login and the browser download route.
+
 ### 2. Build and Run Locally
 
 If you want to build the image yourself:
