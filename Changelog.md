@@ -11,6 +11,7 @@ All notable changes to this project are documented in this file. Dates reflect t
 - Send a browser User-Agent to LibGen, which otherwise answers every request with the nginx placeholder page, and resolve relative mirror URLs before downloading.
 - Expire auto-discovered proxies after an hour instead of trusting them forever, and stamp the entries `nexus` persists the same way.
 - Keep the proxy `nexus` discovers out of the process environment so it cannot leak into unrelated requests.
+- Probe the Z-Library domains instead of hardcoding one: `2-lib.org` no longer serves the API at all, and most of the hosts that replaced it answer every `/eapi/` path with a browser check, so the working host is selected on a JSON response rather than on the status code.
 - Declare the `webdriver-manager` dependency in `pyproject.toml`.
 - Correct the documented CLI invocations that no longer matched the parsers, and document the Anna's Archive routes, the browser prerequisites, the shared proxy behaviour, and the modules missing from the API reference.
 

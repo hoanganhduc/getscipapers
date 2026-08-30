@@ -13,6 +13,60 @@ by :mod:`getscipapers_hoanganhduc.zlib` for search and download flows.
 
 import requests
 
+# Z-Library rotates its domains, and most of the hosts it advertises sit behind
+# a "DiamWall" browser check that answers every /eapi/ path with HTTP 513, so
+# the working host is probed rather than hardcoded. The walled hosts are kept
+# at the end of the list in case the check is ever lifted.
+DOMAINS = (
+    "z-lib.gd",
+    "article.sk",
+    "z-library.sk",
+    "1lib.sk",
+)
+
+DOMAIN_PROBE_TIMEOUT = 10
+
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
+)
+
+# Resolved on first use rather than at import, so importing this module never
+# touches the network.
+_active_domain = None
+
+
+def select_active_domain() -> str:
+    """Return the first domain whose ``/eapi/`` answers with the API's JSON.
+
+    A browser-checked host serves its interstitial with a normal HTTP status
+    further up the stack, so a domain cannot be picked on the status code
+    alone. Falls back to the first domain without caching it, leaving a later
+    call free to retry once a host comes back.
+    """
+
+    global _active_domain
+    if _active_domain is not None:
+        return _active_domain
+
+    for domain in DOMAINS:
+        try:
+            response = requests.get(
+                "https://" + domain + "/eapi/info/domains",
+                headers={"user-agent": USER_AGENT, "accept": "application/json"},
+                cookies={"siteLanguageV2": "en"},
+                timeout=DOMAIN_PROBE_TIMEOUT,
+            )
+            if "json" not in response.headers.get("content-type", "").lower():
+                continue
+            if response.json().get("success"):
+                _active_domain = domain
+                return domain
+        except Exception:
+            continue
+
+    return DOMAINS[0]
+
 
 class Zlibrary:
     def __init__(
@@ -27,14 +81,14 @@ class Zlibrary:
         self.__kindle_email: str
         self.__remix_userid: [int, str]
         self.__remix_userkey: str
-        self.__domain = "2-lib.org" # Update this to newer domain if needed
+        self.__domain = select_active_domain()
 
         self.__loggedin = False
         self.__headers = {
             "Content-Type": "application/x-www-form-urlencoded",
             "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
             "accept-language": "en-US,en;q=0.9",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
+            "user-agent": USER_AGENT,
         }
         self.__cookies = {
             "siteLanguageV2": "en",
