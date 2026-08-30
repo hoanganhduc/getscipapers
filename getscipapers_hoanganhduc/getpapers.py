@@ -2917,10 +2917,10 @@ async def download_from_anna_archive(doi: str, download_folder: str = DEFAULT_DO
                         async with _aiohttp_get(pdf_url_full) as pdf_resp:
                             vprint(f"Anna's Archive PDF HTTP status: {pdf_resp.status}")
                             if pdf_resp.status == 200:
-                                with open(filepath, "wb") as f:
-                                    f.write(await pdf_resp.read())
-                                print(f"Downloaded PDF from Anna's Archive: {filepath}")
-                                return True
+                                if save_pdf_if_valid(await pdf_resp.read(), filepath, pdf_url_full):
+                                    print(f"Downloaded PDF from Anna's Archive: {filepath}")
+                                    return True
+                                vprint(f"{pdf_url_full} did not return a PDF for DOI {doi}")
                             else:
                                 print(f"PDF download failed from Anna's Archive for DOI: {doi} at {pdf_url_full}")
                     except Exception as e:
