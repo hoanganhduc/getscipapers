@@ -1,0 +1,63 @@
+# getscipapers with its own IPFS gateway.
+#
+#   mkdir -p config/getpapers downloads
+#   cp sample_credentials.json config/getpapers/config.json   # from the master branch
+#   docker compose up -d
+#   docker compose exec getscipapers getscipapers --help
+#
+services:
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: ipfs_host
+    restart: unless-stopped
+    ports:
+      # Peer connectivity needs a reachable port. The gateway and the API do
+      # not: the API can reconfigure the node, so it stays on the loopback.
+      - "4001:4001"
+      - "4001:4001/udp"
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:5001:5001"
+    volumes:
+      - ipfs_data:/data/ipfs
+    environment:
+      # Applied on first initialization only. Suppresses local-network peer
+      # discovery, which is the right default on a hosted machine. Everything
+      # else Kubo reads from its repository, not the environment, so further
+      # tuning goes through `ipfs config`.
+      - IPFS_PROFILE=server
+    command:
+      - daemon
+      - --migrate=true
+      - --agent-version-suffix=docker
+    healthcheck:
+      test: ["CMD", "ipfs", "id"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - getscipapers
+
+  getscipapers:
+    image: ghcr.io/hoanganhduc/getscipapers:latest
+    container_name: getscipapers-container
+    restart: unless-stopped
+    depends_on:
+      - ipfs
+    volumes:
+      # The image runs as the vscode user, so both paths live under that home.
+      - ./config:/home/vscode/.config/getscipapers
+      - ./downloads:/home/vscode/Downloads/getscipapers
+    environment:
+      # Without this the Nexus/STC search looks for a gateway on 127.0.0.1,
+      # which inside this container is this container.
+      - GETSCIPAPERS_IPFS_HTTP_BASE_URL=http://ipfs:8080
+    networks:
+      - getscipapers
+
+volumes:
+  ipfs_data:
+
+networks:
+  getscipapers:
+    driver: bridge

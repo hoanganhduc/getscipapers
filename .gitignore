@@ -1,0 +1,3 @@
+# Created by the Compose stack; both hold personal data. config/ holds API keys.
+/config/
+/downloads/

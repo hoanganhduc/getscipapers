@@ -70,6 +70,45 @@ docker run -d \
 
 This starts the IPFS daemon with persistent storage and the required ports.
 
+ Tell `getscipapers` where that daemon is. Inside the `getscipapers` container
+ `127.0.0.1` is that container rather than the daemon, so the address has to be
+ given explicitly:
+ 
+ ```bash
+ docker network create getscipapers
+ 
+ # add --network getscipapers to the ipfs_host command above, then:
+ docker run -d \
+     --name getscipapers-container \
+     --network getscipapers \
+     -e GETSCIPAPERS_IPFS_HTTP_BASE_URL=http://ipfs_host:8080 \
+     ghcr.io/hoanganhduc/getscipapers:latest
+ ```
+ 
+ Containers on the default bridge cannot resolve each other by name, which is
+ why the network is created first.
+ 
+ ## Docker Compose
+ 
+ `docker-compose.yml` starts both containers together, on a shared network where
+ the gateway resolves as `ipfs`:
+ 
+ ```bash
+ mkdir -p config/getpapers downloads
+ cp sample_credentials.json config/getpapers/config.json   # from the master branch
+ chmod 600 config/getpapers/config.json
+ docker compose up -d
+ docker compose exec getscipapers getscipapers --help
+ ```
+ 
+ `config/` is mounted at `/home/vscode/.config/getscipapers` and `downloads/` at
+ `/home/vscode/Downloads/getscipapers`, so credentials and papers persist on the
+ host. Both are ignored by git.
+ 
+ `scripts/optimize-ipfs.sh` applies the optional Kubo settings described in the
+ [Docker Compose Guide](https://hoanganhduc.github.io/getscipapers/docker_compose.html)
+ and [IPFS Gateway Tuning](https://hoanganhduc.github.io/getscipapers/ipfs_optimization.html).
+ 
 ## Running getscipapers Commands
 
 To run `getscipapers` inside the container, use:
