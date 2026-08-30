@@ -83,6 +83,17 @@ Pick between them with ``--db``, which accepts ``all``, ``nexus``, ``scihub``,
 ``anna``, ``unpaywall``, and ``libgen``. Z-Library is not part of this download
 path; it has its own ``zlib`` subcommand for book-like content.
 
+Under ``getpapers --db anna``, a cold DOI falls through to the browser route
+when the md5 cache and LibGen both miss and ``--anna-scidb`` is not armed. That
+route has Chromium solve the DDoS-Guard challenge, and whether it solves depends
+on the address the request leaves from; from this host the page stayed on the
+check for its whole budget and the run ended without a file. ``--db libgen``
+still resolves a DOI to a catalog entry, and transfers of 82 kB, 407 kB and
+922 kB each arrived at their full declared length, but a 48 MB file broke mid-stream on
+every attempt and no fallback mirror produced it either. The
+:doc:`cli_reference` covers the Anna's Archive routes and the LibGen transfers
+in more detail.
+
 Combine options thoughtfully. For example, a saved ``email`` credential or
 ``GETSCIPAPERS_EMAIL`` ensures Crossref and Unpaywall requests include a
 contact address, improving API reliability.
