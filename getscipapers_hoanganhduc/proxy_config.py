@@ -26,6 +26,9 @@ from . import configuration
 
 DEFAULT_PROXY_FILE = configuration.GETPAPERS_CONFIG_FILE.parent / "proxy.json"
 PROXY_LIST_SUFFIX = "_list.json"
+# Applying a proxy rewrites these for the whole process, so a caller that only
+# wants a proxy for itself has to save and restore them around discovery.
+PROXY_ENV_KEYS = ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY")
 # Free proxies are short lived, so a discovered one is only trusted for an hour.
 AUTO_PROXY_MAX_AGE_SECONDS = 3600
 
@@ -72,12 +75,11 @@ class ProxySettings:
     def apply_environment(self) -> None:
         """Apply or clear proxy environment variables for downstream libraries."""
 
-        keys = ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY")
         if self.enabled and self.proxy_url:
-            for key in keys:
+            for key in PROXY_ENV_KEYS:
                 os.environ[key] = self.proxy_url
         else:
-            for key in keys:
+            for key in PROXY_ENV_KEYS:
                 os.environ.pop(key, None)
 
 

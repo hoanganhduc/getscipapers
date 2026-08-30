@@ -162,11 +162,22 @@ def get_free_proxies():
     """Retrieve and store free proxies using the shared proxy helper."""
 
     info_print("Retrieving free proxies from free-proxy-list.net...")
-    settings = proxy_config.auto_discover_proxy(
-        config_path=DEFAULT_PROXY_FILE,
-        save_list=True,
-        verbose=verbose_mode,
-    )
+    # Discovery applies the proxy to the whole process, but this one is for
+    # Telegram only: nexus passes it to Telethon explicitly, and leaving it in
+    # the environment would route every other service through a free proxy too.
+    saved_env = {key: os.environ.get(key) for key in proxy_config.PROXY_ENV_KEYS}
+    try:
+        settings = proxy_config.auto_discover_proxy(
+            config_path=DEFAULT_PROXY_FILE,
+            save_list=True,
+            verbose=verbose_mode,
+        )
+    finally:
+        for key, value in saved_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
     return settings.enabled
 
 def test_proxy_speed(ip, port, timeout=10):
