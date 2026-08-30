@@ -31,6 +31,18 @@ selected sources. Key options:
 The contact address several APIs require comes from the credentials file or
 ``GETSCIPAPERS_EMAIL``; there is no ``--email`` flag.
 
+``--db libgen`` finds files more reliably than it delivers them. A DOI resolves
+to a catalog entry and an md5, and small transfers complete byte-exact:
+downloads of 82 kB, 407 kB and 922 kB each arrived at their full declared
+length.
+
+A 48 MB file did not. Every attempt broke mid-stream after a few megabytes
+had arrived, at a point that moved between runs, and once every mirror had
+failed the run printed ``PDF file is not available on LibGen``. The server
+reported the right ``Content-Length`` each time, so the catalog entry and the
+link were sound and only the byte transfer broke. Exactly one large file was
+tested, so where the behaviour changes, and why, is not known.
+
 anna
 ----
 
@@ -71,7 +83,7 @@ browser when no account is configured:
      - Chromium solving the challenge
      - nothing
      - none
-     - 30-45s
+     - ~40s when it solves
 
 R1 and R2 are addressed by md5, not by DOI, so a DOI must be resolved first.
 The ``anna`` command resolves one from ``--md5``, from the local md5 cache, or
@@ -100,7 +112,7 @@ A paid membership on its own does not make a cold DOI resolvable:
      - yes
      - R1
    * - cold DOI, ``--scidb`` not given
-     - yes, slowly
+     - not reliably
      - R5, which never needed the key
 
 Because R4 and R5 both write the md5 cache, a second fetch of the same DOI
@@ -125,6 +137,18 @@ R5 launches Chromium itself rather than through chromedriver, since a
 chromedriver-launched browser fails the challenge. It needs ``chromium`` and
 ``chromedriver``, plus ``xvfb-run`` on a Linux host with no display; headless
 Chromium cannot pass the challenge and is never used.
+
+Whether R5 solves at all also depends on the address the request leaves from.
+DDoS-Guard can hold that address, and on a held address the page title stays at
+``DDoS-Guard`` for the whole 120-second budget and the run ends without a file.
+The module adds a line naming that case after the timeout message, so a held
+address is distinguishable from a slow one.
+
+That line reports the address as held at a manual captcha, and says a longer
+timeout will not clear the hold and that a different network path is needed. A
+different path has not been seen to clear it here: three runs on this host, one
+of them through a proxy, each spent the full budget on the check. The same route
+on the same host solved in about 42 seconds when the module was built.
 
 request
 -------
