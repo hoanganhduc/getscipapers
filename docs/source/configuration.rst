@@ -65,3 +65,20 @@ Proxy Configuration
 Requests are attempted directly first. The proxy is used only as a retry, when
 the direct attempt raises or returns one of ``PROXY_RETRY_STATUSES``
 (403, 407, 408, 429, 500, 502, 503, 504).
+
+IPFS Gateway
+------------
+
+The Nexus/STC search step reads its index over an IPFS gateway. It defaults to
+``http://127.0.0.1:8080``, a Kubo daemon on the same host, and reads
+``GETSCIPAPERS_IPFS_HTTP_BASE_URL`` when that address is wrong.
+
+Set it whenever the gateway is not local. In a container stack the gateway runs
+as its own service, so ``127.0.0.1`` inside the application container is the
+application itself rather than the gateway::
+
+   GETSCIPAPERS_IPFS_HTTP_BASE_URL=http://ipfs:8080
+
+The variable is read each time a search starts, and an empty value falls back to
+the default. It is not a credential, so it is read only from the environment and
+never stored in the credentials file.
