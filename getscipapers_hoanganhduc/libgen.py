@@ -657,6 +657,13 @@ def download_libgen_paper_by_doi(doi, dest_folder=None, preferred_exts=None, ver
                     failures.append((label, f"ads.php status {ads_resp.status_code}"))
                     continue
 
+            if not download_url.startswith("http"):
+                # Mirror hrefs come straight from the record and some, such as
+                # the torrent links, are relative to the mirror root.
+                download_url = f"https://{LIBGEN_DOMAIN}/" + download_url.lstrip("/")
+                if verbose:
+                    print(f"Resolved relative mirror URL: {download_url}")
+
             with requests.get(download_url, headers=LIBGEN_HEADERS, stream=True, timeout=DOWNLOAD_TIMEOUT) as r:
                 r.raise_for_status()
                 with open(out_path, "wb") as f:
