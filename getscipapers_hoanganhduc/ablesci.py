@@ -62,7 +62,7 @@ os.makedirs(credentials_dir, exist_ok=True)
 CREDENTIALS_FILE = os.path.join(credentials_dir, 'credentials.json')
 
 def get_default_download_folder():
-    """
+    r"""
     Get the default download folder for the current OS.
     - Windows: %USERPROFILE%\Downloads\getscipapers\ablesci
     - macOS: ~/Downloads/getscipapers/ablesci
@@ -495,7 +495,7 @@ def request_paper_by_doi(doi, headless=True):
         # Process the dialog result
         try:
             debug_print("Executing JavaScript to extract paper info")
-            result = driver.execute_script("""
+            result = driver.execute_script(r"""
             var buttons = document.querySelectorAll('.layui-layer-btn a');
             var content = document.querySelector('.layui-layer-content');
             

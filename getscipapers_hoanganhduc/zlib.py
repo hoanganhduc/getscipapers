@@ -538,7 +538,7 @@ def main():
     parser = argparse.ArgumentParser(
         prog=program_name,
         description="Search and download books from Z-library.",
-        epilog="""Examples:
+        epilog=r"""Examples:
   %(prog)s --search "deep learning"
   %(prog)s --search "tolkien" --search-limit 5
   %(prog)s --search "python" --download
