@@ -68,11 +68,32 @@ pinned content removes most of it:
 
 .. code-block:: bash
 
-   docker compose exec ipfs ipfs config Reprovider.Strategy pinned
+   docker compose exec ipfs ipfs config Provide.Strategy pinned
 
 If the node pins nothing, this reduces announcement traffic to nearly zero. The
 cost is that other peers cannot fetch the blocks this node happens to hold; for
 a private client that is not a service anyone depends on.
+
+.. warning::
+
+   Older guides set ``Reprovider.Strategy`` instead. ``Provide.Strategy``
+   replaced it in Kubo 0.38, and 0.43 removed the ``Reprovider`` section
+   outright: a node whose configuration still carries it **refuses to start**,
+   reporting ``deprecated configuration detected``.
+
+   Recovering needs a one-off container, because the daemon is down and
+   ``docker compose exec`` has nothing to attach to::
+
+      docker compose stop ipfs
+      docker compose run --rm ipfs config --json Reprovider null
+      docker compose run --rm ipfs config Provide.Strategy pinned
+      docker compose start ipfs
+
+   ``docker compose run`` starts a second container on the same volume, so it
+   edits the same repository the daemon will read on the next start.
+
+   The bundled ``scripts/optimize-ipfs.sh`` picks the key by asking the node
+   which schema it has, so it is safe on either side of the change.
 
 Lookup latency
 --------------
@@ -99,13 +120,18 @@ On a small machine, cap the connection manager instead:
    docker compose exec ipfs ipfs config --json Swarm.ConnMgr.HighWater 40
    docker compose exec ipfs ipfs config --json Swarm.ConnMgr.LowWater 20
 
-The ``lowpower`` profile does this and disables reproviding in one step::
+Kubo's own ``lowpower`` profile sets the same two limits in one step::
 
    docker compose exec ipfs ipfs config profile apply lowpower
 
+On Kubo 0.43 it also turns off the relay service and sets ``Routing.Type`` to
+``autoclient``, which is why it must not be combined with the accelerated DHT
+client above -- the profile is asking for a smaller routing table and the client
+for a fuller one. Older descriptions of the profile mention that it disables
+reproviding as well; it no longer does, so set ``Provide.Strategy`` separately.
+
 Fewer peers means fewer places to find a block, so searches may take longer to
-resolve. Do not combine ``lowpower`` with the accelerated DHT client; they pull
-in opposite directions.
+resolve.
 
 Checking the node
 -----------------
