@@ -9,33 +9,45 @@ getpapers
 
 .. code-block:: bash
 
-   getscipapers getpapers --doi <doi> --email <you@example.com> --download-dir <path>
+   getscipapers getpapers --doi <doi> --download-folder <path>
 
-Searches for papers using Crossref and Unpaywall, optionally requesting downloads
-from Nexus. Key options:
+Searches for papers using Crossref and Unpaywall, then downloads from the
+selected sources. Key options:
 
-* ``--doi`` or ``--query``: choose between direct DOI lookup or keyword search.
-* ``--email``: contact email required by several APIs.
+* ``--doi``, ``--doi-file``, or ``--search``: choose between a direct DOI
+  lookup, a file of DOIs, and a keyword search.
+* ``--db``: which source to download from, one of ``all``, ``nexus``,
+  ``scihub``, ``anna``, ``unpaywall``, ``libgen``. Repeat the flag to target
+  several; defaults to ``all``.
+* ``--download-folder``: where to save the PDFs.
+* ``--credentials``: load a JSON credentials file instead of the default one.
 * ``--non-interactive``: fail fast if credentials are missing.
+
+The contact address several APIs require comes from the credentials file or
+``GETSCIPAPERS_EMAIL``; there is no ``--email`` flag.
 
 request
 -------
 
 .. code-block:: bash
 
-   getscipapers request --title "Graph Representation Learning" --nexus
+   getscipapers request --doi 10.1000/xyz123 --service nexus
 
-Coordinates community requests through Nexus, AbleSci, SciNet, or Wosonhj when
-immediate downloads are not available.
+Coordinates community requests through Nexus, AbleSci, SciNet, Wosonhj, or
+Facebook when immediate downloads are not available. ``--doi`` accepts a single
+DOI, a delimited list, a text file, or a blob of text to scan; ``--service``
+accepts one name, several names, or ``all``.
 
 checkin
 -------
 
 .. code-block:: bash
 
-   getscipapers checkin --service ablesci
+   getscipapers checkin ablesci
 
-Runs daily check-in flows that grant credits on supported services.
+Runs daily check-in flows that grant credits on supported services. The
+services are positional arguments, so ``getscipapers checkin ablesci wosonhj``
+and ``getscipapers checkin all`` are both valid.
 
 Other Modules
 -------------
@@ -58,3 +70,7 @@ Searches Z-Library for books and optionally downloads them. Key options:
 * ``--clear-credentials``: delete saved Z-Library credentials.
 * ``--non-interactive``: do not prompt for credentials; fail fast if missing.
 * ``--search`` / ``--download``: search and optionally download selected books.
+* ``--search-limit``: cap the number of search results.
+* ``--popular`` / ``--recent``: browse popular or recently added titles, with
+  ``--popular-language`` to restrict the popular list.
+* ``--user-info``: print the account status and remaining download quota.

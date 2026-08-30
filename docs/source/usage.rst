@@ -17,11 +17,11 @@ Basic Usage
 
 - Perform a quick DOI search using Crossref and Unpaywall::
 
-    getscipapers getpapers --doi 10.1038/s41586-020-2649-2 --email you@example.com
+    getscipapers getpapers --doi 10.1038/s41586-020-2649-2
 
 - Request a paper through community bots without direct downloads::
 
-    getscipapers request --title "Efficient Vision Transformers" --nexus --non-interactive
+    getscipapers request --doi 10.1038/s41586-020-2649-2 --service nexus
 
 Example Workflows
 -----------------
@@ -34,7 +34,7 @@ Use these ready-to-run commands as starting points:
    getscipapers getpapers --search "graph neural network" --limit 5
 
    # Download a DOI via Unpaywall with non-interactive credentials
-   GETSCIPAPERS_EMAIL=you@example.com \\
+   GETSCIPAPERS_EMAIL=you@example.com \
    getscipapers getpapers --doi 10.1038/nature12373 --db unpaywall --non-interactive
 
    # Process many DOIs from a text file and save outputs to a custom folder
@@ -76,11 +76,16 @@ Search Strategies
 * **Crossref lookups** for authoritative metadata and publisher links.
 * **Unpaywall queries** to find open access versions.
 * **Nexus bot searches** to leverage community mirrors when direct download is not possible.
-* Optional **LibGen** and **Z-Library** queries for book-like content.
+* **Sci-Hub**, **LibGen**, and **Anna's Archive** lookups for articles the
+  publisher does not serve openly.
 
-Combine options thoughtfully. For example, supplying ``--email`` ensures
-Crossref and Unpaywall requests include a contact address, improving API
-reliability.
+Pick between them with ``--db``, which accepts ``all``, ``nexus``, ``scihub``,
+``anna``, ``unpaywall``, and ``libgen``. Z-Library is not part of this download
+path; it has its own ``zlib`` subcommand for book-like content.
+
+Combine options thoughtfully. For example, a saved ``email`` credential or
+``GETSCIPAPERS_EMAIL`` ensures Crossref and Unpaywall requests include a
+contact address, improving API reliability.
 
 Download Locations
 ------------------

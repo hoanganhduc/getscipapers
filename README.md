@@ -212,9 +212,12 @@ This mounts your current directory to `/workspace` inside the container for easy
 
 ![Build](https://img.shields.io/badge/-Build-blue?logo=docker) ![Local](https://img.shields.io/badge/-Local-green?logo=homeassistant)
 
-To build the image yourself:
+The `Dockerfile` lives on the `docker` branch, not on `master`, so check that
+branch out first:
 
 ```bash
+git clone -b docker https://github.com/hoanganhduc/getscipapers.git
+cd getscipapers
 docker build -t getscipapers .
 docker run -it --rm -v $(pwd):/workspace getscipapers
 ```
@@ -319,35 +322,6 @@ Now you can run `getscipapers` directly from your terminal:
 ```bash
 getscipapers --help
 ```
-
----
-
-For more information, see the official documentation or repository.
-
-
-#### Running Locally with Docker
-
-![Docker](https://img.shields.io/badge/-Docker-blue?logo=docker) ![Local](https://img.shields.io/badge/-Local-green?logo=homeassistant) ![Isolated](https://img.shields.io/badge/-Isolated-lightgrey?logo=lock)
-
-You can run **getscipapers** locally using Docker without installing Python or dependencies on your system.
-
-1. ![🐳](https://img.shields.io/badge/-Docker-blue?logo=docker) Ensure Docker is installed.
-2. ![⬇️](https://img.shields.io/badge/-Pull-blue?logo=docker) Pull the latest image:
-
-  ```bash
-  docker pull ghcr.io/hoanganhduc/getscipapers:latest
-  ```
-
-3. ![▶️](https://img.shields.io/badge/-Run-green?logo=playstation) Run the container, mounting a local directory for downloads or configuration:
-
-  ```bash
-  docker run --rm -it -v /path/to/local/dir:/data ghcr.io/hoanganhduc/getscipapers:latest --output /data
-  ```
-
-  Replace `/path/to/local/dir` with your preferred local directory.
-
-This setup allows you to use **getscipapers** in an isolated environment, keeping your files accessible on your host machine.
-
 
 ## Documentation
 
