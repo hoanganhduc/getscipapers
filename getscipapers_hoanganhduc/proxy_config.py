@@ -148,6 +148,22 @@ def _probe_proxy(candidate: Dict[str, object], timeout: int = 8, verbose: bool =
     return probed
 
 
+def save_proxy_entry(config_path: str | Path, entry: Dict[str, object]) -> Path:
+    """Persist a proxy entry, stamping it so it can later expire.
+
+    Modules that probe a proxy themselves write it through here rather than
+    dumping JSON directly, so every machine-written entry carries the
+    ``discovered`` stamp that :func:`_entry_is_stale` looks for.
+    """
+
+    config_path = Path(config_path).expanduser()
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = dict(entry)
+    payload["discovered"] = time.time()
+    config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return config_path
+
+
 def auto_discover_proxy(
     *,
     config_path: str | Path = DEFAULT_PROXY_FILE,
@@ -196,15 +212,8 @@ def auto_discover_proxy(
     results.sort(key=lambda item: item.get("speed_ms", float("inf")))
     best = results[0]
 
-    config_path = Path(config_path).expanduser()
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "type": best.get("type", "https"),
-        "addr": best["addr"],
-        "port": best["port"],
-        "discovered": time.time(),
-    }
-    config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    payload = {"type": best.get("type", "https"), "addr": best["addr"], "port": best["port"]}
+    config_path = save_proxy_entry(config_path, payload)
 
     if save_list:
         list_path = config_path.with_name(f"{config_path.stem}{PROXY_LIST_SUFFIX}")
@@ -261,7 +270,7 @@ def _entry_is_stale(
 ) -> bool:
     """Return True for an auto-discovered proxy that has outlived ``max_age``.
 
-    Only :func:`auto_discover_proxy` stamps an entry with ``discovered``, so a
+    Only :func:`save_proxy_entry` stamps an entry with ``discovered``, so a
     proxy file the user wrote themselves is never treated as stale.
     """
 
@@ -371,4 +380,5 @@ __all__ = [
     "ProxySettings",
     "configure_from_cli",
     "load_proxy_settings",
+    "save_proxy_entry",
 ]

@@ -85,5 +85,38 @@ class ProxyCacheExpiryTests(unittest.TestCase):
         self.assertFalse(proxy_config._entry_is_stale(payload))
 
 
+class SaveProxyEntryTests(unittest.TestCase):
+    """Every machine-written proxy entry has to carry the stamp, whichever
+    module probed it, or it silently outlives the expiry check."""
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tempdir.cleanup)
+        self.config_path = Path(self.tempdir.name) / "nested" / "proxy.json"
+
+    def test_the_written_entry_is_stamped(self):
+        proxy_config.save_proxy_entry(
+            self.config_path, {"type": "http", "addr": "198.51.100.9", "port": 8080}
+        )
+        payload = json.loads(self.config_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["addr"], "198.51.100.9")
+        self.assertFalse(proxy_config._entry_is_stale(payload))
+
+    def test_the_written_entry_expires_once_it_ages(self):
+        proxy_config.save_proxy_entry(
+            self.config_path, {"type": "http", "addr": "198.51.100.9", "port": 8080}
+        )
+        payload = json.loads(self.config_path.read_text(encoding="utf-8"))
+        self.assertTrue(
+            proxy_config._entry_is_stale(payload, max_age=-1),
+        )
+
+    def test_the_caller_does_not_have_to_create_the_directory(self):
+        written = proxy_config.save_proxy_entry(
+            self.config_path, {"addr": "198.51.100.9", "port": 8080}
+        )
+        self.assertTrue(written.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

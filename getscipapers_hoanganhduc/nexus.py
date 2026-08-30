@@ -39,6 +39,9 @@ import datetime as dt  # Add this import at the top if not already present
 import itertools
 import getpass
 from . import getpapers, proxy_config
+# Imported by name because ``proxy_config`` is shadowed by a local variable
+# in the proxy-selection code below.
+from .proxy_config import save_proxy_entry
 
 
 if platform.system() == 'Windows':
@@ -531,9 +534,9 @@ async def test_and_select_working_proxy():
                         if not remaining_task.done():
                             remaining_task.cancel()
                     
-                    # Save the working proxy configuration
-                    with open(DEFAULT_PROXY_FILE, 'w') as f:
-                        json.dump(proxy_config, f, indent=2)
+                    # Save the working proxy configuration, stamped so it
+                    # expires instead of being trusted after it goes dead.
+                    save_proxy_entry(DEFAULT_PROXY_FILE, proxy_config)
 
                     info_print(f"Working proxy configuration saved to: {DEFAULT_PROXY_FILE}")
                     return proxy_config
