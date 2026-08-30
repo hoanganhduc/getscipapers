@@ -4,6 +4,9 @@ on:
   push:
     paths:
       - "docs/**"
+      # api_reference.rst is generated from the package, so a source-only
+      # change still has to rebuild the site.
+      - "getscipapers_hoanganhduc/**"
       - ".github/workflows/docs.yml"
       - "pyproject.toml"
       - "setup.py"

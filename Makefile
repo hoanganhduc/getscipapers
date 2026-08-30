@@ -1,9 +1,9 @@
-.PHONY: build install clean test lint help setup venv activate
+.PHONY: help setup venv build install clean format dist
 
 # Variables
 VENV_PATH = ~/.getscipapers
 PACKAGE_NAME = getscipapers_hoanganhduc
-VERSION = 0.1.0
+VERSION = 0.1.5
 
 # Default target
 help:

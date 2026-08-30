@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. Dates reflect t
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-08-30
+- Reach Anna's Archive through the routes its DDoS-Guard challenge does not gate: the quota-free record route, the fast-download API, the member SciDB page behind an explicit `--scidb` opt-in, and a real browser when no account is configured.
+- Add an `anna` CLI with credential, md5-cache, and account-status handling, and wire `--anna-md5`, `--anna-scidb`, and `--no-anna-browser` into `getpapers`.
+- Resolve a cold DOI to an md5 through LibGen so Anna's Archive can take its quota-free route without launching a browser.
+- Send a browser User-Agent to LibGen, which otherwise answers every request with the nginx placeholder page, and resolve relative mirror URLs before downloading.
+- Expire auto-discovered proxies after an hour instead of trusting them forever, and stamp the entries `nexus` persists the same way.
+- Keep the proxy `nexus` discovers out of the process environment so it cannot leak into unrelated requests.
+- Declare the `webdriver-manager` dependency in `pyproject.toml`.
+- Correct the documented CLI invocations that no longer matched the parsers, and document the Anna's Archive routes, the browser prerequisites, the shared proxy behaviour, and the modules missing from the API reference.
+
 ## [0.1.4] - 2025-12-25
 - Increase download timeouts across LibGen, Wiley, and Unpaywall fetchers to better tolerate slow mirrors and networks.
 - Allow running `getscipapers gui` to launch the Tkinter wrapper via the package entrypoint.
