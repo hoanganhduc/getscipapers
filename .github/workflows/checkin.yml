@@ -14,28 +14,32 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        id: setup-python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Create and activate virtual environment
-        run: |
-          python -m venv .venv
-          source .venv/bin/activate
+      - name: Cache virtual environment
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: ${{ runner.os }}-venv-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('requirements.txt', 'pyproject.toml', 'setup.py') }}
 
-      - name: Cache Python packages and user data
+      - name: Cache Chrome user data
         uses: actions/cache@v4
         with:
           path: |
-            $HOME/.config/getscipapers/ablesci/chrome_user_data
-            $HOME/.config/getscipapers/wosonhj/chrome_user_data
-          key: ${{ runner.os }}-chrome-user-data-${{ hashFiles('requirements.txt') }}
+            ~/.config/getscipapers/ablesci/chrome_user_data
+            ~/.config/getscipapers/wosonhj/chrome_user_data
+          key: ${{ runner.os }}-chrome-user-data-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-chrome-user-data-
 
       - name: Install dependencies if cache is missed
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
+          python -m venv .venv
           source .venv/bin/activate
           python -m pip install --upgrade pip
           pip install -r requirements.txt
